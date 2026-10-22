@@ -1,0 +1,5 @@
+Subject_ID,Event Name,Score A,Score B,Group
+DEMO-01,Baseline,1,10,x
+DEMO-02,Baseline,2,,y
+DEMO-03,Baseline,<1,30,x
+DEMO-04,Baseline,0,40,

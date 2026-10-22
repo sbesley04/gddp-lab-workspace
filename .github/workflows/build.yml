@@ -1,0 +1,53 @@
+# Builds and smoke-tests unsigned installers on macOS and Windows. Not yet run: this repository has no remote.
+name: build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx electron-vite build
+      - name: Package (macOS, unsigned)
+        if: runner.os == 'macOS'
+        run: npx electron-builder --mac --arm64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Package (Windows, unsigned)
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --x64 --publish never
+      - name: Packaged self-test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p st
+          "release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st"
+          cat st/bari-self-test.json
+      - name: Packaged self-test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force st | Out-Null
+          $p = Start-Process -FilePath "release/win-unpacked/BARI-CNS Research Workspace.exe" -ArgumentList "--self-test", "$PWD/st" -Wait -PassThru
+          Get-Content st/bari-self-test.json
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            st/bari-self-test.json

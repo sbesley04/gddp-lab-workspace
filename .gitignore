@@ -1,0 +1,20 @@
+node_modules/
+out/
+dist/
+release/
+test-results/
+playwright-report/
+*.bariproj/
+*.bariproj.zip
+.DS_Store
+# Never commit real study data. Only synthetic fixtures under tests/fixtures are allowed.
+*.xlsx
+*.xls
+*.csv
+!tests/fixtures/*.xlsx
+!tests/fixtures/*.csv
+.idea/
+
+# Study-specific notes and expected counts stay on the researcher's machine.
+docs/private/
+tests/reference/expected.local.json

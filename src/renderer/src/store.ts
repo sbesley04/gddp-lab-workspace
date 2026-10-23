@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { ChartConfig, DatasetSnapshot, FilterGroup, QcCategory, SavedViewSpec } from '@core/types'
 import { DEFAULT_QC_POLICY, emptyFilter } from '@core/types'
+import { normalizeChart } from '@core/chartStyle'
 import { call } from './api'
 
 export interface VersionSummary {
@@ -61,6 +62,8 @@ interface State {
   participantDrawer: string | null
   importOpen: boolean
   paletteOpen: boolean
+  /** Statistics panel visibility (UI only); results are computed only once chart.analysis.requested is set. */
+  statsOpen: boolean
   toasts: Toast[]
   authorLabel: string
 
@@ -78,6 +81,7 @@ interface State {
   openParticipant: (pid: string | null) => void
   setImportOpen: (b: boolean) => void
   setPaletteOpen: (b: boolean) => void
+  setStatsOpen: (b: boolean) => void
   toast: (kind: Toast['kind'], text: string) => void
   dismissToast: (id: number) => void
   applyView: (view: { id: string; name: string; metadataVersion: number; metadataChangedSince: number; spec: SavedViewSpec }, useCurrentMetadata?: boolean) => Promise<void>
@@ -85,7 +89,7 @@ interface State {
   setAuthorLabel: (s: string) => void
 }
 
-export const defaultChart = (): ChartConfig => ({ type: 'distribution', measureKey: null, compareKey: null, groupKey: null, xScale: 'linear', yScale: 'linear', tableColumns: [] })
+export const defaultChart = (): ChartConfig => normalizeChart({ type: 'distribution', measureKey: null, compareKey: null, groupKey: null, xScale: 'linear', yScale: 'linear', tableColumns: [] })
 
 function pickDefaults(s: DatasetSnapshot): Partial<ChartConfig> {
   const numeric = s.variables.filter((v) => v.role === 'measure' && (v.kind === 'numeric' || v.kind === 'mixed'))
@@ -114,6 +118,7 @@ export const useStore = create<State>((set, get) => ({
   participantDrawer: null,
   importOpen: false,
   paletteOpen: false,
+  statsOpen: false,
   toasts: [],
   authorLabel: '',
 
@@ -152,6 +157,7 @@ export const useStore = create<State>((set, get) => ({
   openParticipant: (participantDrawer) => set({ participantDrawer }),
   setImportOpen: (importOpen) => set({ importOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  setStatsOpen: (statsOpen) => set({ statsOpen }),
   toast: (kind, text) => {
     const id = ++toastSeq
     set({ toasts: [...get().toasts, { id, kind, text }] })
@@ -165,7 +171,8 @@ export const useStore = create<State>((set, get) => ({
       filter: sel.filter,
       qcExclude: sel.qc.exclude,
       visitIds: sel.visitIds,
-      chart: view.spec.chart,
+      chart: normalizeChart(view.spec.chart),
+      statsOpen: !!view.spec.chart.analysis?.requested,
       viewContext: { id: view.id, name: view.name, metadataVersion: view.metadataVersion, changedSince: useCurrent ? 0 : view.metadataChangedSince },
       page: view.spec.chart.type === 'table' ? 'explore' : 'explore'
     })

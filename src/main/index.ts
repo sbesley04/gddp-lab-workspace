@@ -10,6 +10,7 @@ import { commitImport, inspect, parseSource, previewMapping, validate, type Pars
 import { buildSnapshot, listVersions } from './snapshot'
 import * as curation from './curation'
 import * as views from './views'
+import * as boards from './boards'
 import { listExports, previewContextExport, writeContextExport } from './exportService'
 import { createBackup, restoreBackup } from './backup'
 import { APP_VERSION } from './version'
@@ -210,6 +211,10 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   'curation:setStudyContext': (p) => curation.setStudyContext(requireProject(), { ...p, author: author() }),
   'curation:getStudyContext': (p) => curation.getStudyContext(requireProject(), p.datasetVersionId, p.asOf ?? requireProject().metadataVersion()),
   'curation:history': (p) => curation.history(requireProject(), p.datasetVersionId, { target: p.target, kind: p.kind }),
+  'boards:list': () => boards.listBoards(requireProject()),
+  'boards:get': (p) => boards.getBoard(requireProject(), p.id),
+  'boards:save': (p) => boards.saveBoard(requireProject(), { ...p, author: author() }),
+  'boards:delete': (p) => boards.deleteBoard(requireProject(), p.id, author()),
   'views:list': () => views.listViews(requireProject()),
   'views:save': (p) => views.saveView(requireProject(), { ...p, author: author() }),
   'views:get': (p) => views.getView(requireProject(), p.id),

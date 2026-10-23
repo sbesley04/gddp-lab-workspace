@@ -51,6 +51,7 @@ build/          icon, entitlements
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted) and screenshots of every screen in light and dark mode |
 | `npm run fixtures` | Regenerates the synthetic fixtures (needs Python 3 and openpyxl) |
+| `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
 | `npm run dist:mac` | Unsigned DMG and ZIP for arm64 and x64 in `release/` |
 | `npm run dist:win` | Unsigned NSIS x64 installer, which cross-builds from macOS |
 
@@ -76,7 +77,8 @@ Playwright cannot drive a packaged build, because the `EnableNodeCliInspectArgum
 
 ## Testing notes
 
-- **Expected statistics are hand-computed.** `tests/stats.test.ts` explains each expected value; none come from the implementation under test.
+- **Expected statistics are independent.** `tests/stats.test.ts` uses hand-computed values. `tests/inference.test.ts` compares every distribution, test, CI and regression output with base R / car (`t.test`, `wilcox.test`, `oneway.test`, `kruskal.test`, `leveneTest`, `cor.test`, `lm`, `predict`, `shapiro.test`, `p.adjust`) to 1e-8 relative or better (Shapiro–Wilk: 1e-6, matching R's single-precision coefficients).
+- **Statistics code:** `src/core/distributions.ts` (t, F, χ², normal, binomial via incomplete beta and gamma) and `src/core/analysis.ts`. Statistics are never computed automatically; the UI calls them only after **Compute**.
 - **Fixtures are synthetic** (`DEMO-xx`, `9001…9005`). `demo_workbook.xlsx` is also bundled with the app as the demo, and as the self-test input.
 - **Test-only environment variable:** `BARI_USER_DATA` points the app at an isolated settings folder. It does not affect project data.
 

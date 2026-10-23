@@ -207,5 +207,15 @@ CREATE TRIGGER revision_nodelete BEFORE DELETE ON revision BEGIN SELECT RAISE(AB
 CREATE TRIGGER audit_immutable BEFORE UPDATE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
 CREATE TRIGGER audit_nodelete BEFORE DELETE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
 CREATE TRIGGER saved_view_immutable BEFORE UPDATE OF spec_json, dataset_version_id, metadata_version ON saved_view BEGIN SELECT RAISE(ABORT, 'saved views are immutable; save a new view'); END;
+`,
+  /* 2: compare boards (layouts are editable; the views they show stay immutable) */ `
+CREATE TABLE compare_board (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  layout_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  author_label TEXT
+);
 `
 ]

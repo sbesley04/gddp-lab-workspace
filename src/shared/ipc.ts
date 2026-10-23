@@ -34,6 +34,26 @@ export const selectionSpec = z.object({
   participantIds: z.array(z.string().max(200)).max(100000).nullable()
 })
 
+const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
+export const chartStyle = z.object({
+  preset: z.enum(['glass', 'publication', 'contrast', 'colorblind', 'grayscale', 'custom']),
+  pointColor: color,
+  flagColor: color,
+  unresolvedColor: color,
+  boxColor: color,
+  fitColor: color,
+  background: z.enum(['transparent', 'white', 'black']),
+  textColor: color.nullable(),
+  font: z.enum(['system', 'sans', 'serif', 'mono']),
+  fontSize: z.number().min(8).max(28),
+  pointSize: z.number().min(2).max(30),
+  pointOpacity: z.number().min(0.1).max(1),
+  showGrid: z.boolean(),
+  showTitle: z.boolean(),
+  showSubtitle: z.boolean(),
+  boxFill: z.boolean()
+})
+
 export const chartConfig = z.object({
   type: z.enum(['distribution', 'scatter', 'table']),
   measureKey: z.string().max(200).nullable(),
@@ -41,7 +61,31 @@ export const chartConfig = z.object({
   groupKey: z.string().max(200).nullable(),
   xScale: z.enum(['linear', 'log']),
   yScale: z.enum(['linear', 'log']),
-  tableColumns: z.array(z.string().max(200)).max(2000)
+  tableColumns: z.array(z.string().max(200)).max(2000),
+  xMin: z.number().finite().nullable().optional(),
+  xMax: z.number().finite().nullable().optional(),
+  yMin: z.number().finite().nullable().optional(),
+  yMax: z.number().finite().nullable().optional(),
+  style: chartStyle.optional(),
+  analysis: z.object({ requested: z.boolean(), fitLine: z.boolean(), confidenceBand: z.boolean(), predictionBand: z.boolean(), meanCi: z.boolean().optional() }).optional()
+})
+
+const boardCard = z.object({
+  id: z.string().max(64),
+  kind: z.enum(['view', 'note']),
+  viewId: z.string().max(200).nullable(),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  w: z.number().finite().min(120).max(4000),
+  h: z.number().finite().min(80).max(4000),
+  text: z.string().max(20000).nullable(),
+  style: chartStyle.nullable()
+})
+
+export const boardLayout = z.object({
+  cards: z.array(boardCard).max(200),
+  boardStyle: chartStyle.nullable(),
+  grid: z.number().int().min(1).max(200)
 })
 
 export const savedViewSpec = z.object({
@@ -92,7 +136,10 @@ export const schemas = {
   'export:preview': z.object({ spec: selectionSpec, options: contextOptions, metadataVersion: z.number().int().min(0) }),
   'export:write': z.object({ spec: selectionSpec, options: contextOptions, metadataVersion: z.number().int().min(0) }),
   'export:chart': z.object({ format: z.enum(['svg', 'png']), data: z.string().max(40_000_000), suggestedName: z.string().max(200) }),
-  'settings:setAuthor': z.object({ authorLabel: z.string().max(80) })
+  'settings:setAuthor': z.object({ authorLabel: z.string().max(80) }),
+  'boards:get': z.object({ id }),
+  'boards:save': z.object({ id: id.nullable(), name: z.string().min(1).max(200), layout: boardLayout }),
+  'boards:delete': z.object({ id })
 } as const
 
 /** Envelope for every IPC response so errors reach the renderer as readable messages, not stack traces. */

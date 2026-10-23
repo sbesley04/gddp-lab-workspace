@@ -2,9 +2,9 @@
 
 An offline desktop app (macOS and Windows) for exploring BARI-CNS study spreadsheets without SQL or data-wrangling code. It imports a workbook while keeping its source attribution, QC highlights and comments. You can then build reproducible selections and descriptive charts, and export a documented research-context package for statisticians or AI assistants.
 
-It is a research tool for **exploration**. It runs no hypothesis tests, makes no causal or efficacy claims, and gives no clinical recommendations.
+It is a research tool for **exploration**. Statistical tests run only when you ask for them, are labelled exploratory, and are validated against R. The app makes no causal or efficacy claims and gives no clinical recommendations.
 
-## What works in this release (0.1.0)
+## What works in this release (0.2.0)
 
 | Area | Status |
 | --- | --- |
@@ -14,6 +14,9 @@ It is a research tool for **exploration**. It runs no hypothesis tests, makes no
 | Measurement catalog with append-only metadata revisions and quasi-identifier flags | Working |
 | AND/OR cohort filters with explicit missing handling; QC inclusion policy with impact counts | Working |
 | Distribution (box + all points, optional grouping) and two-measure scatter; linked table; SVG/PNG export | Working |
+| Forced axis bounds; chart style editor with presets (publication, high contrast, colour-blind safe, greyscale) | Working (0.2) |
+| On-demand statistics: CIs, normality, Welch t / Mann–Whitney / ANOVA / Kruskal–Wallis with effect sizes and Holm-adjusted pairwise tests, Pearson / Spearman / Kendall, linear fit with confidence and prediction bands; copyable tables, APA summaries and methods text | Working (0.2), validated against R 4.3 |
+| Suggested names for saved views; Compare whiteboard of saved views and notes, exportable as SVG/PNG | Working (0.2) |
 | Saved views pinned to dataset and metadata versions; reproduced after restart | Working |
 | Research-context ZIP (six files, pseudonymous keys, checksums, preview) | Working |
 | Backup and verified restore | Working |

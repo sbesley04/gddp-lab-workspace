@@ -32,3 +32,15 @@ Verified on 2026-10-22 on macOS 26.5 (Apple Silicon), Node 24.14, Electron 44.9.
    - header alias inconsistencies;
    - "Score" / "Total Score";
    - units and definitions.
+
+## 0.2.0 additions (2026-10-23)
+
+| Feature | Verification |
+| --- | --- |
+| Suggested view names | `tests/features.test.ts`; E2E saves with the suggested name by pressing Enter |
+| Forced axis bounds (out-of-bounds points counted) | E2E checks the notice; values outside bounds still enter statistics |
+| Box plots sized consistently (fixed height, capped box width, horizontal scroll for many groups) | Screenshot review in light and dark mode |
+| Chart style editor and presets, saved with views; schema rejects malformed colours | `tests/features.test.ts`; screenshots |
+| On-demand statistics with p-values, CIs and effect sizes; TSV, APA and methods-text copy | `tests/inference.test.ts`: every statistic matches R 4.3 reference values; E2E checks the panel appears only after Compute |
+| Compare whiteboard (drag, resize, notes, styles, SVG/PNG export, persists across restart) | `tests/features.test.ts` (service), E2E (add views, drag, restart, layout kept, SVG export contains both charts) |
+| Older saved views keep working | `normalizeChart` and schema test with a 0.1-style spec |

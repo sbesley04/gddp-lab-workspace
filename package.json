@@ -1,7 +1,7 @@
 {
   "name": "bari-cns-workspace",
   "productName": "BARI-CNS Research Workspace",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Offline research workspace for exploring BARI-CNS study spreadsheets with preserved provenance and QC context.",
   "private": true,
   "license": "UNLICENSED",

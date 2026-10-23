@@ -32,6 +32,7 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     resolve: { alias },
     plugins: [react()],
+    define: { __APP_VERSION__: JSON.stringify(pkg.version) },
     build: { rollupOptions: { input: { index: resolve(__dirname, 'src/renderer/index.html') } } }
   }
 })

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { BarChart3, BookmarkPlus, Download, FlaskConical, GitCompareArrows, Layers, ScatterChart as ScatterIcon, Table2, Upload, MousePointerSquareDashed, AlertTriangle, Info, X, Columns3 } from 'lucide-react'
-import type { EChartsCoreOption } from 'echarts/core'
+import { BarChart3, BookmarkPlus, Download, FlaskConical, GitCompareArrows, Layers, ScatterChart as ScatterIcon, Table2, Upload, MousePointerSquareDashed, AlertTriangle, Info, X, Columns3, Calculator, Sparkles } from 'lucide-react'
 import type { VariableInfo } from '@core/types'
+import { normalizeChart } from '@core/chartStyle'
+import { suggestViewName } from '@core/naming'
 import { distributionData, scatterData } from '@core/chartData'
 import { QUARTILE_CONVENTION, type Summary } from '@core/stats'
 import { describeFilter, countsFor, observationsFor } from '@core/selection'
@@ -10,13 +11,16 @@ import { formatNumber } from '@core/values'
 import { call } from '../api'
 import { useStore, errorText } from '../store'
 import { useSelection, useVar, useSpec } from '../lib/selection'
-import { axisTitle, label, plural, qcPolicyText, STATUS_TEXT, INTERP_TEXT } from '../lib/format'
-import { EChart, cssVar, jitter, type EChartHandle } from '../components/EChart'
+import { label, plural, qcPolicyText, STATUS_TEXT, INTERP_TEXT } from '../lib/format'
+import { EChart, type EChartHandle } from '../components/EChart'
+import { distributionOption, scatterOption, type FullChart } from '../components/chartOptions'
+import { AxisBoundsEditor, StyleEditor } from '../components/ChartControls'
+import { DistributionStats, ScatterStats } from '../components/StatsPanel'
 import { FilterBar, MeasurePicker, QcPolicyPicker, VisitPicker, VariableList } from '../components/Pickers'
 import { DataTable } from '../components/DataTable'
 import * as Popover from '@radix-ui/react-popover'
 
-function useScheme() {
+export function useScheme() {
   const [dark, setDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
   useEffect(() => {
     const m = matchMedia('(prefers-color-scheme: dark)')
@@ -100,31 +104,23 @@ function NoMeasure({ two }: { two?: boolean }) {
   )
 }
 
-function chartBase(dark: boolean) {
-  const text = cssVar('--text', dark ? '#eef2fa' : '#0b1220')
-  const text3 = cssVar('--text-3', '#5d6880')
-  const grid = dark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'
-  return { text, text3, grid, font: getComputedStyle(document.body).fontFamily }
-}
-
-function axisCommon(b: ReturnType<typeof chartBase>) {
-  return {
-    axisLine: { lineStyle: { color: b.grid } },
-    axisTick: { lineStyle: { color: b.grid } },
-    axisLabel: { color: b.text3, fontSize: 11.5 },
-    splitLine: { lineStyle: { color: b.grid } },
-    nameTextStyle: { color: b.text, fontSize: 12.5, fontWeight: 600 }
-  }
-}
-
 function contextLine(sel: ReturnType<typeof useSelection>, qc: string[]) {
   const s = sel!
   const f = describeFilter(s.ctx, (useStore.getState().filter))
   return `n = ${s.participantIds.length} participants · ${f === 'All rows' ? 'no cohort filter' : f} · QC: ${qcPolicyText(qc as any)}`
 }
 
-function ChartToolbar({ chartRef, name, brush, setBrush }: { chartRef: React.RefObject<EChartHandle | null>; name: string; brush?: boolean; setBrush?: (b: boolean) => void }) {
+export function useFullChart(): FullChart {
+  const chart = useStore((s) => s.chart)
+  return useMemo(() => normalizeChart(chart), [chart])
+}
+
+function ChartToolbar({ chartRef, name, brush, setBrush, showX }: { chartRef: React.RefObject<EChartHandle | null>; name: string; brush?: boolean; setBrush?: (b: boolean) => void; showX: boolean }) {
   const toast = useStore((s) => s.toast)
+  const chart = useFullChart()
+  const setChart = useStore((s) => s.setChart)
+  const statsOpen = useStore((s) => s.statsOpen)
+  const setStatsOpen = useStore((s) => s.setStatsOpen)
   const save = async (format: 'svg' | 'png') => {
     try {
       const data = format === 'svg' ? chartRef.current!.svg() : await chartRef.current!.png(2)
@@ -135,12 +131,24 @@ function ChartToolbar({ chartRef, name, brush, setBrush }: { chartRef: React.Ref
     }
   }
   return (
-    <div className="row">
+    <div className="row wrap">
       {setBrush && (
         <button className="btn sm" aria-pressed={brush} onClick={() => setBrush(!brush)} title="Drag a rectangle to highlight participants in the table" style={brush ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
           <MousePointerSquareDashed size={14} /> Select area
         </button>
       )}
+      <AxisBoundsEditor showX={showX} value={{ xMin: chart.xMin, xMax: chart.xMax, yMin: chart.yMin, yMax: chart.yMax }} onChange={(b) => setChart(b)} />
+      <StyleEditor value={chart.style} onChange={(style) => setChart({ style })} />
+      <button
+        className="btn sm"
+        onClick={() => setStatsOpen(!statsOpen)}
+        aria-pressed={statsOpen}
+        style={statsOpen ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+        data-testid="analyze"
+        title="Best-fit lines, confidence intervals and tests — computed only when you ask"
+      >
+        <Calculator size={14} /> Analyze
+      </button>
       <button className="btn sm" onClick={() => save('svg')}><Download size={14} /> SVG</button>
       <button className="btn sm" onClick={() => save('png')}><Download size={14} /> PNG</button>
     </div>
@@ -156,82 +164,39 @@ function ScaleToggle({ value, onChange, axis, disabled }: { value: 'linear' | 'l
   )
 }
 
+const CHART_HEIGHT = 460
+
 function DistributionView({ measure, group }: { measure: VariableInfo; group: VariableInfo | null }) {
   const sel = useSelection()!
-  const chart = useStore((s) => s.chart)
+  const snapshot = useStore((s) => s.snapshot)!
+  const chart = useFullChart()
   const setChart = useStore((s) => s.setChart)
   const highlight = useStore((s) => s.highlight)
   const qc = useStore((s) => s.qcExclude)
   const inspect = useStore((s) => s.inspect)
+  const statsOpen = useStore((s) => s.statsOpen)
   const dark = useScheme()
   const ref = useRef<EChartHandle>(null)
   const scale = chart.yScale
   const data = useMemo(() => distributionData(sel, measure.index, group?.index ?? null, scale), [sel, measure, group, scale])
   const hl = useMemo(() => new Set(highlight), [highlight])
-  const option = useMemo<EChartsCoreOption>(() => {
-    const b = chartBase(dark)
-    const accent = cssVar('--pt', '#2563eb')
-    const qcC = cssVar('--pt-qc', '#d97706')
-    const unr = cssVar('--pt-unresolved', '#7c3aed')
-    const boxHidden = (g: (typeof data.groups)[number]) => scale === 'log' && g.nonPositiveHidden.length > 0
-    return {
-      animation: false,
-      textStyle: { fontFamily: b.font },
-      title: { text: axisTitle(measure), subtext: contextLine(sel, qc), left: 8, top: 0, textStyle: { color: b.text, fontSize: 15, fontWeight: 700 }, subtextStyle: { color: b.text3, fontSize: 11.5 } },
-      grid: { left: 72, right: 24, top: 70, bottom: 56 },
-      tooltip: { trigger: 'item', confine: true, backgroundColor: cssVar('--paper-solid', '#fff'), borderColor: b.grid, textStyle: { color: b.text } },
-      xAxis: { type: 'category', data: data.groups.map((g) => `${g.label}\nn = ${g.summary.n}`), ...axisCommon(b), splitLine: { show: false }, name: group ? label(group) : '', nameLocation: 'middle', nameGap: 40 },
-      yAxis: { type: scale === 'log' ? 'log' : 'value', name: axisTitle(measure), nameLocation: 'middle', nameGap: 52, scale: true, ...axisCommon(b) },
-      series: [
-        {
-          type: 'boxplot',
-          data: data.groups.map((g) => (g.summary.n && !boxHidden(g) ? [g.summary.min, g.summary.q1, g.summary.median, g.summary.q3, g.summary.max] : [])),
-          itemStyle: { color: 'transparent', borderColor: dark ? 'rgba(148,163,184,0.7)' : 'rgba(71,85,105,0.55)', borderWidth: 1.4 },
-          boxWidth: [24, 70],
-          z: 1,
-          tooltip: {
-            formatter: (p: any) => {
-              const g = data.groups[p.dataIndex]
-              const s = g.summary
-              return `<b>${g.label}</b><br/>n ${s.n} · mean ${fmt(s.mean)} · SD ${s.sd === null ? 'n/a' : fmt(s.sd)}<br/>median ${fmt(s.median)} · Q1–Q3 ${fmt(s.q1)}–${fmt(s.q3)}<br/>min–max ${fmt(s.min)}–${fmt(s.max)}<br/><span style="opacity:.7">Box: Q1–Q3 (type 7) · whiskers: min–max</span>`
-            }
-          }
-        },
-        {
-          type: 'scatter',
-          z: 3,
-          data: data.groups.flatMap((g, gi) =>
-            g.points.map((p) => ({
-              value: [gi, p.value],
-              row: p.row,
-              pid: p.participantId,
-              symbol: p.flagged ? 'triangle' : p.unresolved ? 'diamond' : 'circle',
-              symbolSize: hl.has(p.row) ? 15 : p.flagged ? 11 : 9,
-              symbolOffset: [jitter(p.row + 1) * 16, 0],
-              itemStyle: p.unresolved && !p.flagged
-                ? { color: 'transparent', borderColor: unr, borderWidth: 1.8 }
-                : { color: p.flagged ? qcC : accent, opacity: highlight.length && !hl.has(p.row) ? 0.35 : 0.9, borderColor: hl.has(p.row) ? b.text : 'rgba(255,255,255,0.9)', borderWidth: hl.has(p.row) ? 2 : 0.8 }
-            }))
-          ),
-          tooltip: { formatter: (p: any) => `<b>${p.data.pid}</b><br/>${label(measure)}: ${fmt(p.data.value[1])}${p.data.symbol === 'triangle' ? '<br/>⚠ QC flag (included)' : p.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}<br/><span style="opacity:.7">Click to inspect source</span>` }
-        }
-      ]
-    }
-  }, [data, dark, hl, highlight.length, measure, group, scale, sel, qc])
+  const built = useMemo(() => distributionOption(data, measure, group, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc) }), [data, measure, group, chart, dark, hl, sel, qc])
 
   return (
     <div className="stack">
       <div className="split">
         <div className="paper chart-card">
-          <div className="row" style={{ marginBottom: 6 }}>
+          <div className="row wrap" style={{ marginBottom: 6 }}>
             <ScaleToggle axis="Y" value={scale} onChange={(v) => setChart({ yScale: v })} disabled={data.logValid ? null : data.logReason} />
             <span className="spacer" />
-            <ChartToolbar chartRef={ref} name={`${label(measure)} distribution`} />
+            <ChartToolbar chartRef={ref} name={`${label(measure)} distribution`} showX={false} />
           </div>
           {data.groups.length === 0 ? (
-            <div className="empty" style={{ flex: 1 }}><h3>No matching data</h3><p>No rows match the current cohort filters.</p></div>
+            <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No matching data</h3><p>No rows match the current cohort filters.</p></div>
           ) : (
-            <EChart ref={ref} option={option} ariaLabel={`Distribution of ${label(measure)}`} onPointClick={(d) => d?.row !== undefined && inspect({ row: d.row, variable: measure.index })} />
+            <div style={{ overflowX: 'auto' }}>
+              <EChart ref={ref} option={built.option} height={CHART_HEIGHT} minWidth={built.minWidth} ariaLabel={`Distribution of ${label(measure)}`} onPointClick={(d) => d?.row !== undefined && inspect({ row: d.row, variable: measure.index })} />
+            </div>
           )}
           <ChartNotices
             items={[
@@ -239,7 +204,8 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
               data.totals.censored ? `${data.totals.censored} censored value(s) (e.g. “<x”) are not plotted and not substituted.` : null,
               data.totals.nonNumeric ? `${data.totals.nonNumeric} non-numeric entr${data.totals.nonNumeric === 1 ? 'y is' : 'ies are'} not plotted.` : null,
               data.totals.qcExcluded ? `${data.totals.qcExcluded} observation(s) excluded by the QC policy.` : null,
-              ...data.groups.filter((g) => g.nonPositiveHidden.length).map((g) => `Log axis: ${g.nonPositiveHidden.length} non-positive value(s) in “${g.label}” hidden from the plot (${g.nonPositiveHidden.map((p) => `${p.participantId}=${formatNumber(p.value)}`).join(', ')}); its box is hidden but its summary uses all values.`)
+              ...data.groups.filter((g) => g.nonPositiveHidden.length).map((g) => `Log axis: ${g.nonPositiveHidden.length} non-positive value(s) in “${g.label}” hidden from the plot (${g.nonPositiveHidden.map((p) => `${p.participantId}=${formatNumber(p.value)}`).join(', ')}); its box is hidden but its summary uses all values.`),
+              ...built.notices
             ]}
           />
           <Legend />
@@ -249,6 +215,9 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
           <SummaryCard groups={data.groups.map((g) => ({ label: g.label, s: g.summary }))} />
         </div>
       </div>
+      {statsOpen && (
+        <DistributionStats data={data} measure={measure} group={group} chart={chart} snapshot={snapshot} onChange={(a) => { setChart({ analysis: { ...chart.analysis, ...a } }); if (a.requested === false) useStore.getState().setStatsOpen(false) }} />
+      )}
       <div className="paper card">
         <div className="card-head"><h3>Selected observations</h3><span className="muted small">Same rows as the chart and summary</span></div>
         <DataTable sel={sel} columns={[measure, ...(group ? [group] : [])]} testId="observations-table" />
@@ -259,50 +228,21 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
 
 function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
   const sel = useSelection()!
-  const chart = useStore((s) => s.chart)
+  const snapshot = useStore((s) => s.snapshot)!
+  const chart = useFullChart()
   const setChart = useStore((s) => s.setChart)
   const highlight = useStore((s) => s.highlight)
   const setHighlight = useStore((s) => s.setHighlight)
   const qc = useStore((s) => s.qcExclude)
   const inspect = useStore((s) => s.inspect)
+  const statsOpen = useStore((s) => s.statsOpen)
   const dark = useScheme()
   const ref = useRef<EChartHandle>(null)
   const [brush, setBrushState] = useState(false)
   const data = useMemo(() => scatterData(sel, x.index, y.index, chart.xScale, chart.yScale), [sel, x, y, chart.xScale, chart.yScale])
   const hl = useMemo(() => new Set(highlight), [highlight])
-  const option = useMemo<EChartsCoreOption>(() => {
-    const b = chartBase(dark)
-    const accent = cssVar('--pt', '#2563eb')
-    const qcC = cssVar('--pt-qc', '#d97706')
-    const unr = cssVar('--pt-unresolved', '#7c3aed')
-    return {
-      animation: false,
-      textStyle: { fontFamily: b.font },
-      title: { text: `${label(y)} and ${label(x)}`, subtext: `${contextLine(sel, qc)} · ${data.points.length} complete pairs`, left: 8, top: 0, textStyle: { color: b.text, fontSize: 15, fontWeight: 700 }, subtextStyle: { color: b.text3, fontSize: 11.5 } },
-      grid: { left: 72, right: 28, top: 70, bottom: 58 },
-      brush: { xAxisIndex: 0, yAxisIndex: 0, throttleType: 'debounce', throttleDelay: 150, brushStyle: { color: 'rgba(37,99,235,0.08)', borderColor: accent, borderWidth: 1 }, outOfBrush: { opacity: 0.35 } },
-      toolbox: { show: false },
-      tooltip: { trigger: 'item', confine: true, backgroundColor: cssVar('--paper-solid', '#fff'), borderColor: b.grid, textStyle: { color: b.text } },
-      xAxis: { type: chart.xScale === 'log' ? 'log' : 'value', name: axisTitle(x), nameLocation: 'middle', nameGap: 34, scale: true, ...axisCommon(b) },
-      yAxis: { type: chart.yScale === 'log' ? 'log' : 'value', name: axisTitle(y), nameLocation: 'middle', nameGap: 52, scale: true, ...axisCommon(b) },
-      series: [
-        {
-          type: 'scatter',
-          data: data.points.map((p) => ({
-            value: [p.x, p.y],
-            row: p.row,
-            pid: p.participantId,
-            symbol: p.flagged ? 'triangle' : p.unresolved ? 'diamond' : 'circle',
-            symbolSize: hl.has(p.row) ? 15 : p.flagged ? 12 : 10,
-            itemStyle: p.unresolved && !p.flagged
-              ? { color: 'transparent', borderColor: unr, borderWidth: 1.8 }
-              : { color: p.flagged ? qcC : accent, opacity: highlight.length > 1 && !hl.has(p.row) ? 0.35 : 0.9, borderColor: hl.has(p.row) ? b.text : 'rgba(255,255,255,0.9)', borderWidth: hl.has(p.row) ? 2 : 0.8 }
-          })),
-          tooltip: { formatter: (p: any) => `<b>${p.data.pid}</b><br/>${label(x)}: ${fmt(p.data.value[0])}<br/>${label(y)}: ${fmt(p.data.value[1])}${p.data.symbol === 'triangle' ? '<br/>⚠ QC flag (included)' : p.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
-        }
-      ]
-    }
-  }, [data, dark, hl, highlight.length, x, y, chart.xScale, chart.yScale, sel, qc])
+  const built = useMemo(() => scatterOption(data, x, y, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc) }), [data, x, y, chart, dark, hl, sel, qc])
+  const drawn = useMemo(() => (built.option as any).series[0].data as { row: number }[], [built])
 
   const pairedRows = data.points.map((p) => p.row)
   return (
@@ -313,17 +253,18 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
             <ScaleToggle axis="X" value={chart.xScale} onChange={(v) => setChart({ xScale: v })} disabled={data.logValidX ? null : 'No positive values'} />
             <ScaleToggle axis="Y" value={chart.yScale} onChange={(v) => setChart({ yScale: v })} disabled={data.logValidY ? null : 'No positive values'} />
             <span className="spacer" />
-            <ChartToolbar chartRef={ref} name={`${label(y)} vs ${label(x)}`} brush={brush} setBrush={(b) => { setBrushState(b); ref.current?.setBrush(b); if (!b) setHighlight([]) }} />
+            <ChartToolbar chartRef={ref} showX name={`${label(y)} vs ${label(x)}`} brush={brush} setBrush={(b) => { setBrushState(b); ref.current?.setBrush(b); if (!b) setHighlight([]) }} />
           </div>
           {data.points.length === 0 && data.hidden.length === 0 ? (
-            <div className="empty" style={{ flex: 1 }}><h3>No complete pairs</h3><p>No selected participant has numeric values for both measures.</p></div>
+            <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No complete pairs</h3><p>No selected participant has numeric values for both measures.</p></div>
           ) : (
             <EChart
               ref={ref}
-              option={option}
+              option={built.option}
+              height={CHART_HEIGHT}
               ariaLabel={`Scatterplot of ${label(y)} against ${label(x)}`}
               onPointClick={(d) => d?.row !== undefined && inspect({ row: d.row, variable: y.index })}
-              onBrush={(idx) => setHighlight(idx.map((i) => data.points[i % 1e6]?.row).filter((r) => r !== undefined))}
+              onBrush={(idx) => setHighlight(idx.map((i) => drawn[i % 1e6]?.row).filter((r) => r !== undefined))}
             />
           )}
           <ChartNotices
@@ -332,7 +273,7 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
               data.unevaluable ? `${data.unevaluable} pair(s) include a censored or non-numeric value and are not plotted.` : null,
               data.qcExcluded ? `${data.qcExcluded} pair(s) include an observation excluded by the QC policy.` : null,
               data.hidden.length ? `Log axis: ${data.hidden.length} pair(s) with non-positive values hidden (${data.hidden.map((h) => h.participantId).join(', ')}).` : null,
-              'No correlation coefficient or test is computed in this release.'
+              ...built.notices
             ]}
           />
           <Legend />
@@ -342,6 +283,9 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
           <MeasureContext v={x} title="X measure" compact />
         </div>
       </div>
+      {statsOpen && (
+        <ScatterStats data={data} x={x} y={y} chart={chart} snapshot={snapshot} onChange={(a) => { setChart({ analysis: { ...chart.analysis, ...a } }); if (a.requested === false) useStore.getState().setStatsOpen(false) }} onHighlight={setHighlight} />
+      )}
       <div className="paper card">
         <div className="card-head">
           <h3>Paired observations</h3>
@@ -503,8 +447,15 @@ function SaveViewDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const asOf = useStore((s) => s.asOf)
   const toast = useStore((s) => s.toast)
   const sel = useSelection()!
+  const filter = useStore((s) => s.filter)
+  const qc = useStore((s) => s.qcExclude)
+  const visitIds = useStore((s) => s.visitIds)
+  const suggested = useMemo(() => suggestViewName(snapshot, chart, filter, qc, visitIds), [snapshot, chart, filter, qc, visitIds])
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
+  useEffect(() => {
+    if (open) setName(suggested)
+  }, [open, suggested])
   const save = async () => {
     try {
       await call('views:save', {
@@ -531,7 +482,14 @@ function SaveViewDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
             <Dialog.Close className="btn ghost icon" aria-label="Close"><X size={16} /></Dialog.Close>
           </div>
           <div className="dialog-body stack">
-            <label className="field">Name<input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={200} /></label>
+            <label className="field">
+              Name
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.target.select()} onKeyDown={(e) => e.key === 'Enter' && name.trim() && save()} autoFocus maxLength={200} data-testid="view-name" />
+            </label>
+            <div className="row small muted" style={{ marginTop: -6 }}>
+              <Sparkles size={13} /> Suggested from your selection — press Enter to save, or type your own.
+              {name !== suggested && <button className="btn ghost sm" onClick={() => setName(suggested)}>Use suggestion</button>}
+            </div>
             <label className="field">Notes (optional)<textarea className="input" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
             <div className="callout neutral">
               <Info size={16} />

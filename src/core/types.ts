@@ -217,6 +217,38 @@ export interface SelectionSpec {
   participantIds: string[] | null
 }
 
+export type StylePreset = 'glass' | 'publication' | 'contrast' | 'colorblind' | 'grayscale' | 'custom'
+export type FontChoice = 'system' | 'sans' | 'serif' | 'mono'
+
+/** Visual style of a chart. Flags always keep distinct shapes, whatever the colours. */
+export interface ChartStyle {
+  preset: StylePreset
+  pointColor: string
+  flagColor: string
+  unresolvedColor: string
+  boxColor: string
+  fitColor: string
+  background: 'transparent' | 'white' | 'black'
+  textColor: string | null // null = follow the app theme
+  font: FontChoice
+  fontSize: number
+  pointSize: number
+  pointOpacity: number
+  showGrid: boolean
+  showTitle: boolean
+  showSubtitle: boolean
+  boxFill: boolean
+}
+
+export interface ChartAnalysis {
+  /** The statistics panel is open (results are computed only when the user presses Compute). */
+  requested: boolean
+  fitLine: boolean
+  confidenceBand: boolean
+  predictionBand: boolean
+  meanCi: boolean
+}
+
 export interface ChartConfig {
   type: 'distribution' | 'scatter' | 'table'
   measureKey: string | null
@@ -225,6 +257,13 @@ export interface ChartConfig {
   xScale: 'linear' | 'log'
   yScale: 'linear' | 'log'
   tableColumns: string[]
+  /** Forced axis bounds; null = automatic. Values outside are counted, never silently dropped. */
+  xMin?: number | null
+  xMax?: number | null
+  yMin?: number | null
+  yMax?: number | null
+  style?: ChartStyle
+  analysis?: ChartAnalysis
 }
 
 export interface SavedViewSpec {

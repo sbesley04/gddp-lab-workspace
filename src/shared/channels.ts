@@ -9,6 +9,7 @@ export const CHANNELS = [
   'views:list', 'views:save', 'views:get', 'views:delete',
   'export:preview', 'export:write', 'export:chart', 'export:list',
   'backup:create', 'backup:restore',
-  'settings:setAuthor'
+  'settings:setAuthor',
+  'boards:list', 'boards:get', 'boards:save', 'boards:delete'
 ] as const
 export type ChannelName = (typeof CHANNELS)[number]

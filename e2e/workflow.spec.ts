@@ -64,11 +64,62 @@ test('import, select, save, export, back up — all offline', async () => {
   expect(summaryN + excludedOrMissing).toBeGreaterThanOrEqual(rows - 2) // censored/text entries are reported separately
   await page.screenshot({ path: join(shots, '02-explore.png') })
 
-  // Save view
+  // Forced axis bounds: points outside are counted, not silently dropped
+  await page.getByTestId('axis-bounds').click()
+  await page.getByLabel('Y max').fill('8')
+  await page.getByRole('button', { name: 'Apply' }).click()
+  await expect(page.getByText(/outside the forced Y bounds/)).toBeVisible()
+
+  // Statistics are offered, then computed only on request
+  await page.getByTestId('analyze').click()
+  await expect(page.getByTestId('stats-panel')).toHaveCount(0)
+  await page.getByTestId('compute-stats').click()
+  await expect(page.getByTestId('stats-panel')).toContainText('Shapiro–Wilk')
+
+  // Save view with the suggested name (Enter accepts it)
   await page.getByTestId('save-view').click()
-  await page.getByLabel('Name').fill('PHQ ≥ 5, sample warnings excluded')
-  await page.getByTestId('confirm-save-view').click()
-  await expect(page.getByText('Saved view “PHQ ≥ 5')).toBeVisible()
+  const suggested = await page.getByTestId('view-name').inputValue()
+  expect(suggested).toContain('IL6')
+  expect(suggested).toContain('PHQ-9 total score ≥ 5')
+  expect(suggested).toContain('excl. sample QC')
+  await page.keyboard.press('Enter')
+  await expect(page.getByText(`Saved view “${suggested}”`)).toBeVisible()
+
+  // A second view (scatter with a fit) for the compare board
+  await page.getByRole('button', { name: 'Two measures' }).click()
+  await page.getByTestId('save-view').click()
+  await page.keyboard.press('Enter')
+
+  // Compare board: add both views, move a card, export
+  await page.getByRole('button', { name: 'Saved views' }).click()
+  await page.getByTestId('compare-tab').click()
+  await page.getByTestId('new-board').click()
+  await page.getByTestId('board-name').fill('E2E board')
+  await page.getByTestId('board-add-view').click()
+  await page.getByRole('button', { name: 'Add all views' }).click()
+  await expect(page.getByTestId('board-card')).toHaveCount(2)
+  const head = page.locator('.board-card-head').first()
+  const cardTitle = await head.locator('.t').innerText()
+  const card = page.getByTestId('board-card').filter({ has: page.locator('.t', { hasText: cardTitle }) })
+  const box = (await head.boundingBox())!
+  await page.mouse.move(box.x + 60, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 60, box.y + 260, { steps: 8 })
+  await page.mouse.up()
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 5000 })
+  const movedTop = await card.evaluate((el) => (el as HTMLElement).style.top)
+  expect(movedTop).not.toBe('40px')
+  const boardSvg = join(work, 'board.svg')
+  await mockDialogs(app, { save: [boardSvg] })
+  await page.getByRole('button', { name: 'SVG' }).click()
+  await expect(page.getByText(/Board saved as/)).toBeVisible()
+  const svgText = readFileSync(boardSvg, 'utf8')
+  expect(svgText.startsWith('<svg')).toBe(true)
+  expect(svgText).toContain('E2E board')
+  expect((svgText.match(/<svg/g) ?? []).length).toBe(3) // board + two embedded charts
+  await page.screenshot({ path: join(shots, '03b-board.png') })
+  await page.getByRole('button', { name: 'Explore data' }).first().click()
+  await page.getByRole('button', { name: 'Distribution' }).click()
 
   // Export preview rows equal selection rows
   await page.getByRole('button', { name: 'Export', exact: true }).click()
@@ -102,6 +153,13 @@ test('import, select, save, export, back up — all offline', async () => {
   await expect(page.getByText('reproduced exactly as saved')).toBeVisible()
   expect(await cohortRows(page)).toBe(rows)
   await page.screenshot({ path: join(shots, '04-reopened-view.png') })
+
+  // The board and its layout survived the restart
+  await page.getByRole('button', { name: 'Saved views' }).click()
+  await page.getByTestId('compare-tab').click()
+  await page.getByText('E2E board').click()
+  await expect(page.getByTestId('board-card')).toHaveCount(2)
+  expect(await page.getByTestId('board-card').filter({ has: page.locator('.t', { hasText: cardTitle }) }).evaluate((el) => (el as HTMLElement).style.top)).toBe(movedTop)
 
   // Backup, close, restore
   const backupPath = join(work, 'backup.bariproj.zip')

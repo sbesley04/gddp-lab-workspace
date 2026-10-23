@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { BookmarkCheck, Trash2, Play, AlertTriangle } from 'lucide-react'
+import { BookmarkCheck, Trash2, Play, AlertTriangle, LayoutGrid } from 'lucide-react'
+import { BoardEditor, BoardList } from '../components/Board'
 import type { SavedViewSpec } from '@core/types'
 import { call } from '../api'
 import { useStore, errorText } from '../store'
@@ -20,6 +21,17 @@ interface View {
 }
 
 export function SavedViews() {
+  const [tab, setTab] = useState<'views' | 'boards'>(() => (sessionStorage.getItem('bari.viewsTab') as 'views' | 'boards') ?? 'views')
+  const [boardId, setBoardId] = useState<string | null>(null)
+  const switchTab = (t: 'views' | 'boards') => {
+    setTab(t)
+    setBoardId(null)
+    try {
+      sessionStorage.setItem('bari.viewsTab', t)
+    } catch {
+      /* per-viewer convenience only */
+    }
+  }
   const [views, setViews] = useState<View[] | null>(null)
   const toast = useStore((s) => s.toast)
   const snapshot = useStore((s) => s.snapshot)
@@ -47,10 +59,16 @@ export function SavedViews() {
       <header className="topbar drag">
         <div>
           <h2>Saved views</h2>
-          <div className="subtitle">Reproducible selections pinned to a dataset version and metadata version</div>
+          <div className="subtitle">{tab === 'views' ? 'Reproducible selections pinned to a dataset version and metadata version' : 'Arrange saved views side by side on a whiteboard'}</div>
         </div>
       </header>
       <div className="content">
+        <div className="seg" role="tablist" style={{ marginBottom: 14 }}>
+          <button role="tab" aria-pressed={tab === 'views'} aria-selected={tab === 'views'} onClick={() => switchTab('views')}><BookmarkCheck size={14} /> Saved views</button>
+          <button role="tab" aria-pressed={tab === 'boards'} aria-selected={tab === 'boards'} onClick={() => switchTab('boards')} data-testid="compare-tab"><LayoutGrid size={14} /> Compare</button>
+        </div>
+        {tab === 'boards' ? (boardId ? <BoardEditor boardId={boardId} onBack={() => setBoardId(null)} /> : <BoardList onOpen={setBoardId} />) : (
+        <>
         {views && views.length === 0 && (
           <div className="paper empty">
             <div className="ic"><BookmarkCheck /></div>
@@ -82,6 +100,8 @@ export function SavedViews() {
             </div>
           ))}
         </div>
+        </>
+        )}
       </div>
     </>
   )

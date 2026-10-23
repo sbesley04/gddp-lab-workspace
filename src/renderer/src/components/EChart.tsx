@@ -1,11 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import * as echarts from 'echarts/core'
-import { ScatterChart, BoxplotChart } from 'echarts/charts'
+import { ScatterChart, BoxplotChart, LineChart, CustomChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent } from 'echarts/components'
 import { SVGRenderer } from 'echarts/renderers'
 import type { EChartsCoreOption } from 'echarts/core'
 
-echarts.use([ScatterChart, BoxplotChart, GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, SVGRenderer])
+echarts.use([ScatterChart, BoxplotChart, LineChart, CustomChart, GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, SVGRenderer])
 
 export interface EChartHandle {
   svg: () => string
@@ -18,10 +18,12 @@ interface Props {
   onPointClick?: (data: any) => void
   onBrush?: (dataIndexes: number[]) => void
   ariaLabel: string
+  height?: number | string
+  minWidth?: number
 }
 
 /** ECharts with the SVG renderer: crisp, inspectable output and lossless SVG export. */
-export const EChart = forwardRef<EChartHandle, Props>(function EChart({ option, onPointClick, onBrush, ariaLabel }, ref) {
+export const EChart = forwardRef<EChartHandle, Props>(function EChart({ option, onPointClick, onBrush, ariaLabel, height, minWidth }, ref) {
   const host = useRef<HTMLDivElement>(null)
   const chart = useRef<echarts.ECharts | null>(null)
   const handlers = useRef({ onPointClick, onBrush })
@@ -76,7 +78,7 @@ export const EChart = forwardRef<EChartHandle, Props>(function EChart({ option, 
     }
   }))
 
-  return <div ref={host} className="chart-host" role="img" aria-label={ariaLabel} />
+  return <div ref={host} className="chart-host" role="img" aria-label={ariaLabel} style={{ height: height ?? undefined, minWidth: minWidth || undefined }} />
 })
 
 export function cssVar(name: string, fallback = '#000') {

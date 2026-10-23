@@ -2,7 +2,9 @@
 
 ## Scope
 
-- **Exploration only.** The app provides descriptive statistics (n, mean, sample SD, median, type-7 quartiles, min/max) and charts. It runs no hypothesis tests, p-values, correlation coefficients, biomarker screening, causal analysis or clinical decision support.
+- **Exploration first.** Charts and descriptive summaries are always available. Inferential statistics (CIs, p-values, effect sizes, correlations, simple linear regression) run **only when the researcher presses Compute** for one chart at a time. They are labelled exploratory and validated against R.
+- **Not included:** multivariable or repeated-measures models, covariate adjustment, power analysis, automated biomarker screening, p-value ranking across many measures, causal analysis and clinical decision support.
+- **Multiplicity:** p-values are not adjusted for the number of analyses you run in a session; only pairwise comparisons within one analysis are Holm-adjusted. Pre-specify primary analyses before reporting them.
 - **Baseline-only data.** The reference workbook has one visit. The app is visit-aware, but it draws no trajectories and infers no dates or elapsed time.
 - **No automatic record reconciliation** between dataset versions. Each import is its own immutable version.
 

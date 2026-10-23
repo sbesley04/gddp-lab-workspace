@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, History, Save, ShieldAlert, BarChart3, Lock } from 'lucide-react'
 import type { MetaFieldName, MetaStatus, VariableInfo } from '@core/types'
 import { call } from '../api'
@@ -41,6 +41,16 @@ export function Measurements() {
     return vs
   }, [measures, q, area, filt])
   const current = snapshot.variables.find((v) => v.key === selected) ?? list[0] ?? null
+  const dirtyRef = useRef(0)
+  const setDirty = useCallback((n: number) => {
+    dirtyRef.current = n
+  }, [])
+  const choose = (key: string) => {
+    if (key === current?.key) return
+    if (dirtyRef.current > 0 && !confirm(`Discard ${dirtyRef.current} unsaved change(s) to “${current ? label(current) : ''}”?`)) return
+    dirtyRef.current = 0
+    setSelected(key)
+  }
   const hidden = snapshot.variables.filter((v) => v.role !== 'measure')
 
   return (
@@ -51,7 +61,7 @@ export function Measurements() {
           <div className="subtitle">{measures.length} measures · {hidden.length} identifier/blank columns kept out of pickers</div>
         </div>
       </header>
-      <div className="content">
+      <div className="content page-fade">
         <div className="grid" style={{ gridTemplateColumns: '360px minmax(0, 1fr)', alignItems: 'start' }}>
           <div className="paper card" style={{ position: 'sticky', top: 0 }}>
             <div className="row" style={{ marginBottom: 8 }}>
@@ -71,22 +81,35 @@ export function Measurements() {
                 <option value="qi">Quasi-identifiers</option>
               </select>
             </div>
-            <div className="list" style={{ maxHeight: 'calc(100vh - 290px)', overflow: 'auto' }}>
+            <div
+              className="list"
+              style={{ maxHeight: 'calc(100vh - 290px)', overflow: 'auto' }}
+              role="listbox"
+              aria-label="Measures"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+                e.preventDefault()
+                const i = list.findIndex((v) => v.key === current?.key)
+                const next = list[Math.max(0, Math.min(list.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]
+                if (next) choose(next.key)
+              }}
+            >
               {list.map((v) => (
-                <button key={v.key} className="list-item" aria-selected={current?.key === v.key} onClick={() => setSelected(v.key)}>
+                <button key={v.key} role="option" className="list-item" aria-selected={current?.key === v.key} onClick={() => choose(v.key)} tabIndex={-1}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="t">{label(v)}</div>
-                    <div className="s">{v.letter} · {areaOf(v)} · {v.meta.unit.value ?? 'unit unknown'}</div>
+                    <div className="s">{v.letter} · {areaOf(v)}{v.meta.unit.value ? ` · ${v.meta.unit.value}` : ''}</div>
                   </div>
-                  {v.quasiIdentifier && <span className="badge warn" title="Quasi-identifier">QI</span>}
-                  {v.meta.definition.status === 'unknown' && <span className="dot" style={{ color: 'var(--text-3)' }} title="No definition" />}
+                  {v.quasiIdentifier && <span className="badge warn" title="Quasi-identifier: needs confirmation before export">QI</span>}
+                  <MetaPips v={v} />
                 </button>
               ))}
               {list.length === 0 && <div className="muted small" style={{ padding: 10 }}>No measures match.</div>}
             </div>
             <div className="small muted" style={{ marginTop: 8 }}>{list.length} shown</div>
           </div>
-          {current ? <VariableEditor key={current.key + snapshot.metadataVersion} v={current} /> : <div className="paper empty">Select a measure.</div>}
+          {current ? <VariableEditor key={current.key + snapshot.metadataVersion} v={current} onDirty={setDirty} /> : <div className="paper empty">Select a measure.</div>}
         </div>
       </div>
     </>
@@ -104,7 +127,7 @@ interface Hist {
   at: string
 }
 
-function VariableEditor({ v }: { v: VariableInfo }) {
+function VariableEditor({ v, onDirty }: { v: VariableInfo; onDirty: (n: number) => void }) {
   const snapshot = useStore((s) => s.snapshot)!
   const asOf = useStore((s) => s.asOf)
   const toast = useStore((s) => s.toast)
@@ -167,9 +190,7 @@ function VariableEditor({ v }: { v: VariableInfo }) {
       )}
       <div className="paper card">
         <div className="card-head"><h3>Metadata</h3><span className="muted small">Every save is an append-only revision; raw data never changes.</span></div>
-        <div className="stack" style={{ gap: 10 }}>
-          {FIELDS.map((f) => <FieldEditor key={f.f} v={v} field={f.f} labelText={f.l} hint={f.hint} disabled={!editable} onSaved={load} />)}
-        </div>
+        <MetadataForm v={v} disabled={!editable} onSaved={load} onDirty={onDirty} />
         <hr className="div" />
         <label className="check">
           <input type="checkbox" checked={v.quasiIdentifier} onChange={toggleQi} disabled={!editable} />
@@ -201,48 +222,99 @@ function VariableEditor({ v }: { v: VariableInfo }) {
   )
 }
 
-function FieldEditor({ v, field, labelText, hint, disabled, onSaved }: { v: VariableInfo; field: MetaFieldName; labelText: string; hint: string; disabled: boolean; onSaved: () => void }) {
+const STATUS_ORDER: MetaStatus[] = ['unknown', 'tentative', 'confirmed']
+
+/** Small completeness markers for unit and definition. */
+function MetaPips({ v }: { v: VariableInfo }) {
+  const pip = (name: string, f: VariableInfo['meta']['unit']) => (
+    <span className={`pip ${f.status}`} title={`${name}: ${f.value ?? 'unknown'} (${STATUS_TEXT[f.status].toLowerCase()})`}>{name[0]}</span>
+  )
+  return (
+    <span className="row" style={{ gap: 3 }} aria-label="Metadata completeness">
+      {pip('Unit', v.meta.unit)}
+      {pip('Definition', v.meta.definition)}
+    </span>
+  )
+}
+
+type Draft = Record<MetaFieldName, { value: string; status: MetaStatus }>
+
+/** One form for all metadata fields: edit several, then save them together with one reason. */
+function MetadataForm({ v, disabled, onSaved, onDirty }: { v: VariableInfo; disabled: boolean; onSaved: () => void; onDirty: (n: number) => void }) {
   const snapshot = useStore((s) => s.snapshot)!
   const toast = useStore((s) => s.toast)
-  const f = v.meta[field]
-  const [value, setValue] = useState(f.value ?? '')
-  const [status, setStatus] = useState<MetaStatus>(f.status === 'unknown' ? 'tentative' : f.status)
+  const initial = useMemo(() => Object.fromEntries(FIELDS.map(({ f }) => [f, { value: v.meta[f].value ?? '', status: v.meta[f].status }])) as Draft, [v])
+  const [draft, setDraft] = useState<Draft>(initial)
   const [reason, setReason] = useState('')
-  const dirty = value !== (f.value ?? '') || (value && status !== f.status) || reason
+  const [saving, setSaving] = useState(false)
+  const changed = FIELDS.filter(({ f }) => {
+    const a = draft[f]
+    const b = initial[f]
+    return a.value.trim() !== b.value.trim() || (a.value.trim() !== '' && a.status !== b.status)
+  })
+  useEffect(() => onDirty(changed.length), [changed.length, onDirty])
+  const set = (f: MetaFieldName, patch: Partial<Draft[MetaFieldName]>) =>
+    setDraft((d) => {
+      const next = { ...d[f], ...patch }
+      // A filled-in value cannot be "unknown"; an empty value always is.
+      if (!next.value.trim()) next.status = 'unknown'
+      else if (next.status === 'unknown') next.status = 'tentative'
+      return { ...d, [f]: next }
+    })
   const save = async () => {
+    setSaving(true)
     try {
-      await call('curation:editMeta', { datasetVersionId: snapshot.datasetVersionId, varKey: v.key, field, value: value || null, status, reason: reason || null })
-      setReason('')
+      for (const { f } of changed)
+        await call('curation:editMeta', { datasetVersionId: snapshot.datasetVersionId, varKey: v.key, field: f, value: draft[f].value.trim() || null, status: draft[f].status, reason: reason.trim() || null })
+      toast('success', `Saved ${changed.length} field(s) as new revisions.`)
+      onDirty(0)
       await useStore.getState().reloadSnapshot()
       onSaved()
-      toast('success', `${labelText} saved as a new revision.`)
     } catch (e) {
       toast('error', errorText(e))
+    } finally {
+      setSaving(false)
     }
   }
   return (
-    <div className="grid" style={{ gridTemplateColumns: '140px minmax(0, 1fr) 130px', gap: 10, alignItems: 'start' }}>
-      <div style={{ paddingTop: 7 }}>
-        <div style={{ fontWeight: 620 }}>{labelText}</div>
-        <span className={`badge ${f.status === 'confirmed' ? 'ok' : f.status === 'tentative' ? 'warn' : ''}`} title={f.provenance}>{STATUS_TEXT[f.status]}</span>
-      </div>
-      <div className="stack" style={{ gap: 4 }}>
-        {field === 'definition' ? (
-          <textarea className="input" rows={2} value={value} onChange={(e) => setValue(e.target.value)} placeholder="Unknown" disabled={disabled} aria-label={labelText} />
-        ) : (
-          <input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Unknown" disabled={disabled} aria-label={labelText} />
-        )}
-        <span className="small muted" title={f.provenance}>{hint} {f.provenance && <>· <em>{f.provenance}</em></>}</span>
-        {dirty && <input className="input" style={{ height: 30 }} placeholder="Reason or source for this change (recommended)" value={reason} onChange={(e) => setReason(e.target.value)} />}
-      </div>
-      <div className="stack" style={{ gap: 6 }}>
-        <select className="input" value={value ? status : 'unknown'} onChange={(e) => setStatus(e.target.value as MetaStatus)} disabled={disabled || !value} aria-label={`${labelText} status`}>
-          {!value && <option value="unknown">Unknown</option>}
-          <option value="tentative">Tentative</option>
-          <option value="confirmed">Confirmed</option>
-        </select>
-        <button className="btn sm primary" onClick={save} disabled={disabled || !dirty}><Save size={13} /> Save</button>
-      </div>
+    <div className="stack" style={{ gap: 0 }}>
+      {FIELDS.map(({ f, l, hint }) => {
+        const d = draft[f]
+        const dirty = changed.some((c) => c.f === f)
+        return (
+          <div key={f} className={`meta-row ${dirty ? 'dirty' : ''}`}>
+            <div className="meta-label">
+              <label htmlFor={`meta-${f}`}>{l}</label>
+              {dirty && <span className="badge accent" style={{ fontSize: 10.5 }}>edited</span>}
+            </div>
+            <div className="stack" style={{ gap: 4, minWidth: 0 }}>
+              {f === 'definition' ? (
+                <textarea id={`meta-${f}`} className="input" rows={2} value={d.value} onChange={(e) => set(f, { value: e.target.value })} placeholder="Unknown" disabled={disabled} />
+              ) : (
+                <input id={`meta-${f}`} className="input" value={d.value} onChange={(e) => set(f, { value: e.target.value })} placeholder="Unknown" disabled={disabled} />
+              )}
+              <span className="small muted">
+                {hint} <em title="Provenance of the current value">· {v.meta[f].provenance}</em>
+              </span>
+            </div>
+            <div className="seg status-seg" role="group" aria-label={`${l} status`}>
+              {STATUS_ORDER.map((st) => (
+                <button key={st} aria-pressed={d.status === st} disabled={disabled || (st === 'unknown') !== !d.value.trim()} onClick={() => set(f, { status: st })} className={`st-${st}`}>
+                  {STATUS_TEXT[st]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+      {changed.length > 0 && (
+        <div className="save-bar glass" role="region" aria-label="Unsaved metadata changes">
+          <span className="badge accent">{changed.length} unsaved</span>
+          <input className="input" style={{ flex: 1, height: 32 }} placeholder="Reason or source for these changes (recommended)" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reason for changes" />
+          <button className="btn ghost sm" onClick={() => { setDraft(initial); setReason('') }} disabled={saving}>Discard</button>
+          <button className="btn primary sm" onClick={save} disabled={saving} data-testid="save-metadata"><Save size={13} /> Save changes</button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Upload, FileSpreadsheet, ClipboardList, ShieldCheck, AlertTriangle, ChevronRight, Info, Database } from 'lucide-react'
+import { Upload, FileSpreadsheet, ClipboardList, ShieldCheck, AlertTriangle, ChevronRight, Info, Database, Users, Rows3, FlaskConical, MessageSquare } from 'lucide-react'
 import { useStore } from '../store'
 import { areaOf, shortDate, plural } from '../lib/format'
 
@@ -12,7 +12,7 @@ export function Overview() {
     return (
       <>
         <header className="topbar drag"><div><h2>{project.name}</h2><div className="subtitle">No dataset imported yet</div></div></header>
-        <div className="content">
+        <div className="content page-fade">
           {project.syncWarning && <SyncWarning text={project.syncWarning} />}
           <div className="paper empty" style={{ marginTop: 10 }}>
             <div className="ic"><FileSpreadsheet /></div>
@@ -95,8 +95,18 @@ function OverviewBody() {
       <header className="topbar drag">
         <div>
           <h2>{project.name}</h2>
-          <div className="subtitle">
-            Dataset v{snapshot.versionNumber} · {plural(participants, 'participant')} · {baselineOnly ? 'Baseline only' : plural(snapshot.visits.length, 'visit')}
+          <div className="subtitle row wrap" style={{ gap: 8 }}>
+            <span>Dataset v{snapshot.versionNumber} · imported {shortDate(snapshot.importedAt)}</span>
+            {baselineOnly && (
+              <span className="badge outline" title={`Every row is a ${snapshot.visits[0].name} observation. This dataset cannot show follow-up trajectories, change from baseline or treatment effects.`}>
+                <Info size={12} /> Baseline only
+              </span>
+            )}
+            {project.isDemo && (
+              <span className="badge violet" title="All participants (DEMO-xx), values and comments are invented. The demo is recreated each time you open it.">
+                <FlaskConical size={12} /> Synthetic data
+              </span>
+            )}
           </div>
         </div>
         <span className="spacer" />
@@ -105,22 +115,14 @@ function OverviewBody() {
           <button className="btn primary" onClick={() => setPage('explore')}>Explore data <ChevronRight size={15} /></button>
         </div>
       </header>
-      <div className="content stack">
+      <div className="content stack page-fade">
         {project.syncWarning && <SyncWarning text={project.syncWarning} />}
-        {project.isDemo && (
-          <div className="callout info"><Info size={17} /><p><span className="t">Synthetic demo project.</span> All participants (DEMO-xx), values and comments are invented for demonstration and testing. It is recreated each time you open the demo.</p></div>
-        )}
-        {baselineOnly && (
-          <div className="callout neutral">
-            <Info size={17} />
-            <p>Every row in this dataset is a <strong>{snapshot.visits[0].name}</strong> observation. It cannot show follow-up trajectories, change from baseline or treatment effects; those require repeated visits.</p>
-          </div>
-        )}
-        <div className="grid cols-4">
-          <div className="paper card stat"><span className="n">{participants}</span><span className="l">participants (distinct IDs)</span></div>
-          <div className="paper card stat"><span className="n">{snapshot.rows.length}</span><span className="l">rows · {snapshot.visits.map((v) => v.name).join(', ')}</span></div>
-          <div className="paper card stat"><span className="n">{measures.length}</span><span className="l">measures ({snapshot.variables.length} source columns, {blank.length} blank)</span></div>
-          <div className="paper card stat"><span className="n">{snapshot.annotations.length}</span><span className="l">source comments preserved</span></div>
+        <div className="stat-strip paper">
+          <Stat icon={<Users size={18} />} n={participants} l="participants" sub="distinct IDs" />
+          <Stat icon={<Rows3 size={18} />} n={snapshot.rows.length} l="rows" sub={snapshot.visits.map((v) => v.name).join(', ')} />
+          <Stat icon={<FlaskConical size={18} />} n={measures.length} l="measures" sub={`${snapshot.variables.length} source columns · ${blank.length} blank`} />
+          <Stat icon={<MessageSquare size={18} />} n={snapshot.annotations.length} l="comments" sub="preserved from source" />
+          <Stat icon={<ShieldCheck size={18} />} n={snapshot.flags.filter((f) => f.category).length} l="flagged cells" sub="included and marked" />
         </div>
         <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)' }}>
           <div className="paper card">
@@ -187,6 +189,18 @@ function OverviewBody() {
         </div>
       </div>
     </>
+  )
+}
+
+function Stat({ icon, n, l, sub }: { icon: React.ReactNode; n: number; l: string; sub: string }) {
+  return (
+    <div className="stat-cell">
+      <span className="stat-ic">{icon}</span>
+      <div>
+        <div className="row" style={{ gap: 6, alignItems: 'baseline' }}><span className="n">{n.toLocaleString()}</span><span className="l1">{l}</span></div>
+        <div className="l">{sub}</div>
+      </div>
+    </div>
   )
 }
 

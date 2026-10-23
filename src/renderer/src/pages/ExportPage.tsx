@@ -121,7 +121,7 @@ export function ExportPage() {
           </button>
         </div>
       </header>
-      <div className="content">
+      <div className="content page-fade">
         <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.15fr)', alignItems: 'start' }}>
           <div className="stack">
             <div className="paper card">

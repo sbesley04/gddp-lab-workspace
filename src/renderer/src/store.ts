@@ -160,8 +160,9 @@ export const useStore = create<State>((set, get) => ({
   setStatsOpen: (statsOpen) => set({ statsOpen }),
   toast: (kind, text) => {
     const id = ++toastSeq
-    set({ toasts: [...get().toasts, { id, kind, text }] })
-    setTimeout(() => get().dismissToast(id), kind === 'error' ? 9000 : 4500)
+    // Keep at most three on screen; successes fade quickly, errors stay longer.
+    set({ toasts: [...get().toasts.filter((t) => t.text !== text), { id, kind, text }].slice(-3) })
+    setTimeout(() => get().dismissToast(id), kind === 'error' ? 9000 : kind === 'success' ? 3200 : 4500)
   },
   dismissToast: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
   applyView: async (view, useCurrent = false) => {

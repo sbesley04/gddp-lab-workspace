@@ -44,7 +44,7 @@ export function DataQuality() {
           <div className="subtitle">Source formatting, QC flags and import checks — with provenance and review status</div>
         </div>
       </header>
-      <div className="content">
+      <div className="content page-fade">
         <div className="seg" role="tablist" style={{ marginBottom: 14 }}>
           {([
             ['interpretations', 'Formatting & QC'],

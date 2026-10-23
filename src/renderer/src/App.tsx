@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { call } from './api'
 import { useStore, errorText, type ProjectState } from './store'
-import { Sidebar } from './components/Sidebar'
+import { Sidebar, NAV } from './components/Sidebar'
 import { ContextBar } from './components/ContextBar'
 import { Toasts } from './components/Toasts'
 import { Welcome } from './pages/Welcome'
@@ -45,6 +45,11 @@ export function App() {
         if (useStore.getState().snapshot) useStore.getState().setPaletteOpen(true)
       }
       if (e.key === 'Escape') useStore.getState().inspect(null)
+      // ⌘1–⌘6 / Ctrl+1–6 switch pages.
+      if ((e.metaKey || e.ctrlKey) && /^[1-6]$/.test(e.key) && useStore.getState().snapshot) {
+        e.preventDefault()
+        useStore.getState().setPage(NAV[Number(e.key) - 1].page)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

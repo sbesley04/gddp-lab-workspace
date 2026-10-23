@@ -8,7 +8,10 @@ import { launch } from './helpers'
 for (const scheme of ['light', 'dark'] as const) {
   test(`screens (${scheme})`, async () => {
     const { app, page } = await launch(mkdtempSync(join(tmpdir(), 'bari-ud-')), scheme)
-    const shot = (n: string) => page.screenshot({ path: join(import.meta.dirname, '..', 'test-results', 'screens', `${scheme}-${n}.png`) })
+    const shot = async (n: string) => {
+      await page.waitForTimeout(350) // let page transitions finish
+      await page.screenshot({ path: join(import.meta.dirname, '..', 'test-results', 'screens', `${scheme}-${n}.png`) })
+    }
     await page.waitForTimeout(600)
     await shot('01-welcome')
     await page.getByText('Open synthetic demo').click()

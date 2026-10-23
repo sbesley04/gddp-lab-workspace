@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
-import { BarChart3, BookmarkCheck, ClipboardList, Home, LogOut, PackageOpen, ShieldCheck, Upload, Archive, UserRound, ChevronsUpDown, Check } from 'lucide-react'
+import { BarChart3, BookmarkCheck, ClipboardList, Home, Search, LogOut, PackageOpen, ShieldCheck, Upload, Archive, UserRound, ChevronsUpDown, Check } from 'lucide-react'
 import { call } from '../api'
 import { useStore, errorText, type Page } from '../store'
 import { shortDate } from '../lib/format'
 
-const NAV: { page: Page; label: string; icon: React.ReactNode }[] = [
+export const MOD = typeof window !== 'undefined' && window.bari?.platform === 'darwin' ? '⌘' : 'Ctrl '
+
+export const NAV: { page: Page; label: string; icon: React.ReactNode }[] = [
   { page: 'overview', label: 'Overview', icon: <Home size={18} /> },
   { page: 'explore', label: 'Explore data', icon: <BarChart3 size={18} /> },
   { page: 'measurements', label: 'Measurements', icon: <ClipboardList size={18} /> },
@@ -46,12 +48,17 @@ export function Sidebar() {
         <h1>BARI-CNS</h1>
         <p>Research Workspace</p>
       </div>
+      {snapshot && (
+        <button className="search-btn no-drag" onClick={() => useStore.getState().setPaletteOpen(true)} aria-label="Open measure search">
+          <Search size={15} /> Search measures <span className="kbd">{MOD}K</span>
+        </button>
+      )}
       <nav className="nav no-drag">
-        {NAV.map((n) => (
-          <button key={n.page} aria-current={page === n.page ? 'page' : undefined} onClick={() => setPage(n.page)} disabled={!snapshot && n.page !== 'overview'}>
+        {NAV.map((n, i) => (
+          <button key={n.page} aria-current={page === n.page ? 'page' : undefined} onClick={() => setPage(n.page)} disabled={!snapshot && n.page !== 'overview'} title={`${n.label} (${MOD}${i + 1})`}>
             {n.icon}
             <span>{n.label}</span>
-            {n.page === 'quality' && reviewCount > 0 && <span className="count" title="Formatting interpretations needing review">{reviewCount}</span>}
+            {n.page === 'quality' && reviewCount > 0 ? <span className="count" title="Formatting interpretations needing review">{reviewCount}</span> : <span className="key" aria-hidden>{MOD}{i + 1}</span>}
           </button>
         ))}
       </nav>

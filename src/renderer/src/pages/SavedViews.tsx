@@ -62,7 +62,7 @@ export function SavedViews() {
           <div className="subtitle">{tab === 'views' ? 'Reproducible selections pinned to a dataset version and metadata version' : 'Arrange saved views side by side on a whiteboard'}</div>
         </div>
       </header>
-      <div className="content">
+      <div className="content page-fade">
         <div className="seg" role="tablist" style={{ marginBottom: 14 }}>
           <button role="tab" aria-pressed={tab === 'views'} aria-selected={tab === 'views'} onClick={() => switchTab('views')}><BookmarkCheck size={14} /> Saved views</button>
           <button role="tab" aria-pressed={tab === 'boards'} aria-selected={tab === 'boards'} onClick={() => switchTab('boards')} data-testid="compare-tab"><LayoutGrid size={14} /> Compare</button>

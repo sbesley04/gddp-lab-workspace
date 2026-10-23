@@ -65,7 +65,7 @@ export function Explore() {
           </button>
         </div>
       </header>
-      <div className="content">
+      <div className="content page-fade">
         <div className="picker-row">
           <VisitPicker />
           <MeasurePicker icon={<FlaskConical size={16} />} k="Measure" value={chart.measureKey} vars={numeric} onChange={(k) => setChart({ measureKey: k })} testId="measure-picker" />
@@ -149,8 +149,27 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX }: { chartRef: Re
       >
         <Calculator size={14} /> Analyze
       </button>
-      <button className="btn sm" onClick={() => save('svg')}><Download size={14} /> SVG</button>
-      <button className="btn sm" onClick={() => save('png')}><Download size={14} /> PNG</button>
+      <Popover.Root>
+        <Popover.Trigger asChild>
+          <button className="btn sm" aria-label="Download chart"><Download size={14} /> Download</button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content className="popover" align="end" sideOffset={8} style={{ width: 250 }}>
+            <div className="list">
+              <Popover.Close asChild>
+                <button className="list-item" onClick={() => save('svg')}>
+                  <div><div className="t">SVG (vector)</div><div className="s">Best for papers and slides; edit in Illustrator or Inkscape</div></div>
+                </button>
+              </Popover.Close>
+              <Popover.Close asChild>
+                <button className="list-item" onClick={() => save('png')}>
+                  <div><div className="t">PNG (2× resolution)</div><div className="s">For documents, email and posters</div></div>
+                </button>
+              </Popover.Close>
+            </div>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   )
 }

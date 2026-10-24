@@ -61,7 +61,7 @@ export function Explore() {
             <button aria-pressed={chart.type === 'scatter'} onClick={() => setChart({ type: 'scatter' })}><ScatterIcon size={14} /> Two measures</button>
             <button aria-pressed={chart.type === 'table'} onClick={() => setChart({ type: 'table' })}><Table2 size={14} /> Table</button>
           </div>
-          <button className="btn" onClick={() => setSaveOpen(true)} data-testid="save-view">
+          <button className="btn" onClick={() => setSaveOpen(true)} data-testid="save-view" data-tour="save">
             <BookmarkPlus size={15} /> Save view
           </button>
           <button className="btn primary" onClick={() => useStore.getState().setPage('export')}>
@@ -70,7 +70,7 @@ export function Explore() {
         </div>
       </header>
       <div className="content page-fade">
-        <div className="picker-row">
+        <div className="picker-row" data-tour="pickers">
           <VisitPicker />
           <MeasurePicker icon={<FlaskConical size={16} />} k="Measure" value={chart.measureKey} vars={numeric} onChange={(k) => setChart({ measureKey: k })} testId="measure-picker" />
           {chart.type === 'scatter' && (
@@ -133,7 +133,7 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales }: { char
     }
   }
   return (
-    <div className="row wrap chart-toolbar">
+    <div className="row wrap chart-toolbar" data-tour="toolbar">
       {setBrush && (
         <button className="btn sm" aria-pressed={brush} onClick={() => setBrush(!brush)} title="Drag a rectangle to highlight participants in the table" style={brush ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
           <MousePointerSquareDashed size={14} /> Select area
@@ -334,10 +334,15 @@ function TableView() {
   const chart = useStore((s) => s.chart)
   const setChart = useStore((s) => s.setChart)
   const sel = useSelection()!
-  const measures = snapshot.variables.filter((v) => v.role === 'measure')
+  const measures = useMemo(() => snapshot.variables.filter((v) => v.role === 'measure'), [snapshot])
   const keys = chart.tableColumns.length ? chart.tableColumns : [chart.measureKey, chart.compareKey, chart.groupKey].filter((k): k is string => !!k)
   const cols = keys.map((k) => snapshot.variables.find((v) => v.key === k)).filter((v): v is VariableInfo => !!v)
   const [open, setOpen] = useState(false)
+  const areas = useMemo(() => {
+    const m = new Map<string, VariableInfo[]>()
+    for (const v of measures) m.set(v.meta.area.value ?? 'Unassigned', [...(m.get(v.meta.area.value ?? 'Unassigned') ?? []), v])
+    return [...m.entries()]
+  }, [measures])
   return (
     <div className="paper card">
       <div className="card-head">
@@ -350,13 +355,24 @@ function TableView() {
           </Popover.Trigger>
           <Popover.Portal>
             <Popover.Content className="popover" align="end" sideOffset={8}>
+              <div className="group-label" style={{ paddingTop: 2 }}>Add a whole area</div>
+              <div className="row wrap" style={{ padding: '0 8px 8px', gap: 6 }}>
+                {areas.map(([area, vs]) => {
+                  const missing = vs.filter((v) => !keys.includes(v.key))
+                  return (
+                    <button key={area} className="btn sm" disabled={missing.length === 0} onClick={() => { setChart({ tableColumns: [...keys, ...missing.map((v) => v.key)] }); setOpen(false) }} data-testid={`add-area-${area}`}>
+                      {area} <span className="muted">+{missing.length}</span>
+                    </button>
+                  )
+                })}
+              </div>
               <VariableList vars={measures.filter((m) => !keys.includes(m.key))} value={null} onPick={(v) => { if (v) setChart({ tableColumns: [...keys, v.key] }); setOpen(false) }} />
             </Popover.Content>
           </Popover.Portal>
         </Popover.Root>
         {keys.length > 0 && <button className="btn ghost sm" onClick={() => setChart({ tableColumns: [] })}>Reset</button>}
       </div>
-      <div className="row wrap" style={{ marginBottom: 10 }}>
+      <div className="row wrap" style={{ marginBottom: 10, maxHeight: 96, overflow: 'auto' }}>
         {cols.map((c) => (
           <span key={c.key} className="badge outline">
             {label(c)}
@@ -402,7 +418,7 @@ function SidePanel({ id, tabs }: { id: string; tabs: { id: string; label: string
   })
   const active = tabs.find((t) => t.id === tab) ?? tabs[0]
   return (
-    <aside className="side-panel paper" aria-label="Chart details">
+    <aside className="side-panel paper" aria-label="Chart details" data-tour="side">
       <div className="side-panel-inner">
         <div className="seg side-tabs" role="tablist">
           {tabs.map((t) => (

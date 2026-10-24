@@ -17,11 +17,13 @@ export function appExecutable(): { executablePath?: string; args: string[] } {
   return { args: [join(root, 'out/main/index.js')] }
 }
 
-export async function launch(userData: string, colorScheme: 'light' | 'dark' = 'light'): Promise<{ app: ElectronApplication; page: Page }> {
+export async function launch(userData: string, colorScheme: 'light' | 'dark' = 'light', opts: { tour?: boolean } = {}): Promise<{ app: ElectronApplication; page: Page }> {
   const { executablePath, args } = appExecutable()
   const app = await electron.launch({ executablePath, args, env: { ...process.env, BARI_USER_DATA: userData }, colorScheme })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
+  // Most tests skip the first-run tour; tour.spec.ts exercises it.
+  if (!opts.tour) await page.evaluate(() => localStorage.setItem('bari.tour.v1', 'done'))
   return { app, page }
 }
 

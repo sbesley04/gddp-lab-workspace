@@ -64,6 +64,8 @@ interface State {
   paletteOpen: boolean
   /** Statistics panel visibility (UI only); results are computed only once chart.analysis.requested is set. */
   statsOpen: boolean
+  /** Index of the current first-run tour step, or null when the tour is not showing. */
+  tourStep: number | null
   toasts: Toast[]
   authorLabel: string
 
@@ -82,6 +84,8 @@ interface State {
   setImportOpen: (b: boolean) => void
   setPaletteOpen: (b: boolean) => void
   setStatsOpen: (b: boolean) => void
+  startTour: () => void
+  setTourStep: (n: number | null) => void
   toast: (kind: Toast['kind'], text: string) => void
   dismissToast: (id: number) => void
   applyView: (view: { id: string; name: string; metadataVersion: number; metadataChangedSince: number; spec: SavedViewSpec }, useCurrentMetadata?: boolean) => Promise<void>
@@ -119,6 +123,7 @@ export const useStore = create<State>((set, get) => ({
   importOpen: false,
   paletteOpen: false,
   statsOpen: false,
+  tourStep: null,
   toasts: [],
   authorLabel: '',
 
@@ -158,6 +163,8 @@ export const useStore = create<State>((set, get) => ({
   setImportOpen: (importOpen) => set({ importOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setStatsOpen: (statsOpen) => set({ statsOpen }),
+  startTour: () => set({ tourStep: 0, inspected: null, paletteOpen: false }),
+  setTourStep: (tourStep) => set({ tourStep }),
   toast: (kind, text) => {
     const id = ++toastSeq
     // Keep at most three on screen; successes fade quickly, errors stay longer.

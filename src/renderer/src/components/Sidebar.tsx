@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
-import { BarChart3, BookmarkCheck, ClipboardList, Home, Search, LogOut, PackageOpen, ShieldCheck, Upload, Archive, UserRound, ChevronsUpDown, Check } from 'lucide-react'
+import { BarChart3, BookmarkCheck, ClipboardList, Home, Search, HelpCircle, LogOut, PackageOpen, ShieldCheck, Upload, Archive, UserRound, ChevronsUpDown, Check } from 'lucide-react'
 import { call } from '../api'
 import { useStore, errorText, type Page } from '../store'
 import { shortDate } from '../lib/format'
@@ -49,13 +49,13 @@ export function Sidebar() {
         <p>Research Workspace</p>
       </div>
       {snapshot && (
-        <button className="search-btn no-drag" onClick={() => useStore.getState().setPaletteOpen(true)} aria-label="Open measure search">
+        <button className="search-btn no-drag" data-tour="search" onClick={() => useStore.getState().setPaletteOpen(true)} aria-label="Open measure search">
           <Search size={15} /> Search measures <span className="kbd">{MOD}K</span>
         </button>
       )}
-      <nav className="nav no-drag">
+      <nav className="nav no-drag" data-tour="nav">
         {NAV.map((n, i) => (
-          <button key={n.page} aria-current={page === n.page ? 'page' : undefined} onClick={() => setPage(n.page)} disabled={!snapshot && n.page !== 'overview'} title={`${n.label} (${MOD}${i + 1})`}>
+          <button key={n.page} data-tour={`nav-${n.page}`} aria-current={page === n.page ? 'page' : undefined} onClick={() => setPage(n.page)} disabled={!snapshot && n.page !== 'overview'} title={`${n.label} (${MOD}${i + 1})`}>
             {n.icon}
             <span>{n.label}</span>
             {n.page === 'quality' && reviewCount > 0 ? <span className="count" title="Formatting interpretations needing review">{reviewCount}</span> : <span className="key" aria-hidden>{MOD}{i + 1}</span>}
@@ -81,7 +81,13 @@ export function Sidebar() {
             </button>
           </div>
         </div>
-        <AuthorLabel />
+        <div className="row" style={{ gap: 4 }}>
+          <AuthorLabel />
+          <span className="spacer" />
+          <button className="btn ghost sm icon" title="Take the tour" aria-label="Take the tour" onClick={() => useStore.getState().startTour()} disabled={!snapshot}>
+            <HelpCircle size={15} />
+          </button>
+        </div>
       </div>
       {!versionId && project.versions.length === 0 && <span className="sr-only">No dataset imported yet</span>}
     </aside>

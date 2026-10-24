@@ -374,7 +374,7 @@ export function FilterBar() {
     </span>
   )
   return (
-    <div className="row wrap" style={{ marginBottom: 12, gap: 8 }} aria-label="Cohort filters">
+    <div className="row wrap" style={{ marginBottom: 12, gap: 8 }} aria-label="Cohort filters" data-tour="filters">
       <span className="row muted small" style={{ gap: 6 }}>
         <Filter size={14} /> Cohort
       </span>

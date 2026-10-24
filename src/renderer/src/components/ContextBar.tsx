@@ -19,7 +19,7 @@ export function ContextBar() {
   const visits = [...new Set(sel.rows.map((r) => snapshot.rows[r].visitId))].map((id) => snapshot.visits.find((v) => v.id === id)?.name)
   const baselineOnly = snapshot.visits.length === 1 && /baseline/i.test(snapshot.visits[0].name)
   return (
-    <div className="contextbar" aria-label="Current research context">
+    <div className="contextbar" aria-label="Current research context" data-tour="context">
       <span className="row" style={{ gap: 6 }}>
         <HardDrive size={14} /> <strong>Offline</strong> · Saved locally
       </span>

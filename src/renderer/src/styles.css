@@ -141,10 +141,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
     radial-gradient(45% 45% at 78% 88%, var(--ambient-3) 0%, transparent 70%),
     radial-gradient(40% 40% at 18% 92%, var(--ambient-4) 0%, transparent 70%);
   filter: blur(30px); opacity: 0.85;
-  animation: drift 38s ease-in-out infinite alternate;
 }
-.ambient::after { animation-duration: 52s; animation-direction: alternate-reverse; opacity: 0.45; transform: rotate(180deg); }
-@keyframes drift { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(2%, 2%, 0) scale(1.06); } }
+/* Static on purpose: an animated backdrop forces every blurred glass panel to re-render each frame,
+   which costs GPU time and battery and can stall the UI on busy machines. */
+.ambient::after { opacity: 0.45; transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .ambient::before, .ambient::after { animation: none; } * { transition: none !important; animation: none !important; } }
 
 /* ---------- surfaces ---------- */
@@ -465,3 +465,14 @@ pre.preview { margin: 0; padding: 12px 14px; font-family: var(--mono); font-size
   .side-panel { min-height: 0; }
   .side-panel-inner { position: static; }
 }
+
+/* ---------- first-run tour ---------- */
+.tour-veil { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+.tour-veil path { fill: rgba(15, 23, 42, 0.26); }
+.tour-ring { fill: none; stroke: var(--accent); stroke-width: 3; }
+.tour-card { position: fixed; z-index: 71; width: min(380px, calc(100vw - 24px)); padding: 14px 16px; border-radius: 18px; box-shadow: var(--shadow-pop); background: var(--paper-solid); border: 1px solid var(--hairline-strong); }
+.tour-dots { display: flex; gap: 5px; }
+.tour-dots span { width: 6px; height: 6px; border-radius: 99px; background: var(--hairline-strong); }
+.tour-dots span.on { background: var(--accent); width: 16px; }
+table.data th.sticky2, table.data td.sticky2 { left: 140px; box-shadow: 1px 0 0 var(--hairline-strong); }
+table.data td.cell { overflow: hidden; text-overflow: ellipsis; }

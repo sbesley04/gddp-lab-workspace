@@ -7,6 +7,12 @@ import { displayValue } from '@core/values'
 import { useStore } from '../store'
 import { label } from '../lib/format'
 
+const WIDE_THRESHOLD = 12
+const PID_W = 140
+const VISIT_W = 110
+const LEAD_W = PID_W + VISIT_W
+const COL_W = 150
+
 interface Props {
   sel: SelectionResult
   columns: VariableInfo[]
@@ -54,8 +60,17 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
   const padTop = items.length ? items[0].start : 0
   const padBottom = items.length ? virt.getTotalSize() - items[items.length - 1].end : 0
 
+  // Wide tables (e.g. a whole NULISA panel) render only the columns in view; ID and visit stay pinned.
+  const wide = columns.length > WIDE_THRESHOLD
+  const colVirt = useVirtualizer({ horizontal: true, count: wide ? columns.length : 0, getScrollElement: () => scroller.current, estimateSize: () => COL_W, overscan: 3, paddingStart: LEAD_W })
+  const colItems = colVirt.getVirtualItems()
+  const shown = wide ? colItems.map((i) => columns[i.index]) : columns
+  const padLeft = wide && colItems.length ? colItems[0].start - LEAD_W : 0
+  const padRight = wide && colItems.length ? colVirt.getTotalSize() - colItems[colItems.length - 1].end : 0
+  const spacer = (w: number, k: string, as: 'th' | 'td') => (w > 0 ? (as === 'th' ? <th key={k} style={{ width: w, padding: 0 }} aria-hidden /> : <td key={k} style={{ width: w, padding: 0 }} aria-hidden />) : null)
+
   const header = (key: string, text: string, title?: string, sticky = false) => (
-    <th className={sticky ? 'sticky' : ''} title={title} aria-sort={sort?.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+    <th key={key} className={sticky ? 'sticky' : ''} title={title} style={wide ? { width: sticky ? PID_W : COL_W, overflow: 'hidden', textOverflow: 'ellipsis' } : undefined} aria-sort={sort?.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
       <button className="sort" onClick={() => setSort(sort?.key === key ? (sort.dir === 1 ? { key, dir: -1 } : null) : { key, dir: 1 })}>
         {text}
         {sort?.key === key && (sort.dir === 1 ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
@@ -68,15 +83,17 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
       <div className="row">
         <Search size={14} className="muted" />
         <input className="input" style={{ width: 220, height: 30 }} placeholder="Find participant…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find participant" />
-        <span className="muted small">{ordered.length} row(s) · missing values sort last · click a value to inspect its source</span>
+        <span className="muted small">{ordered.length} row(s){wide ? ` · ${columns.length} columns (scroll sideways)` : ''} · missing values sort last · click a value to inspect its source</span>
       </div>
       <div className="table-wrap" ref={scroller} style={{ maxHeight }} data-testid={testId}>
-        <table className="data">
+        <table className="data" style={wide ? { tableLayout: 'fixed', width: colVirt.getTotalSize() } : undefined} aria-colcount={columns.length + 2}>
           <thead>
             <tr>
               {header('__pid', 'Participant', undefined, true)}
-              <th>Visit</th>
-              {columns.map((c) => header(c.key, label(c), `${c.header} · column ${c.letter}`))}
+              <th className={wide ? 'sticky sticky2' : ''} style={wide ? { width: VISIT_W } : undefined}>Visit</th>
+              {spacer(padLeft, '__l', 'th')}
+              {shown.map((c) => header(c.key, label(c), `${c.header} · column ${c.letter}`))}
+              {spacer(padRight, '__r', 'th')}
             </tr>
           </thead>
           <tbody>
@@ -91,8 +108,9 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
                       {row.participantId}
                     </button>
                   </td>
-                  <td className="muted">{visitName(row.visitId)}</td>
-                  {columns.map((c) => {
+                  <td className={`muted ${wide ? 'sticky sticky2' : ''}`}>{visitName(row.visitId)}</td>
+                  {spacer(padLeft, '__l', 'td')}
+                  {shown.map((c) => {
                     const o = getObservation(sel.ctx, r, c.index)
                     const excluded = o.qcExcludedBy.length > 0
                     const qc = o.flags.some((f) => f.category && f.category !== 'unresolved_highlight')
@@ -114,6 +132,7 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
                       </td>
                     )
                   })}
+                  {spacer(padRight, '__r', 'td')}
                 </tr>
               )
             })}

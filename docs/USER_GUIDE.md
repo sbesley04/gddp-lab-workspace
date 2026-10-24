@@ -24,6 +24,11 @@ Keep the active project on a **local disk**. Sync clients (iCloud, Dropbox, OneD
 
 Importing the same file again is recognised by its checksum, and the app offers to open the existing import. An updated file becomes a **new immutable version**. You can carry your curated metadata over to matching variables; each carried value is recorded as a new revision. Records are not reconciled automatically between versions.
 
+## Getting around
+
+- **First-run tour.** A short tour (9 steps) appears the first time a dataset is open on a computer. Press → / ← to move and Esc to close. Replay it from the **?** button at the bottom of the sidebar.
+- **Shortcuts.** ⌘K / Ctrl K searches all measures. ⌘1–⌘6 / Ctrl 1–6 open Overview, Explore, Measurements, Data quality, Saved views and Export.
+
 ## Explore
 
 - **Pickers.** Choose the visit, the measure, the comparison measure (scatter) or the grouping variable (distribution), and the QC policy. Press ⌘K / Ctrl K to search all measures by header, alias, unit or column letter.
@@ -35,6 +40,7 @@ Importing the same file again is recognised by its checksum, and the app offers 
   - Missing, censored and non-numeric entries are counted separately and never converted.
 - **Two measures.** A scatterplot with a paired-observations table. Missing pairs are counted by reason. **Select area** highlights points in the table.
 - **Log axes** are offered only when positive values exist. Non-positive values are listed in a notice, not silently dropped.
+- **Wide tables.** In the Table view, **Add column → Add a whole area** adds every measure in an area at once, for example a whole NULISA panel. Tables with many columns render only the columns in view, so they stay fast; the participant and visit columns stay pinned while you scroll sideways.
 - **Click any value** to open the **Inspector**. It shows the source cell address, raw text, source attribution, flags and comments, and lets a curator exclude or re-include that observation, with a reason.
 - **Click a participant ID** for the participant detail drawer.
 - **SVG / PNG** exports the chart. The title and subtitle state n, the cohort rule and the QC policy.

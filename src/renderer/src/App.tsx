@@ -16,6 +16,7 @@ import { Inspector } from './components/Inspector'
 import { ParticipantDrawer } from './components/ParticipantDrawer'
 import { CommandPalette } from './components/CommandPalette'
 import { ViewBanner } from './components/ViewBanner'
+import { Tour, tourSeen } from './components/Tour'
 import { Loader2 } from 'lucide-react'
 
 export function App() {
@@ -25,6 +26,14 @@ export function App() {
   const snapshot = useStore((s) => s.snapshot)
   const loading = useStore((s) => s.loading)
   const [booted, setBooted] = useState(false)
+
+  // Offer the tour once, the first time a dataset is open on this computer.
+  useEffect(() => {
+    if (snapshot && !tourSeen() && useStore.getState().tourStep === null) {
+      const t = setTimeout(() => useStore.getState().startTour(), 600)
+      return () => clearTimeout(t)
+    }
+  }, [snapshot])
 
   useEffect(() => {
     ;(async () => {
@@ -98,6 +107,7 @@ export function App() {
       <ImportWizard />
       <ParticipantDrawer />
       <CommandPalette />
+      <Tour />
       <Toasts />
     </>
   )

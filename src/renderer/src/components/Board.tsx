@@ -112,13 +112,28 @@ export function BoardEditor({ boardId, onBack }: { boardId: string; onBack: () =
     return { ...b, layout: { ...b.layout, cards: [...b.layout.cards.filter((x) => x.id !== id), c] } }
   }), [update])
 
-  // Positions are computed inside the state update so several cards added at once never overlap.
+  // Positions are computed inside the state update so several cards added at once never overlap,
+  // and new cards fill the visible width before starting a new row.
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [lastAdded, setLastAdded] = useState<string | null>(null)
   const slotFor = (cards: BoardCard[], w: number, h: number) => {
-    const cols = 3
+    const visible = (canvasRef.current?.clientWidth ?? 1400) / zoom
+    const cellW = Math.max(w, 640) + 40
+    const cols = Math.max(1, Math.floor((visible - 40) / cellW))
     const i = cards.length
-    return { x: 40 + (i % cols) * (Math.max(w, 640) + 40), y: 40 + Math.floor(i / cols) * (Math.max(h, 480) + 40) }
+    return { x: 40 + (i % cols) * cellW, y: 40 + Math.floor(i / cols) * (Math.max(h, 480) + 40) }
   }
-  const addCard = (make: (cards: BoardCard[]) => BoardCard) => update((b) => ({ ...b, layout: { ...b.layout, cards: [...b.layout.cards, make(b.layout.cards)] } }))
+  const addCard = (make: (cards: BoardCard[]) => BoardCard) =>
+    update((b) => {
+      const card = make(b.layout.cards)
+      setLastAdded(card.id)
+      return { ...b, layout: { ...b.layout, cards: [...b.layout.cards, card] } }
+    })
+  useEffect(() => {
+    if (!lastAdded) return
+    const t = setTimeout(() => document.querySelector(`[data-card-id="${lastAdded}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }), 60)
+    return () => clearTimeout(t)
+  }, [lastAdded])
   const addView = (v: ViewRecord) => addCard((cards) => ({ id: newId(), kind: 'view', viewId: v.id, ...slotFor(cards, 640, 480), w: 640, h: 480, text: null, style: null }))
   const addNote = () => addCard((cards) => ({ id: newId(), kind: 'note', viewId: null, ...slotFor(cards, 320, 220), w: 320, h: 220, text: '', style: null }))
   const tidy = () => update((b) => {
@@ -169,7 +184,7 @@ export function BoardEditor({ boardId, onBack }: { boardId: string; onBack: () =
       <div className="row wrap">
         <button className="btn ghost sm" onClick={onBack}><ArrowLeft size={14} /> Boards</button>
         <input className="input" style={{ width: 280, fontWeight: 650 }} value={board.name} onChange={(e) => update((b) => ({ ...b, name: e.target.value }))} aria-label="Board name" data-testid="board-name" />
-        <span className="small muted row" style={{ gap: 4 }}>{saveState === 'saved' ? <><Check size={13} /> Saved</> : saveState === 'saving' ? <><Loader2 size={13} className="spin" /> Saving…</> : 'Unsaved changes'}</span>
+        <span className="small muted row" style={{ gap: 4, minWidth: 64 }} aria-live="polite">{saveState === 'saved' ? <><Check size={13} /> Saved</> : <><Loader2 size={13} className="spin" /> Saving…</>}</span>
         <span className="spacer" />
         <AddViewButton views={views} onAdd={addView} onAddAll={() => views.filter((v) => !board.layout.cards.some((c) => c.viewId === v.id)).forEach(addView)} />
         <button className="btn sm" onClick={addNote}><StickyNote size={14} /> Note</button>
@@ -181,10 +196,25 @@ export function BoardEditor({ boardId, onBack }: { boardId: string; onBack: () =
           <button onClick={() => setZoom(1)} aria-label="Reset zoom">{Math.round(zoom * 100)}%</button>
           <button onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(2)))} aria-label="Zoom in"><Plus size={13} /></button>
         </div>
-        <button className="btn sm" onClick={() => exportBoard('svg')}><Download size={14} /> SVG</button>
-        <button className="btn sm" onClick={() => exportBoard('png')}><Download size={14} /> PNG</button>
+        <Popover.Root>
+          <Popover.Trigger asChild>
+            <button className="btn sm" aria-label="Download board"><Download size={14} /> Download</button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content className="popover" align="end" sideOffset={8} style={{ width: 230 }}>
+              <div className="list">
+                <Popover.Close asChild>
+                  <button className="list-item" onClick={() => exportBoard('svg')}><div><div className="t">SVG (vector)</div><div className="s">Whole board, editable</div></div></button>
+                </Popover.Close>
+                <Popover.Close asChild>
+                  <button className="list-item" onClick={() => exportBoard('png')}><div><div className="t">PNG (2×)</div><div className="s">Whole board as an image</div></div></button>
+                </Popover.Close>
+              </div>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
       </div>
-      <div className="board-canvas paper" style={{ height: 'calc(100vh - 230px)' }}>
+      <div className="board-canvas paper" style={{ height: 'calc(100vh - 230px)' }} ref={canvasRef}>
         <div style={{ width: bounds.w * zoom, height: bounds.h * zoom, position: 'relative' }}>
           <div className="board-surface" style={{ width: bounds.w, height: bounds.h, transform: `scale(${zoom})`, backgroundSize: `${g * 2}px ${g * 2}px` }}>
             {board.layout.cards.length === 0 && (
@@ -271,7 +301,7 @@ function CardFrame({ card, zoom, grid, onChange, onFront, onRemove, title, extra
     window.addEventListener('pointerup', up)
   }
   return (
-    <div className={`board-card ${card.kind === 'note' ? 'note' : ''}`} style={{ left: card.x, top: card.y, width: card.w, height: card.h }} data-testid="board-card">
+    <div className={`board-card ${card.kind === 'note' ? 'note' : ''}`} style={{ left: card.x, top: card.y, width: card.w, height: card.h }} data-testid="board-card" data-card-id={card.id}>
       <div className="board-card-head" onPointerDown={(e) => startDrag(e, 'move')} title="Drag to move">
         <GripHorizontal size={14} className="muted" />
         <span className="t">{title}</span>

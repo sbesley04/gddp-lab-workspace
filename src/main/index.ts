@@ -1,5 +1,5 @@
 // Electron main process: hardened window, offline enforcement, validated IPC.
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, nativeTheme, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, powerSaveBlocker, protocol, session, nativeTheme, type IpcMainInvokeEvent } from 'electron'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, statSync } from 'node:fs'
 import { join, normalize, sep, basename, dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
@@ -396,8 +396,14 @@ function createWindow(visible = true) {
 }
 
 // ---------- lifecycle ----------
-// Isolated profile for automated tests (never needed in normal use).
-if (process.env.BARI_USER_DATA) app.setPath('userData', process.env.BARI_USER_DATA)
+// Isolated profile for automated tests (never needed in normal use). Test windows are often covered by
+// other windows, so stop Chromium throttling occluded renderers there; normal use keeps power saving.
+if (process.env.BARI_USER_DATA) {
+  app.setPath('userData', process.env.BARI_USER_DATA)
+  for (const sw of ['disable-renderer-backgrounding', 'disable-backgrounding-occluded-windows', 'disable-background-timer-throttling']) app.commandLine.appendSwitch(sw)
+  // Stop macOS App Nap from suspending the test app while its window is hidden.
+  app.whenReady().then(() => powerSaveBlocker.start('prevent-app-suspension'))
+}
 app.enableSandbox()
 if (!app.requestSingleInstanceLock() && !process.argv.includes('--self-test')) app.quit()
 

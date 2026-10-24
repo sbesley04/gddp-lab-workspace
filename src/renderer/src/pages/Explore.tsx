@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { BarChart3, BookmarkPlus, Download, FlaskConical, GitCompareArrows, Layers, ScatterChart as ScatterIcon, Table2, Upload, MousePointerSquareDashed, AlertTriangle, Info, X, Columns3, Calculator, Sparkles } from 'lucide-react'
+import { BarChart3, BookmarkPlus, Download, FlaskConical, GitCompareArrows, Layers, ScatterChart as ScatterIcon, Table2, Upload, MousePointerSquareDashed, AlertTriangle, Info, X, Columns3, Calculator, Sparkles, ChevronDown } from 'lucide-react'
 import type { VariableInfo } from '@core/types'
 import { normalizeChart } from '@core/chartStyle'
 import { suggestViewName } from '@core/naming'
@@ -56,7 +56,11 @@ export function Explore() {
         </div>
         <span className="spacer" />
         <div className="row no-drag">
-          <span className="badge outline" title="Descriptive exploration only; no hypothesis tests are run.">Exploratory · descriptive</span>
+          <div className="seg" role="group" aria-label="View">
+            <button aria-pressed={chart.type === 'distribution'} onClick={() => setChart({ type: 'distribution' })}><BarChart3 size={14} /> Distribution</button>
+            <button aria-pressed={chart.type === 'scatter'} onClick={() => setChart({ type: 'scatter' })}><ScatterIcon size={14} /> Two measures</button>
+            <button aria-pressed={chart.type === 'table'} onClick={() => setChart({ type: 'table' })}><Table2 size={14} /> Table</button>
+          </div>
           <button className="btn" onClick={() => setSaveOpen(true)} data-testid="save-view">
             <BookmarkPlus size={15} /> Save view
           </button>
@@ -78,13 +82,6 @@ export function Explore() {
           <QcPolicyPicker />
         </div>
         <FilterBar />
-        <div className="row" style={{ marginBottom: 12 }}>
-          <div className="seg" role="group" aria-label="View">
-            <button aria-pressed={chart.type === 'distribution'} onClick={() => setChart({ type: 'distribution' })}><BarChart3 size={14} /> Distribution</button>
-            <button aria-pressed={chart.type === 'scatter'} onClick={() => setChart({ type: 'scatter' })}><ScatterIcon size={14} /> Two measures</button>
-            <button aria-pressed={chart.type === 'table'} onClick={() => setChart({ type: 'table' })}><Table2 size={14} /> Table</button>
-          </div>
-        </div>
         {chart.type === 'distribution' && (measure ? <DistributionView measure={measure} group={group} /> : <NoMeasure />)}
         {chart.type === 'scatter' && (measure && compare ? <ScatterView x={compare} y={measure} /> : <NoMeasure two />)}
         {chart.type === 'table' && <TableView />}
@@ -115,7 +112,12 @@ export function useFullChart(): FullChart {
   return useMemo(() => normalizeChart(chart), [chart])
 }
 
-function ChartToolbar({ chartRef, name, brush, setBrush, showX }: { chartRef: React.RefObject<EChartHandle | null>; name: string; brush?: boolean; setBrush?: (b: boolean) => void; showX: boolean }) {
+interface ScaleState {
+  value: 'linear' | 'log'
+  disabled: string | null
+}
+
+function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales }: { chartRef: React.RefObject<EChartHandle | null>; name: string; brush?: boolean; setBrush?: (b: boolean) => void; showX: boolean; scales: { x?: ScaleState; y: ScaleState } }) {
   const toast = useStore((s) => s.toast)
   const chart = useFullChart()
   const setChart = useStore((s) => s.setChart)
@@ -131,13 +133,19 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX }: { chartRef: Re
     }
   }
   return (
-    <div className="row wrap">
+    <div className="row wrap chart-toolbar">
       {setBrush && (
         <button className="btn sm" aria-pressed={brush} onClick={() => setBrush(!brush)} title="Drag a rectangle to highlight participants in the table" style={brush ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
           <MousePointerSquareDashed size={14} /> Select area
         </button>
       )}
-      <AxisBoundsEditor showX={showX} value={{ xMin: chart.xMin, xMax: chart.xMax, yMin: chart.yMin, yMax: chart.yMax }} onChange={(b) => setChart(b)} />
+      <AxisBoundsEditor
+        showX={showX}
+        value={{ xMin: chart.xMin, xMax: chart.xMax, yMin: chart.yMin, yMax: chart.yMax }}
+        onChange={(b) => setChart(b)}
+        scales={scales}
+        onScale={(axis, v) => setChart(axis === 'x' ? { xScale: v } : { yScale: v })}
+      />
       <StyleEditor value={chart.style} onChange={(style) => setChart({ style })} />
       <button
         className="btn sm"
@@ -203,13 +211,9 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
 
   return (
     <div className="stack">
-      <div className="split">
+      <div className="explore-grid">
         <div className="paper chart-card">
-          <div className="row wrap" style={{ marginBottom: 6 }}>
-            <ScaleToggle axis="Y" value={scale} onChange={(v) => setChart({ yScale: v })} disabled={data.logValid ? null : data.logReason} />
-            <span className="spacer" />
-            <ChartToolbar chartRef={ref} name={`${label(measure)} distribution`} showX={false} />
-          </div>
+          <ChartToolbar chartRef={ref} name={`${label(measure)} distribution`} showX={false} scales={{ y: { value: scale, disabled: data.logValid ? null : data.logReason } }} />
           {data.groups.length === 0 ? (
             <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No matching data</h3><p>No rows match the current cohort filters.</p></div>
           ) : (
@@ -229,18 +233,20 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
           />
           <Legend />
         </div>
-        <div className="stack">
-          <MeasureContext v={measure} />
-          <SummaryCard groups={data.groups.map((g) => ({ label: g.label, s: g.summary }))} />
-        </div>
+        <SidePanel
+          id="distribution"
+          tabs={[
+            { id: 'summary', label: 'Summary', content: <SummaryCard bare groups={data.groups.map((g) => ({ label: g.label, s: g.summary }))} /> },
+            { id: 'measure', label: 'Measure', content: <MeasureContext bare v={measure} /> }
+          ]}
+        />
       </div>
       {statsOpen && (
         <DistributionStats data={data} measure={measure} group={group} chart={chart} snapshot={snapshot} onChange={(a) => { setChart({ analysis: { ...chart.analysis, ...a } }); if (a.requested === false) useStore.getState().setStatsOpen(false) }} />
       )}
-      <div className="paper card">
-        <div className="card-head"><h3>Selected observations</h3><span className="muted small">Same rows as the chart and summary</span></div>
+      <Collapsible id="observations" title="Selected observations" meta={`${sel.rows.length} rows · same rows as the chart and summary`}>
         <DataTable sel={sel} columns={[measure, ...(group ? [group] : [])]} testId="observations-table" />
-      </div>
+      </Collapsible>
     </div>
   )
 }
@@ -266,14 +272,16 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
   const pairedRows = data.points.map((p) => p.row)
   return (
     <div className="stack">
-      <div className="split">
+      <div className="explore-grid">
         <div className="paper chart-card">
-          <div className="row wrap" style={{ marginBottom: 6 }}>
-            <ScaleToggle axis="X" value={chart.xScale} onChange={(v) => setChart({ xScale: v })} disabled={data.logValidX ? null : 'No positive values'} />
-            <ScaleToggle axis="Y" value={chart.yScale} onChange={(v) => setChart({ yScale: v })} disabled={data.logValidY ? null : 'No positive values'} />
-            <span className="spacer" />
-            <ChartToolbar chartRef={ref} showX name={`${label(y)} vs ${label(x)}`} brush={brush} setBrush={(b) => { setBrushState(b); ref.current?.setBrush(b); if (!b) setHighlight([]) }} />
-          </div>
+          <ChartToolbar
+            chartRef={ref}
+            showX
+            name={`${label(y)} vs ${label(x)}`}
+            brush={brush}
+            setBrush={(b) => { setBrushState(b); ref.current?.setBrush(b); if (!b) setHighlight([]) }}
+            scales={{ x: { value: chart.xScale, disabled: data.logValidX ? null : 'No positive values' }, y: { value: chart.yScale, disabled: data.logValidY ? null : 'No positive values' } }}
+          />
           {data.points.length === 0 && data.hidden.length === 0 ? (
             <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No complete pairs</h3><p>No selected participant has numeric values for both measures.</p></div>
           ) : (
@@ -297,23 +305,26 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
           />
           <Legend />
         </div>
-        <div className="stack">
-          <MeasureContext v={y} title="Y measure" />
-          <MeasureContext v={x} title="X measure" compact />
-        </div>
+        <SidePanel
+          id="scatter"
+          tabs={[
+            { id: 'pairs', label: 'Pairs', content: <PairsSummary data={data} /> },
+            { id: 'y', label: 'Y measure', content: <MeasureContext bare v={y} /> },
+            { id: 'x', label: 'X measure', content: <MeasureContext bare v={x} /> }
+          ]}
+        />
       </div>
       {statsOpen && (
         <ScatterStats data={data} x={x} y={y} chart={chart} snapshot={snapshot} onChange={(a) => { setChart({ analysis: { ...chart.analysis, ...a } }); if (a.requested === false) useStore.getState().setStatsOpen(false) }} onHighlight={setHighlight} />
       )}
-      <div className="paper card">
-        <div className="card-head">
-          <h3>Paired observations</h3>
-          <span className="muted small">{data.points.length} complete pairs{highlight.length > 1 ? ` · ${highlight.length} highlighted` : ''}</span>
-          <span className="spacer" />
-          {highlight.length > 1 && <button className="btn sm" onClick={() => setHighlight([])}>Clear highlight</button>}
-        </div>
+      <Collapsible
+        id="observations"
+        title="Paired observations"
+        meta={`${data.points.length} complete pairs${highlight.length > 1 ? ` · ${highlight.length} highlighted` : ''}`}
+        actions={highlight.length > 1 ? <button className="btn sm" onClick={() => setHighlight([])}>Clear highlight</button> : null}
+      >
         <DataTable sel={sel} columns={[x, y]} rows={highlight.length > 1 ? pairedRows.filter((r) => hl.has(r)) : sel.rows} testId="paired-table" />
-      </div>
+      </Collapsible>
     </div>
   )
 }
@@ -379,12 +390,112 @@ function Legend() {
   )
 }
 
+/** Right-hand panel that matches the chart card's height; its tab is remembered per view type. */
+function SidePanel({ id, tabs }: { id: string; tabs: { id: string; label: string; content: React.ReactNode }[] }) {
+  const key = `bari.side.${id}`
+  const [tab, setTab] = useState(() => {
+    try {
+      return sessionStorage.getItem(key) ?? tabs[0].id
+    } catch {
+      return tabs[0].id
+    }
+  })
+  const active = tabs.find((t) => t.id === tab) ?? tabs[0]
+  return (
+    <aside className="side-panel paper" aria-label="Chart details">
+      <div className="side-panel-inner">
+        <div className="seg side-tabs" role="tablist">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={active.id === t.id}
+              aria-pressed={active.id === t.id}
+              onClick={() => {
+                setTab(t.id)
+                try {
+                  sessionStorage.setItem(key, t.id)
+                } catch {
+                  /* convenience only */
+                }
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="side-panel-body" role="tabpanel">{active.content}</div>
+      </div>
+    </aside>
+  )
+}
+
+/** Collapsible card whose open/closed state is remembered on this computer. */
+function Collapsible({ id, title, meta, actions, children }: { id: string; title: string; meta?: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  const key = `bari.collapse.${id}`
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== 'closed'
+    } catch {
+      return true
+    }
+  })
+  const toggle = () => {
+    setOpen(!open)
+    try {
+      localStorage.setItem(key, open ? 'closed' : 'open')
+    } catch {
+      /* convenience only */
+    }
+  }
+  return (
+    <section className="paper card">
+      <div className="card-head" style={{ marginBottom: open ? 10 : 0 }}>
+        <button className="btn ghost sm" onClick={toggle} aria-expanded={open} style={{ paddingLeft: 4 }}>
+          <ChevronDown size={15} style={{ transform: open ? undefined : 'rotate(-90deg)', transition: 'transform .2s' }} />
+          <strong style={{ fontSize: 15 }}>{title}</strong>
+        </button>
+        {meta && <span className="muted small">{meta}</span>}
+        <span className="spacer" />
+        {actions}
+      </div>
+      {open && children}
+    </section>
+  )
+}
+
+function PairsSummary({ data }: { data: ReturnType<typeof scatterData> }) {
+  const missing = data.missingX + data.missingY + data.missingBoth
+  const rows: [string, number, string?][] = [
+    ['Complete pairs', data.points.length + data.hidden.length, 'Used for the chart and statistics'],
+    ['Missing X only', data.missingX],
+    ['Missing Y only', data.missingY],
+    ['Missing both', data.missingBoth],
+    ['Censored or non-numeric', data.unevaluable],
+    ['QC-excluded', data.qcExcluded],
+    ['Hidden on log axes', data.hidden.length]
+  ]
+  return (
+    <div>
+      <div className="kv small">
+        {rows.map(([k, n, hint]) => (
+          <Fragment key={k}>
+            <div className="k" title={hint}>{k}</div>
+            <div className="num"><strong>{n}</strong></div>
+          </Fragment>
+        ))}
+      </div>
+      <p className="small muted">{missing === 0 ? 'Every selected row has both values.' : 'Rows missing a value are never imputed; they are listed in the table below.'} Open Analyze for correlations and a fitted line.</p>
+    </div>
+  )
+}
+
 const fmt = (n: number | null) => (n === null || n === undefined ? '—' : formatNumber(n))
 
-function SummaryCard({ groups }: { groups: { label: string; s: Summary }[] }) {
+function SummaryCard({ groups, bare }: { groups: { label: string; s: Summary }[]; bare?: boolean }) {
   return (
-    <div className="paper card">
-      <h3>Descriptive summary</h3>
+    <div className={bare ? '' : 'paper card'}>
+      {!bare && <h3>Descriptive summary</h3>}
       {groups.length === 0 && <p className="muted small">No rows selected.</p>}
       {groups.map((g) => (
         <div key={g.label} style={{ marginBottom: 10 }}>
@@ -403,7 +514,7 @@ function SummaryCard({ groups }: { groups: { label: string; s: Summary }[] }) {
   )
 }
 
-function MeasureContext({ v, title, compact }: { v: VariableInfo; title?: string; compact?: boolean }) {
+function MeasureContext({ v, title, compact, bare }: { v: VariableInfo; title?: string; compact?: boolean; bare?: boolean }) {
   const sel = useSelection()!
   const counts = countsFor(sel, v.index)
   const flagged = observationsFor(sel, v.index).filter((o) => o.flags.some((f) => f.category)).length
@@ -415,14 +526,14 @@ function MeasureContext({ v, title, compact }: { v: VariableInfo; title?: string
     ...(compact ? [] : ([['Assay', v.meta.assay], ['Area', v.meta.area]] as const))
   ] as const
   return (
-    <div className="paper card">
+    <div className={bare ? '' : 'paper card'}>
       <div className="card-head">
-        <h3>{title ?? 'Measurement context'}</h3>
+        {bare ? <strong style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.header}>{label(v)}</strong> : <h3>{title ?? 'Measurement context'}</h3>}
         <span className="spacer" />
         <button className="btn ghost sm" onClick={() => { useStore.setState({ page: 'measurements' }); sessionStorage.setItem('bari.focusVar', v.key) }}>Edit</button>
       </div>
       <div className="small muted" style={{ marginBottom: 8 }} title={v.header}>
-        {v.header} · column {v.letter}
+        {bare ? `Column ${v.letter}` : `${v.header} · column ${v.letter}`}
       </div>
       <div className="kv small">
         {rowsF.map(([k, f]) => (

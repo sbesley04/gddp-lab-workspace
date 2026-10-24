@@ -451,3 +451,17 @@ pre.preview { margin: 0; padding: 12px 14px; font-family: var(--mono); font-size
 .nav button[aria-current='page'] .key { color: rgba(255, 255, 255, 0.75); }
 .page-fade { animation: page-in 0.22s var(--ease); }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* ---------- explore layout ---------- */
+.explore-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: stretch; }
+.chart-toolbar { justify-content: flex-end; margin-bottom: 4px; }
+.side-panel { position: relative; min-height: 420px; padding: 0; }
+.side-panel-inner { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.side-tabs { margin: 12px 12px 4px; display: flex; }
+.side-tabs button { flex: 1; justify-content: center; }
+.side-panel-body { flex: 1; overflow: auto; padding: 10px 16px 14px; }
+@media (max-width: 1180px) {
+  .explore-grid { grid-template-columns: minmax(0, 1fr); }
+  .side-panel { min-height: 0; }
+  .side-panel-inner { position: static; }
+}

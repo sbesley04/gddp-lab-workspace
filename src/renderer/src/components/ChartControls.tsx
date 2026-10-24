@@ -100,10 +100,25 @@ export interface Bounds {
   yMax: number | null
 }
 
-export function AxisBoundsEditor({ value, onChange, showX }: { value: Bounds; onChange: (b: Bounds) => void; showX: boolean }) {
+export interface AxisScales {
+  x?: { value: 'linear' | 'log'; disabled: string | null }
+  y: { value: 'linear' | 'log'; disabled: string | null }
+}
+
+export function AxisBoundsEditor({ value, onChange, showX, scales, onScale }: { value: Bounds; onChange: (b: Bounds) => void; showX: boolean; scales?: AxisScales; onScale?: (axis: 'x' | 'y', v: 'linear' | 'log') => void }) {
   const [draft, setDraft] = useState<Record<keyof Bounds, string>>({ xMin: '', xMax: '', yMin: '', yMax: '' })
   const [open, setOpen] = useState(false)
   const active = Object.values(value).some((v) => v !== null)
+  const logOn = scales ? scales.y.value === 'log' || scales.x?.value === 'log' : false
+  const scaleRow = (axis: 'x' | 'y', st: { value: 'linear' | 'log'; disabled: string | null }) => (
+    <div className="row" style={{ justifyContent: 'space-between' }}>
+      <span className="small" style={{ fontWeight: 600 }}>{axis.toUpperCase()} scale</span>
+      <div className="seg" role="group" aria-label={`${axis.toUpperCase()} axis scale`} title={st.disabled ?? undefined}>
+        <button aria-pressed={st.value === 'linear'} onClick={() => onScale?.(axis, 'linear')}>Linear</button>
+        <button aria-pressed={st.value === 'log'} disabled={!!st.disabled} onClick={() => onScale?.(axis, 'log')}>Log</button>
+      </div>
+    </div>
+  )
   const parse = (s: string) => (s.trim() === '' ? null : Number(s))
   const parsed = { xMin: parse(draft.xMin), xMax: parse(draft.xMax), yMin: parse(draft.yMin), yMax: parse(draft.yMax) }
   const invalid =
@@ -125,13 +140,22 @@ export function AxisBoundsEditor({ value, onChange, showX }: { value: Bounds; on
       }}
     >
       <Popover.Trigger asChild>
-        <button className="btn sm" style={active ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined} data-testid="axis-bounds">
-          <Ruler size={14} /> Axes{active ? ' (fixed)' : ''}
+        <button className="btn sm" style={active || logOn ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined} data-testid="axis-bounds">
+          <Ruler size={14} /> Axes{active ? ' · fixed' : ''}{logOn ? ' · log' : ''}
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content className="popover" align="end" sideOffset={8} style={{ width: 300 }}>
           <div className="stack" style={{ gap: 10 }}>
+            {scales && (
+              <>
+                <strong>Scale</strong>
+                {showX && scales.x && scaleRow('x', scales.x)}
+                {scaleRow('y', scales.y)}
+                <p className="small muted" style={{ margin: 0 }}>Log scales need positive values; non-positive values are listed under the chart.</p>
+                <hr className="div" style={{ margin: 0 }} />
+              </>
+            )}
             <strong>Axis bounds</strong>
             {showX && <div className="grid cols-2" style={{ gap: 8 }}>{field('xMin', 'X min')}{field('xMax', 'X max')}</div>}
             <div className="grid cols-2" style={{ gap: 8 }}>{field('yMin', 'Y min')}{field('yMax', 'Y max')}</div>

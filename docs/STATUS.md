@@ -44,3 +44,15 @@ Verified on 2026-10-22 on macOS 26.5 (Apple Silicon), Node 24.14, Electron 44.9.
 | On-demand statistics with p-values, CIs and effect sizes; TSV, APA and methods-text copy | `tests/inference.test.ts`: every statistic matches R 4.3 reference values; E2E checks the panel appears only after Compute |
 | Compare whiteboard (drag, resize, notes, styles, SVG/PNG export, persists across restart) | `tests/features.test.ts` (service), E2E (add views, drag, restart, layout kept, SVG export contains both charts) |
 | Older saved views keep working | `normalizeChart` and schema test with a 0.1-style spec |
+
+## 0.3.0 installers (2026-10-25)
+
+UI changes since 0.2.0: readable callouts and toasts, single-form metadata editing, compact Overview, Explore layout with tabbed side panel, first-run tour, virtualised wide tables, Compare board placement fixes, static background.
+
+| Artefact | Smoke test |
+| --- | --- |
+| `BARI-CNS Research Workspace-0.3.0-arm64.dmg` | Mounted, app copied out, `--self-test` passed (6/6 steps incl. UI load) on macOS 26.5 Apple Silicon, 5 s |
+| `BARI-CNS Research Workspace-0.3.0.dmg` (x64) | Same, under Rosetta 2, 60 s; not tested on Intel hardware |
+| `BARI-CNS-Research-Workspace-Setup-0.3.0.exe` | Cross-built; valid NSIS installer, fuses verified on the unpacked exe; **not run on Windows** |
+
+All builds are unsigned (macOS ad-hoc signature valid; Gatekeeper rejects as expected). Each bundle was checked to contain the 0.3.0 code.

@@ -419,6 +419,8 @@ app.whenReady().then(async () => {
   installSecurity()
   const st = process.argv.indexOf('--self-test')
   if (st !== -1) {
+    // The self-test uses a hidden window; keep macOS App Nap from suspending it.
+    powerSaveBlocker.start('prevent-app-suspension')
     registerIpc()
     const code = await runSelfTest(process.argv[st + 1], demoWorkbookPath(), uiSmoke)
     app.exit(code)

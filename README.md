@@ -4,7 +4,7 @@ An offline desktop app (macOS and Windows) for exploring BARI-CNS study spreadsh
 
 It is a research tool for **exploration**. Statistical tests run only when you ask for them, are labelled exploratory, and are validated against R. The app makes no causal or efficacy claims and gives no clinical recommendations.
 
-## What works in this release (0.2.0)
+## What works in this release (0.3.0)
 
 | Area | Status |
 | --- | --- |
@@ -17,6 +17,7 @@ It is a research tool for **exploration**. Statistical tests run only when you a
 | Forced axis bounds; chart style editor with presets (publication, high contrast, colour-blind safe, greyscale) | Working (0.2) |
 | On-demand statistics: CIs, normality, Welch t / Mann–Whitney / ANOVA / Kruskal–Wallis with effect sizes and Holm-adjusted pairwise tests, Pearson / Spearman / Kendall, linear fit with confidence and prediction bands; copyable tables, APA summaries and methods text | Working (0.2), validated against R 4.3 |
 | Suggested names for saved views; Compare whiteboard of saved views and notes, exportable as SVG/PNG | Working (0.2) |
+| First-run tour (replayable), ⌘K search and ⌘1–⌘6 shortcuts; virtualised wide tables with whole-area column adding | Working (0.3) |
 | Saved views pinned to dataset and metadata versions; reproduced after restart | Working |
 | Research-context ZIP (six files, pseudonymous keys, checksums, preview) | Working |
 | Backup and verified restore | Working |

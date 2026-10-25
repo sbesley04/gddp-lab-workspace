@@ -48,7 +48,7 @@ build/          icon, entitlements
 | `npm run dev` | Run with hot reload |
 | `npm run typecheck` | TypeScript |
 | `npm test` | Vitest: stats against hand-computed values, values, colours, CSV, importer fixtures, full service workflow |
-| `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Prints counts only. Never commit its output. |
+| `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted) and screenshots of every screen in light and dark mode |
 | `npm run fixtures` | Regenerates the synthetic fixtures (needs Python 3 and openpyxl) |
 | `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
@@ -74,6 +74,10 @@ Playwright cannot drive a packaged build, because the `EnableNodeCliInspectArgum
 - File paths come only from native dialogs in the main process. The renderer gets opaque tokens.
 - Fuses: RunAsNode off, NODE_OPTIONS off, inspect off, ASAR integrity on, only-load-from-ASAR on, file-protocol privileges off.
 - Workbook text and comments are parsed as data and never interpreted as instructions. XML parts containing a DOCTYPE are rejected, and ZIP expansion is size-bounded.
+
+## Study-specific material stays local
+
+Notes about a real study workbook (collaborator names, file names, participant references, counts) belong in `docs/private/` and expected counts in `tests/reference/expected.local.json`; both are git-ignored. The expectations file accepts `sheet`, `participants`, `rows`, `columns`, `measures`, `events`, `blankColumns`, `comments`, `richHeaders`, `flagCounts` and `aliasInconsistent`, all optional.
 
 ## Testing notes
 

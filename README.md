@@ -22,7 +22,7 @@ It is a research tool for **exploration**. Statistical tests run only when you a
 | Research-context ZIP (six files, pseudonymous keys, checksums, preview) | Working |
 | Backup and verified restore | Working |
 | macOS installers (arm64 and x64 DMG/ZIP, unsigned) | Built and smoke-tested on this Mac |
-| Windows installer (NSIS x64, unsigned) | Built by cross-compiling; **not run on Windows** |
+| Windows installer (NSIS x64, unsigned) | App self-test passes on Windows in CI (GitHub Actions); the installer's own install wizard has not been run by hand |
 
 See [docs/STATUS.md](docs/STATUS.md) for each acceptance criterion and how it was verified.
 

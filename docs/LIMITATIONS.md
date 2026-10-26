@@ -27,7 +27,7 @@
 | --- | --- |
 | macOS arm64 | DMG installed (copied from the mounted image) and `--self-test` passed, including UI load |
 | macOS x64 | DMG installed and `--self-test` passed under Rosetta 2 on Apple Silicon. Not tested on Intel hardware. |
-| Windows x64 | NSIS installer cross-built on macOS. **Not installed or run**, because no Windows machine was available. Use the CI workflow or a Windows PC with `--self-test` to verify. |
+| Windows x64 | CI (GitHub Actions, Windows Server) builds the app, passes all unit tests and the packaged `--self-test` (including UI load). The NSIS install wizard itself has not been run by hand on Windows 10/11. |
 | Signing | All builds are **unsigned**. macOS shows a Gatekeeper warning (right-click → Open); Windows shows SmartScreen. See [SIGNING.md](SIGNING.md). |
 
 ## Known gaps

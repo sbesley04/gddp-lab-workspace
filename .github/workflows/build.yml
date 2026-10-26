@@ -1,8 +1,11 @@
 # Builds and smoke-tests unsigned installers on macOS and Windows. Not yet run: this repository has no remote.
 name: build
 on:
+  # Documentation-only changes do not need a full build (macOS minutes bill at 10x on private repos).
   push:
+    paths-ignore: ['**.md', 'docs/**']
   pull_request:
+    paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
 jobs:
   build:

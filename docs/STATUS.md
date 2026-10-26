@@ -56,3 +56,7 @@ UI changes since 0.2.0: readable callouts and toasts, single-form metadata editi
 | `BARI-CNS-Research-Workspace-Setup-0.3.0.exe` | Cross-built; valid NSIS installer, fuses verified on the unpacked exe; **not run on Windows** |
 
 All builds are unsigned (macOS ad-hoc signature valid; Gatekeeper rejects as expected). Each bundle was checked to contain the 0.3.0 code.
+
+## Windows verification (2026-10-26)
+
+GitHub Actions run 40348578383 on `windows-latest`: type check, all 72 unit tests and the packaged `--self-test` passed (create project, import, saved-view reproduction, export checksums, backup/restore, UI load, temporary-file removal). The same run passed on macOS. This found and fixed a Windows-only bug: folders containing the read-only source snapshot could not be deleted (affecting re-opening the synthetic demo and failed-restore cleanup). Still untested: running the NSIS install wizard by hand on Windows 10/11.

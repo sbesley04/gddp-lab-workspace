@@ -1,6 +1,7 @@
 // Electron main process: hardened window, offline enforcement, validated IPC.
 import { app, BrowserWindow, dialog, ipcMain, powerSaveBlocker, protocol, session, nativeTheme, type IpcMainInvokeEvent } from 'electron'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { removeTree } from './fsutil'
 import { join, normalize, sep, basename, dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { schemas, type IpcResult } from '@shared/ipc'
@@ -107,7 +108,7 @@ function openDemo() {
     current.close()
     current = null
   }
-  rmSync(base, { recursive: true, force: true })
+  removeTree(base)
   mkdirSync(base, { recursive: true })
   const p = Project.create(base, 'Synthetic demo')
   const bytes = new Uint8Array(readFileSync(demoWorkbookPath()))

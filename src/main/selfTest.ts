@@ -1,6 +1,7 @@
 // `--self-test [outDir]`: verifies an installed build end to end on bundled SYNTHETIC data in a temp folder.
 // Useful for smoke-testing installers (including on Windows) without touching real projects.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs'
+import { removeTree } from './fsutil'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { unzipSync, strFromU8 } from 'fflate'
@@ -74,7 +75,14 @@ export async function runSelfTest(outDir: string | undefined, demoPath: string, 
     code = 1
     if (!steps.some((s) => !s.ok)) steps.push({ step: 'unexpected error', ok: false, detail: (e as Error).message })
   } finally {
-    rmSync(work, { recursive: true, force: true })
+    // Cleanup is checked too: a temp folder that cannot be removed is a real bug (e.g. read-only files on Windows).
+    try {
+      removeTree(work)
+      check('temporary files removed', true)
+    } catch (e) {
+      code = 1
+      steps.push({ step: 'temporary files removed', ok: false, detail: (e as Error).message })
+    }
   }
   const report = { app: 'BARI-CNS Research Workspace', version: APP_VERSION, platform: `${process.platform}-${process.arch}`, at: new Date().toISOString(), ok: code === 0, steps }
   const text = JSON.stringify(report, null, 2)

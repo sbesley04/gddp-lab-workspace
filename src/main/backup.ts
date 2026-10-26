@@ -1,6 +1,7 @@
 // Consistent project backups (SQLite online backup + source snapshots + checksummed manifest) and verified restore.
 import { backup as sqliteBackup } from 'node:sqlite'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, chmodSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync, chmodSync, mkdtempSync } from 'node:fs'
+import { removeTree } from './fsutil'
 import { join, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { strToU8, unzipSync, zipSync, strFromU8 } from 'fflate'
@@ -52,7 +53,7 @@ export async function createBackup(project: Project, destPath: string, author: s
     project.audit('project.backup', { file: basename(destPath), files: manifest.files.length }, author)
     return manifest
   } finally {
-    rmSync(work, { recursive: true, force: true })
+    removeTree(work)
   }
 }
 
@@ -107,8 +108,7 @@ export function restoreBackup(zipPath: string, parentDir: string, folderName?: s
     }
     return { dir, manifest, verified: { files: manifest.files.length, datasets: manifest.datasets.length, integrity } }
   } catch (e) {
-    for (const f of manifest.files) if (f.path.startsWith('sources/')) try { chmodSync(join(dir, f.path), 0o644) } catch { /* ignore */ }
-    rmSync(dir, { recursive: true, force: true })
+    removeTree(dir)
     throw e
   }
 }

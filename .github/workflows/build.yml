@@ -11,6 +11,8 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # Hard cap so a hung step can never burn GitHub's 6-hour default (Windows minutes bill at 2x on private repos).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,6 +33,7 @@ jobs:
         run: npx electron-builder --win --x64 --publish never
       - name: Packaged self-test (macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 6
         run: |
           mkdir -p st
           "release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st"
@@ -38,11 +41,22 @@ jobs:
       - name: Packaged self-test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        timeout-minutes: 6
+        env:
+          ELECTRON_ENABLE_LOGGING: '1'
         run: |
           New-Item -ItemType Directory -Force st | Out-Null
-          $p = Start-Process -FilePath "release/win-unpacked/BARI-CNS Research Workspace.exe" -ArgumentList "--self-test", "$PWD/st" -Wait -PassThru
-          Get-Content st/bari-self-test.json
+          # Wait for the app process itself (not its helper processes), with a 5-minute limit.
+          $p = Start-Process -FilePath "release/win-unpacked/BARI-CNS Research Workspace.exe" -ArgumentList "--self-test", "`"$PWD\st`"" -PassThru -RedirectStandardOutput st/stdout.txt -RedirectStandardError st/stderr.txt
+          $finished = $p.WaitForExit(300000)
+          if (-not $finished) { taskkill /T /F /PID $p.Id | Out-Null }
+          Write-Host '--- app stdout'; Get-Content st/stdout.txt -ErrorAction SilentlyContinue
+          Write-Host '--- app stderr'; Get-Content st/stderr.txt -ErrorAction SilentlyContinue | Select-Object -Last 40
+          Write-Host '--- report'; Get-Content st/bari-self-test.json -ErrorAction SilentlyContinue
+          if (-not $finished) { Write-Error 'Self-test did not finish within 5 minutes'; exit 1 }
+          $p.WaitForExit()
           if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+          if (-not (Test-Path st/bari-self-test.json)) { Write-Error 'No self-test report was written'; exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.os }}

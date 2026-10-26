@@ -14,11 +14,26 @@ import { computeSelection } from '@core/selection'
 import { emptyFilter } from '@core/types'
 import { APP_VERSION } from './version'
 
+/** Writes a failure report and exits; used by the crash handler and watchdog in index.ts. */
+export function abortSelfTest(outDir: string | undefined, reason: string): never {
+  const report = { app: 'BARI-CNS Research Workspace', version: APP_VERSION, platform: `${process.platform}-${process.arch}`, at: new Date().toISOString(), ok: false, steps: [{ step: 'self-test aborted', ok: false, detail: reason }] }
+  const text = JSON.stringify(report, null, 2)
+  try {
+    if (outDir && existsSync(outDir) && statSync(outDir).isDirectory()) writeFileSync(join(outDir, 'bari-self-test.json'), text)
+  } catch {
+    /* fall through to stdout */
+  }
+  process.stdout.write(text + '\n')
+  process.exit(2)
+}
+
 export async function runSelfTest(outDir: string | undefined, demoPath: string, uiSmoke?: () => Promise<string>): Promise<number> {
   const steps: { step: string; ok: boolean; detail?: string }[] = []
   const work = mkdtempSync(join(tmpdir(), 'bari-selftest-'))
   const check = (step: string, ok: boolean, detail?: string) => {
     steps.push({ step, ok, detail })
+    // Progress on stdout so CI logs show exactly where a run stops.
+    process.stdout.write(`[self-test] ${ok ? 'ok  ' : 'FAIL'} ${step}${detail ? ` — ${detail}` : ''}\n`)
     if (!ok) throw new Error(`${step} failed${detail ? `: ${detail}` : ''}`)
   }
   let code = 0

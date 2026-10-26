@@ -14,7 +14,7 @@ import * as boards from './boards'
 import { listExports, previewContextExport, writeContextExport } from './exportService'
 import { createBackup, restoreBackup } from './backup'
 import { APP_VERSION } from './version'
-import { runSelfTest } from './selfTest'
+import { runSelfTest, abortSelfTest } from './selfTest'
 
 const isDev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
 const mainDir = import.meta.dirname
@@ -421,6 +421,13 @@ app.whenReady().then(async () => {
   if (st !== -1) {
     // The self-test uses a hidden window; keep macOS App Nap from suspending it.
     powerSaveBlocker.start('prevent-app-suspension')
+    // Never hang on a headless machine: crashes and timeouts write a failure report and exit
+    // (an uncaught error would otherwise show an invisible modal dialog and wait forever).
+    const outDir = process.argv[st + 1]
+    process.on('uncaughtException', (e) => abortSelfTest(outDir, `uncaught exception: ${e?.stack ?? e}`))
+    process.on('unhandledRejection', (e) => abortSelfTest(outDir, `unhandled rejection: ${(e as Error)?.stack ?? e}`))
+    setTimeout(() => abortSelfTest(outDir, 'timed out after 180 s'), 180_000).unref()
+    process.stdout.write(`[self-test] starting ${APP_VERSION} on ${process.platform}-${process.arch}\n`)
     registerIpc()
     const code = await runSelfTest(process.argv[st + 1], demoWorkbookPath(), uiSmoke)
     app.exit(code)

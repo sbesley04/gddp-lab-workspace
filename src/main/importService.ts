@@ -6,6 +6,7 @@ import { readWorkbook, getCell, type XWorkbook } from '@importer/ooxml'
 import { readCsv } from '@importer/csv'
 import { buildImportModel, cellText, previewSheets, suggestMapping, type ImportMapping, type ImportModel, type SheetPreview } from '@importer/model'
 import { normalizeHeader, columnLetter } from '@core/hash'
+import { orderVisits } from '@core/visitOrder'
 import type { Project } from './project'
 import { APP_VERSION } from './version'
 
@@ -162,14 +163,14 @@ export function commitImport(project: Project, src: ParsedSource, model: ImportM
         id, versionNumber, sf.id, model.sheetName, Number(mapRes.lastInsertRowid), JSON.stringify(m), JSON.stringify(report),
         model.legend ? JSON.stringify(model.legend) : null, JSON.stringify(model.segments), contentHash, APP_VERSION, now, opts.authorLabel
       )
-      // Visits in first-appearance order. Names only; no dates are assigned.
+      // Visits in first-appearance order, with numbered visits ("Month 2" < "Month 6") sorted numerically. No dates are assigned.
+      const seen: string[] = []
+      for (const r of model.rows) if (!seen.includes(r.eventName)) seen.push(r.eventName)
       const visitIds = new Map<string, string>()
-      for (const r of model.rows) {
-        if (!visitIds.has(r.eventName)) {
-          const vid = randomUUID()
-          visitIds.set(r.eventName, vid)
-          db.run('INSERT INTO visit(id, dataset_version_id, event_name, sort_order, actual_date) VALUES (?,?,?,?,NULL)', vid, id, r.eventName, visitIds.size)
-        }
+      for (const name of orderVisits(seen)) {
+        const vid = randomUUID()
+        visitIds.set(name, vid)
+        db.run('INSERT INTO visit(id, dataset_version_id, event_name, sort_order, actual_date) VALUES (?,?,?,?,NULL)', vid, id, name, visitIds.size)
       }
       const pids = new Map<string, number>()
       model.rows.forEach((r, ri) => {

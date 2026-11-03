@@ -12,6 +12,8 @@ import { saveView, getView } from './views'
 import { writeContextExport } from './exportService'
 import { createBackup, restoreBackup } from './backup'
 import { computeSelection } from '@core/selection'
+import { pcaPlot } from '@core/pca'
+import { correlationFromSelection } from '@core/matrix'
 import { emptyFilter } from '@core/types'
 import { APP_VERSION } from './version'
 
@@ -63,6 +65,11 @@ export async function runSelfTest(outDir: string | undefined, demoPath: string, 
     const files = unzipSync(new Uint8Array(readFileSync(zipPath)))
     const manifest = JSON.parse(strFromU8(files['manifest.json']))
     check('context export checksums', manifest.files.every((f: any) => sha256(files[f.name]) === f.sha256))
+    check('analysis log in export', strFromU8(files['analysis_log.R']).includes(`# chain signature: ${manifest.analysisLog.signature}`))
+    const numeric = snap.variables.filter((v) => v.role === 'measure' && v.kind === 'numeric').slice(0, 6)
+    const plot = pcaPlot(sel, numeric, null)
+    const corr = correlationFromSelection(sel, numeric, 'spearman')
+    check('PCA and correlation matrix compute', !!plot.result && corr.r.every((row) => row.every((r) => r === null || Math.abs(r) <= 1)), plot.result ? `${plot.result.n} complete rows, ${numeric.length} variables` : plot.error ?? '')
     const backupPath = join(work, 'backup.zip')
     await createBackup(p, backupPath, null)
     p.close()

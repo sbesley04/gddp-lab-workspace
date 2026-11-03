@@ -253,7 +253,7 @@ export interface ChartAnalysis {
 }
 
 export interface ChartConfig {
-  type: 'distribution' | 'scatter' | 'table' | 'pca'
+  type: 'distribution' | 'scatter' | 'table' | 'pca' | 'correlation' | 'heatmap'
   measureKey: string | null
   compareKey: string | null
   groupKey: string | null
@@ -265,8 +265,12 @@ export interface ChartConfig {
   xScale: 'linear' | 'log'
   yScale: 'linear' | 'log'
   tableColumns: string[]
-  /** Variables entering the PCA (chart type 'pca'). */
-  pcaKeys?: string[]
+  /** Variable set shared by the multi-variable views (PCA, correlation matrix, heatmap). */
+  variableSet?: string[]
+  /** Correlation matrix coefficient. */
+  corrMethod?: 'pearson' | 'spearman'
+  /** Distribution view drawn as box plot with points, or as a histogram. */
+  distStyle?: 'box' | 'histogram'
   /** Forced axis bounds; null = automatic. Values outside are counted, never silently dropped. */
   xMin?: number | null
   xMax?: number | null

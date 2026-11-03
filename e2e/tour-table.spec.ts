@@ -64,6 +64,7 @@ test('PCA is computed only on request, and shows loadings and variance explained
   await page.getByText('Open synthetic demo').click()
   await page.getByText('Outstanding metadata tasks').waitFor({ timeout: 20000 })
   await page.getByRole('button', { name: 'Explore data' }).first().click()
+  await page.getByTestId('type-many').click()
   await page.getByTestId('type-pca').click()
   await expect(page.getByTestId('compute-pca')).toBeDisabled()
   for (const area of ['AQ NULISA', 'NP']) {
@@ -80,5 +81,48 @@ test('PCA is computed only on request, and shows loadings and variance explained
     await page.getByTestId('history').click()
     await expect(page.getByText('prcomp(pca_data')).toBeVisible()
   }
+  await app.close()
+})
+
+test('correlation matrix, heatmap and histogram share settings and record themselves in the log', async () => {
+  const { app, page } = await launch(mkdtempSync(join(tmpdir(), 'bari-matrix-')))
+  await page.getByText('Open synthetic demo').click()
+  await page.getByText('Outstanding metadata tasks').waitFor({ timeout: 20000 })
+  await page.getByRole('button', { name: 'Explore data' }).first().click()
+  const shots = join(import.meta.dirname, '..', 'test-results', 'screens')
+
+  // Histogram of the default measure, grouped
+  await page.getByTestId('dist-histogram').click()
+  await page.getByTestId('group-picker').click()
+  await page.keyboard.type('Biological_Sex')
+  await page.keyboard.press('Enter')
+  await page.getByTestId('history').click()
+  await expect(page.getByText(/hist\(df\[\[.*breaks = seq\(/)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.screenshot({ path: join(shots, 'histogram.png') })
+
+  // Correlations over two areas; the same set feeds the heatmap and PCA
+  await page.getByTestId('type-many').click()
+  await expect(page.getByTestId('type-correlation')).toHaveAttribute('aria-pressed', 'true')
+  for (const area of ['AQ NULISA', 'NP']) {
+    await page.getByTestId('corr-add').click()
+    await page.getByTestId(`corr-add-area-${area}`).click()
+  }
+  await expect(page.getByTestId('corr-result')).toBeVisible()
+  await expect(page.getByTestId('corr-result').getByText(/Pairwise complete observations: n = .*no p-values/)).toBeVisible()
+  await page.screenshot({ path: join(shots, 'correlation.png') })
+
+  await page.getByTestId('type-heatmap').click()
+  await expect(page.getByTestId('heat-result')).toBeVisible()
+  await page.getByTestId('color-picker').click()
+  await page.keyboard.type('Biological_Sex')
+  await page.keyboard.press('Enter')
+  await page.getByTestId('history').click()
+  await expect(page.getByText('heat <- scale(', { exact: false })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.screenshot({ path: join(shots, 'heatmap.png') })
+
+  await page.getByTestId('type-pca').click()
+  await expect(page.getByTestId('compute-pca')).toBeEnabled()
   await app.close()
 })

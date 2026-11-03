@@ -56,7 +56,7 @@ export const chartStyle = z.object({
 })
 
 export const chartConfig = z.object({
-  type: z.enum(['distribution', 'scatter', 'table', 'pca']),
+  type: z.enum(['distribution', 'scatter', 'table', 'pca', 'correlation', 'heatmap']),
   measureKey: z.string().max(200).nullable(),
   compareKey: z.string().max(200).nullable(),
   groupKey: z.string().max(200).nullable(),
@@ -66,7 +66,9 @@ export const chartConfig = z.object({
   xScale: z.enum(['linear', 'log']),
   yScale: z.enum(['linear', 'log']),
   tableColumns: z.array(z.string().max(200)).max(2000),
-  pcaKeys: z.array(z.string().max(200)).max(2000).optional(),
+  variableSet: z.array(z.string().max(200)).max(2000).optional(),
+  corrMethod: z.enum(['pearson', 'spearman']).optional(),
+  distStyle: z.enum(['box', 'histogram']).optional(),
   xMin: z.number().finite().nullable().optional(),
   xMax: z.number().finite().nullable().optional(),
   yMin: z.number().finite().nullable().optional(),

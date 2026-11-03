@@ -47,7 +47,10 @@ export function normalizeChart(c: ChartConfig): Required<ChartConfig> {
     yMin: c.yMin ?? null,
     yMax: c.yMax ?? null,
     colorKey: c.colorKey ?? null,
-    pcaKeys: c.pcaKeys ?? [],
+    // `pcaKeys` was the name of the variable set before it was shared by PCA, correlation and heatmap views.
+    variableSet: c.variableSet ?? (c as { pcaKeys?: string[] }).pcaKeys ?? [],
+    corrMethod: c.corrMethod ?? 'spearman',
+    distStyle: c.distStyle ?? 'box',
     transformMeasure: c.transformMeasure ?? 'none',
     transformCompare: c.transformCompare ?? 'none',
     style: { ...defaultStyle(), ...(c.style ?? {}) },

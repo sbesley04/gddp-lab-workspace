@@ -58,7 +58,15 @@ From the lab meeting notes (R command history, edit signatures, PCA, covariates,
 | Display transforms (log2, log10, centre, z-score, rank) | `tests/transforms.test.ts`: hand-computed values; z-score and rank checked against R |
 | Exploratory PCA (correlation matrix, complete cases, Compute on demand; also on Compare boards) | `tests/pca.test.ts` against R `prcomp(scale. = TRUE)` (`tools/pca_reference.R`), to about 1e-8; E2E computes PCA on the demo data |
 
-Not done: heatmap, correlation matrix, histogram/violin and visit-trajectory charts; shape-by and facet-by (shapes already mean QC flags); covariate adjustment; PERMANOVA. The real-workbook reference check (`npm run test:reference`, counts only) still passes, but the new features have not been exercised on the real workbook, and no packaged build or `--self-test` has been run with them.
+| Histogram (Freedman–Diaconis, exact breaks in the log) | `tests/transforms.test.ts` (counts match R `hist(right = FALSE)`); E2E |
+| Correlation matrix (Spearman/Pearson, pairwise complete, no p-values) and participant × measure heatmap, sharing one variable set with PCA | `tests/matrix.test.ts` against R `cor(use = "pairwise.complete.obs")` with ties and missing values (`tools/multivariate_reference.R`); heatmap ordering and z-scores; E2E |
+| PCA gap suggestion (drop variables with gaps in more than 10% of rows when that regains participants) | `tests/pca.test.ts` |
+
+Real workbook (`npm run test:reference`, counts only): import and export checks pass. The correlation matrix, heatmap, PCA, histograms and analysis log run on the largest numeric area (157 variables) without invalid values, and the log contains neither participant IDs nor the file name. Complete-case PCA over that whole area keeps only 13 of 40 rows, which is what the gap suggestion is for.
+
+Packaged build (macOS arm64, `--dir`, unsigned): `--self-test` passes all steps, including the analysis log in the export and a PCA and correlation run. `npm run e2e:packaged` cannot work by design (the inspect fuse is disabled); it now fails at once with that explanation instead of hanging.
+
+Not done: visit-trajectory charts (the reference data has one visit); violin plots; shape-by and facet-by (shapes already mean QC flags); covariate adjustment; PERMANOVA.
 
 ## 0.3.0 installers (2026-10-25)
 

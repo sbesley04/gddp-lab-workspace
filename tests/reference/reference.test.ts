@@ -14,7 +14,12 @@ import { buildSnapshot } from '../../src/main/snapshot'
 import { writeContextExport } from '../../src/main/exportService'
 import { createBackup, restoreBackup } from '../../src/main/backup'
 import { computeSelection } from '@core/selection'
-import { emptyFilter } from '@core/types'
+import { emptyFilter, type ChartConfig } from '@core/types'
+import { pcaPlot } from '@core/pca'
+import { correlationFromSelection, heatmapData } from '@core/matrix'
+import { histogramBins, numericColumn } from '@core/chartData'
+import { buildProvenance } from '@core/provenance'
+import { basename } from 'node:path'
 
 /** Shape of the local expectations file (see docs/DEVELOPING.md). Every field is optional. */
 interface Expectations {
@@ -88,6 +93,51 @@ run('reference workbook through the project database', () => {
     if (E.measures !== undefined) expect(snap.variables.filter((v) => v.role === 'measure').length).toBe(E.measures)
   })
 
+  it('runs the multi-variable views and histograms on the largest numeric area without invalid values', () => {
+    const spec = { datasetVersionId, visitIds: 'all' as const, participantIds: null, qc: { exclude: [] }, filter: emptyFilter() }
+    const sel = computeSelection(snap, spec)
+    const numeric = snap.variables.filter((v) => v.role === 'measure' && (v.kind === 'numeric' || v.kind === 'mixed'))
+    const byArea = new Map<string, typeof numeric>()
+    for (const v of numeric) byArea.set(v.meta.area.value ?? 'Unassigned', [...(byArea.get(v.meta.area.value ?? 'Unassigned') ?? []), v])
+    const vars = [...byArea.values()].sort((a, b) => b.length - a.length)[0]
+    expect(vars.length).toBeGreaterThan(1)
+
+    for (const method of ['pearson', 'spearman'] as const) {
+      const m = correlationFromSelection(sel, vars, method)
+      m.r.forEach((row, i) => row.forEach((r, j) => {
+        expect(r === null || (r >= -1 && r <= 1)).toBe(true)
+        expect(r).toBe(m.r[j][i])
+        expect(m.n[i][j]).toBeLessThanOrEqual(sel.rows.length)
+      }))
+    }
+    const h = heatmapData(sel, vars, null)
+    expect(h.rows.length).toBe(sel.rows.length)
+    expect(h.z.flat().every((z) => z === null || Number.isFinite(z))).toBe(true)
+
+    const plot = pcaPlot(sel, vars, null)
+    if (plot.result) {
+      const total = plot.result.cumulative[plot.result.k - 1]
+      expect(total).toBeLessThanOrEqual(1 + 1e-9)
+      if (plot.result.k === plot.result.p) expect(total).toBeCloseTo(1, 9)
+      expect(plot.result.scores.flat().every(Number.isFinite)).toBe(true)
+      expect(plot.result.n + plot.input.dropped).toBe(sel.rows.length)
+    } else expect(plot.error).toMatch(/at least 3|no spread/)
+    console.log(`reference PCA: ${vars.length} variables, ${plot.result ? `${plot.result.n} complete rows, ${plot.result.k} components` : `no result (${plot.input.matrix.length} complete rows)`}, ${plot.input.dropped} rows left out`)
+
+    for (const v of vars) {
+      const xs = numericColumn(sel, v.index)
+      const b = histogramBins(xs)
+      expect(b ? b.counts.reduce((a, c) => a + c, 0) : 0).toBe(xs.length)
+    }
+
+    // The analysis log for this view names neither participants nor the source file.
+    const chart: ChartConfig = { type: 'pca', measureKey: null, compareKey: null, groupKey: null, xScale: 'linear', yScale: 'linear', tableColumns: [], variableSet: vars.map((v) => v.key) }
+    const log = buildProvenance({ snapshot: snap, spec, chart, sel, appVersion: 'reference' }).text
+    expect(log).not.toContain(basename(path!))
+    expect(log).not.toContain('reference.xlsx')
+    for (const r of snap.rows) if (/[A-Za-z]/.test(r.participantId)) expect(log).not.toContain(r.participantId)
+  })
+
   it('exports a checksummed pseudonymous package without leaking IDs, and backs up losslessly', async () => {
     const measure = snap.variables.find((v) => v.role === 'measure' && v.kind === 'numeric' && !v.quasiIdentifier)!
     const spec = { datasetVersionId, visitIds: 'all' as const, participantIds: null, qc: { exclude: [] }, filter: emptyFilter() }
@@ -98,6 +148,9 @@ run('reference workbook through the project database', () => {
     const data = strFromU8(files['selected_data.csv'])
     expect(data.trim().split('\r\n').length - 1).toBe(sel.rows.length)
     for (const r of snap.rows) expect(data).not.toMatch(new RegExp(`(^|\\r\\n)${r.participantId},`))
+    const log = strFromU8(files['analysis_log.R'])
+    expect(log).toContain(`# selection result: ${sel.rows.length} row(s)`)
+    expect(log).not.toContain('reference.xlsx')
     const b = join(dir, 'backup.zip')
     await createBackup(p, b, null)
     const restored = restoreBackup(b, dir, 'restored')

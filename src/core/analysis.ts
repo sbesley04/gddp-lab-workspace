@@ -266,7 +266,8 @@ export function hedgesG(a: number[], b: number[]): HedgesG | null {
   return { g, ci: { lower: g - z * se, upper: g + z * se, level: CONF_LEVEL } }
 }
 
-function ranks(values: number[]): { r: number[]; tieSizes: number[] } {
+/** Average ranks (ties share their mean rank) and tie-group sizes. */
+export function ranks(values: number[]): { r: number[]; tieSizes: number[] } {
   const idx = values.map((v, i) => [v, i] as const).sort((p, q) => p[0] - q[0])
   const r = new Array<number>(values.length)
   const tieSizes: number[] = []
@@ -457,7 +458,7 @@ export interface Correlation {
   method: string
 }
 
-function pearsonR(x: number[], y: number[]): number {
+export function pearsonR(x: number[], y: number[]): number {
   const mx = meanOf(x)!
   const my = meanOf(y)!
   let sxy = 0

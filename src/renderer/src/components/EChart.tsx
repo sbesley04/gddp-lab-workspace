@@ -1,11 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import * as echarts from 'echarts/core'
-import { ScatterChart, BoxplotChart, LineChart, CustomChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, LegendComponent } from 'echarts/components'
+import { ScatterChart, BoxplotChart, LineChart, CustomChart, BarChart, HeatmapChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, LegendComponent, VisualMapComponent } from 'echarts/components'
 import { SVGRenderer } from 'echarts/renderers'
 import type { EChartsCoreOption } from 'echarts/core'
 
-echarts.use([ScatterChart, BoxplotChart, LineChart, CustomChart, BarChart, GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, LegendComponent, SVGRenderer])
+echarts.use([ScatterChart, BoxplotChart, LineChart, CustomChart, BarChart, HeatmapChart, VisualMapComponent, GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, LegendComponent, SVGRenderer])
 
 export interface EChartHandle {
   svg: () => string

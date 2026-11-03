@@ -1,4 +1,4 @@
-// PCA checked against R prcomp(scale. = TRUE) (tools/pca_reference.R → pca_reference.json), plus input handling.
+// PCA checked against R prcomp(scale. = TRUE) (tools/multivariate_reference.R → multivariate_reference.json), plus input handling.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -8,7 +8,7 @@ import { computeSelection } from '@core/selection'
 import { emptyFilter } from '@core/types'
 import type { DatasetSnapshot, VariableInfo } from '@core/types'
 
-const R = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'pca_reference.json'), 'utf8'))
+const R = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'multivariate_reference.json'), 'utf8'))
 const close = (got: number, want: number, tol = 1e-9) => expect(Math.abs(got - want)).toBeLessThanOrEqual(tol * Math.max(1, Math.abs(want)))
 
 describe('pca matches R prcomp', () => {
@@ -72,5 +72,31 @@ describe('pcaInput', () => {
     expect(inp.matrix).toEqual([[1, 5], [2, 6]])
     expect(inp.dropped).toBe(3)
     expect(inp.blockers).toEqual([{ key: 'v0', count: 2 }, { key: 'v1', count: 1 }])
+  })
+})
+
+describe('gapSuggestion', () => {
+  // 10 rows; v0 and v1 complete, v2 missing in 5 rows -> complete-case keeps 5 rows
+  const vals = (f: (i: number) => number | null) => Array.from({ length: 10 }, (_, i) => classifyValue(f(i)))
+  const snap: DatasetSnapshot = {
+    datasetVersionId: 'v', versionNumber: 1, sourceFileName: 's', sourceSha256: 'x', sheetName: 's', importedAt: '', sourceKind: 'xlsx', metadataVersion: 0,
+    visits: [{ id: 'b', name: 'Baseline', order: 1, actualDate: null }],
+    rows: Array.from({ length: 10 }, (_, i) => ({ index: i, rowNumber: i + 2, participantId: `P${i}`, visitId: 'b' })),
+    variables: [variable(0), variable(1), variable(2)],
+    values: [vals((i) => i), vals((i) => (i * 7) % 10), vals((i) => (i < 5 ? i * 2 : null))],
+    flags: [], annotations: []
+  }
+  const sel = computeSelection(snap, { datasetVersionId: 'v', visitIds: 'all', filter: emptyFilter(), qc: { exclude: [] }, participantIds: null })
+  it('offers to drop the gappy variable and reports the rows regained', async () => {
+    const { gapSuggestion } = await import('@core/pca')
+    const s = gapSuggestion(sel, snap.variables, pcaInput(sel, snap.variables))!
+    expect(s.keep.map((v) => v.key)).toEqual(['v0', 'v1'])
+    expect(s.removed).toBe(1)
+    expect(s.rows).toBe(10)
+  })
+  it('says nothing when no rows are lost or too few variables would remain', async () => {
+    const { gapSuggestion } = await import('@core/pca')
+    expect(gapSuggestion(sel, snap.variables.slice(0, 2), pcaInput(sel, snap.variables.slice(0, 2)))).toBeNull()
+    expect(gapSuggestion(sel, [snap.variables[0], snap.variables[2]], pcaInput(sel, [snap.variables[0], snap.variables[2]]))).toBeNull()
   })
 })

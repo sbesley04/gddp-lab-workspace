@@ -100,7 +100,7 @@ describe('transforms and colouring in the log', () => {
 })
 
 describe('PCA in the log', () => {
-  const pcaChart: ChartConfig = { type: 'pca', measureKey: 'k0', compareKey: null, groupKey: null, xScale: 'linear', yScale: 'linear', tableColumns: [], pcaKeys: ['k0', 'k1'], transformMeasure: 'log2' }
+  const pcaChart: ChartConfig = { type: 'pca', measureKey: 'k0', compareKey: null, groupKey: null, xScale: 'linear', yScale: 'linear', tableColumns: [], variableSet: ['k0', 'k1'], transformMeasure: 'log2' }
   it('writes a complete-case prcomp call and ignores stale transforms', () => {
     const p = build(spec(), pcaChart)
     expect(p.text).toContain('pca_data <- na.omit(df[, c("IL6", "Sex")])')
@@ -109,7 +109,7 @@ describe('PCA in the log', () => {
     expect(p.steps.map((s) => s.kind)).not.toContain('transform')
   })
   it('the variable set changes the signature', () => {
-    expect(build(spec(), pcaChart).signature).not.toBe(build(spec(), { ...pcaChart, pcaKeys: ['k0'] }).signature)
+    expect(build(spec(), pcaChart).signature).not.toBe(build(spec(), { ...pcaChart, variableSet: ['k0'] }).signature)
   })
 })
 
@@ -125,7 +125,7 @@ describe('log content rules', () => {
     const dist = build(spec(), stale).text
     expect(dist).not.toContain('log axis: x')
     expect(dist).not.toContain('forced')
-    const pca = build(spec(), { ...stale, type: 'pca', pcaKeys: ['k0', 'k1'] })
+    const pca = build(spec(), { ...stale, type: 'pca', variableSet: ['k0', 'k1'] })
     expect(pca.steps.map((s) => s.kind)).not.toContain('statistics')
   })
 
@@ -142,5 +142,31 @@ describe('log content rules', () => {
     expect(p.text).toContain('# selection result: 3 row(s), 3 participant(s)')
     expect(p.text).toContain('1 observation(s) set to NA in the variables used: Curator exclusion')
     expect(p.text).not.toContain('reason')
+  })
+})
+
+describe('matrix views and histograms in the log', () => {
+  const base: ChartConfig = { type: 'correlation', measureKey: null, compareKey: null, groupKey: null, xScale: 'linear', yScale: 'linear', tableColumns: [], variableSet: ['k0', 'k1'], colorKey: 'k1' }
+  it('writes the correlation call without p-values and ignores colour-by', () => {
+    const p = build(spec(), { ...base, corrMethod: 'pearson' })
+    expect(p.text).toContain('cor(df[, c("IL6", "Sex")], use = "pairwise.complete.obs", method = "pearson")')
+    expect(p.text).toContain('no p-values')
+    expect(p.text).not.toContain('points coloured by')
+    expect(build(spec(), { ...base, corrMethod: 'spearman' }).signature).not.toBe(p.signature)
+  })
+  it('writes the heatmap scaling and row order', () => {
+    const p = build(spec(), { ...base, type: 'heatmap' })
+    expect(p.text).toContain('heat <- scale(df[, c("IL6", "Sex")])')
+    expect(p.text).toContain('rows ordered by Sex, then participant')
+  })
+  it('records exact histogram breaks when the selection is known', () => {
+    const snap: DatasetSnapshot = {
+      ...snapshot,
+      rows: [1, 2, 2, 3, 3, 3, 4, 4, 5, 9].map((_, i) => ({ index: i, rowNumber: i + 2, participantId: `P${i}`, visitId: 'base' })),
+      values: [[1, 2, 2, 3, 3, 3, 4, 4, 5, 9].map((v) => ({ k: 'number' as const, v, raw: String(v) })), new Array(10).fill({ k: 'missing' })]
+    }
+    const hist: ChartConfig = { ...chart, groupKey: null, distStyle: 'histogram' }
+    const p = buildProvenance({ snapshot: snap, spec: spec(), chart: hist, sel: computeSelection(snap, spec()), appVersion: '0.3.1' })
+    expect(p.text).toContain('hist(df[["IL6"]], breaks = seq(0, 10, by = 2), right = FALSE)')
   })
 })

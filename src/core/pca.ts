@@ -180,3 +180,17 @@ export function pcaPlot(sel: SelectionResult, vars: VariableInfo[], colorVar: nu
     : []
   return { input, result, error, points, categories: orderedCategories(cats) }
 }
+
+/**
+ * Complete-case PCA over a wide panel can lose most participants. Suggests keeping only variables with no usable value
+ * in at most `limit` (a fraction) of the selected rows, and reports how many rows would then be complete.
+ * Returns null when that would not change the variable set or would leave fewer than two variables.
+ */
+export function gapSuggestion(sel: SelectionResult, vars: VariableInfo[], input: PcaInput, limit = 0.1): { keep: VariableInfo[]; removed: number; rows: number } | null {
+  if (input.dropped === 0) return null
+  const maxGaps = Math.floor(sel.rows.length * limit)
+  const keep = vars.filter((_, j) => input.blockers[j].count <= maxGaps)
+  if (keep.length === vars.length || keep.length < 2) return null
+  const rows = pcaInput(sel, keep).rows.length
+  return rows > input.rows.length ? { keep, removed: vars.length - keep.length, rows } : null
+}

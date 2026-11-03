@@ -8,6 +8,7 @@ import type { ChartConfig, DatasetSnapshot, FilterCondition, FilterNode, QcCateg
 import { QC_CATEGORY_LABELS } from './types'
 import { getObservation, type SelectionResult } from './selection'
 import { sha256Hex } from './hash'
+import { distributionData, histogramBins } from './chartData'
 import { TRANSFORM_LABELS, transformR, type TransformId } from './transforms'
 
 export interface ProvenanceStep {
@@ -38,10 +39,16 @@ export interface ProvenanceInput {
   variableKeys?: string[]
 }
 
+/** Colour-by is drawn by box/scatter, PCA and heatmap views, not by tables, histograms or the correlation matrix. */
+function colourApplies(chart: ChartConfig): boolean {
+  return chart.type !== 'table' && chart.type !== 'correlation' && !(chart.type === 'distribution' && chart.distStyle === 'histogram')
+}
+
 /** Variables a chart actually draws or groups by. */
 function chartVariableKeys(chart: ChartConfig): string[] {
-  const keys = chart.type === 'pca' ? [...(chart.pcaKeys ?? [])] : chart.type === 'table' ? [...chart.tableColumns] : [chart.measureKey, chart.type === 'scatter' ? chart.compareKey : null, chart.type === 'distribution' ? chart.groupKey : null]
-  if (chart.type !== 'table') keys.push(chart.colorKey ?? null)
+  const multi = chart.type === 'pca' || chart.type === 'correlation' || chart.type === 'heatmap'
+  const keys = multi ? [...(chart.variableSet ?? [])] : chart.type === 'table' ? [...chart.tableColumns] : [chart.measureKey, chart.type === 'scatter' ? chart.compareKey : null, chart.type === 'distribution' ? chart.groupKey : null]
+  if (colourApplies(chart)) keys.push(chart.colorKey ?? null)
   return [...new Set(keys.filter((k): k is string => !!k))]
 }
 
@@ -139,7 +146,7 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       const x = col(byKey.get(key), key)
       tfLines.push(`${x} <- ${transformR(id, x)}  # ${TRANSFORM_LABELS[id]}`)
     }
-    if (chart.type !== 'pca') addTransform(chart.measureKey, chart.transformMeasure)
+    if (chart.type === 'distribution' || chart.type === 'scatter') addTransform(chart.measureKey, chart.transformMeasure)
     if (chart.type === 'scatter') addTransform(chart.compareKey, chart.transformCompare)
     if (tfLines.length) {
       raw.push({
@@ -153,16 +160,31 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
     const y = chart.measureKey ? col(byKey.get(chart.measureKey), chart.measureKey) : null
     const x = chart.compareKey ? col(byKey.get(chart.compareKey), chart.compareKey) : null
     const g = chart.groupKey ? col(byKey.get(chart.groupKey), chart.groupKey) : null
-    if (chart.type === 'distribution' && y) lines.push(g ? `boxplot(${y} ~ ${g})` : `boxplot(${y})`)
+    const setCols = (chart.variableSet ?? []).map((k) => rStr(byKey.get(k)?.header ?? k)).join(', ')
+    if (chart.type === 'distribution' && y && chart.distStyle === 'histogram') {
+      // Exact breaks when the selection is known, so the same histogram can be redrawn in R.
+      const mv = chart.measureKey ? byKey.get(chart.measureKey) : undefined
+      const bins = sel && mv ? histogramBins(distributionData(sel, mv.index, null, 'linear', { transform: chart.transformMeasure }).groups.flatMap((gr) => gr.points.map((pt) => pt.value))) : null
+      const breaks = bins ? `seq(${+bins.start.toPrecision(12)}, ${+(bins.start + bins.width * bins.counts.length).toPrecision(12)}, by = ${+bins.width.toPrecision(12)})` : '"FD"'
+      lines.push(`hist(${y}, breaks = ${breaks}, right = FALSE)  # Freedman–Diaconis width rounded to a nice number${g ? `; stacked by ${name(chart.groupKey)}` : ''}`)
+    }
+    else if (chart.type === 'distribution' && y) lines.push(g ? `boxplot(${y} ~ ${g})` : `boxplot(${y})`)
+    else if (chart.type === 'correlation') {
+      lines.push(`cor(df[, c(${setCols})], use = "pairwise.complete.obs", method = "${chart.corrMethod ?? 'spearman'}")`)
+      lines.push('# coefficients only (no p-values); pairs with fewer than 3 complete observations are left blank')
+    } else if (chart.type === 'heatmap') {
+      lines.push(`heat <- scale(df[, c(${setCols})])  # z-score per variable over its usable values; missing stays NA`)
+      lines.push(`# rows ordered by ${chart.colorKey ? `${name(chart.colorKey)}, then ` : ''}participant; colours clipped at ±3 SD`)
+    }
     else if (chart.type === 'scatter' && y && x) lines.push(`plot(${x}, ${y})`)
     else if (chart.type === 'pca') {
-      const keys = chart.pcaKeys ?? []
+      const keys = chart.variableSet ?? []
       const cols = keys.map((k) => rStr(byKey.get(k)?.header ?? k))
       lines.push('# runs only when Compute is pressed; rows with any non-numeric, missing or QC-excluded value in these variables are left out (complete cases)')
       lines.push(`pca_data <- na.omit(df[, c(${cols.join(', ')})])`)
       lines.push('pc <- prcomp(pca_data, center = TRUE, scale. = TRUE)  # components fixed so the largest-magnitude loading is positive')
     }
-    if (chart.colorKey) lines.push(`# points coloured by ${byKey.get(chart.colorKey)?.meta.displayLabel.value ?? byKey.get(chart.colorKey)?.header ?? chart.colorKey} (categories as recorded; missing shown as its own category)`)
+    if (chart.colorKey && colourApplies(chart)) lines.push(`# points coloured by ${byKey.get(chart.colorKey)?.meta.displayLabel.value ?? byKey.get(chart.colorKey)?.header ?? chart.colorKey} (categories as recorded; missing shown as its own category)`)
     // Axis settings only for the axes the chart type actually uses (a distribution's x axis is its groups; PCA has none).
     const fmtB = (lo: number | null | undefined, hi: number | null | undefined) => `[${lo ?? 'auto'}, ${hi ?? 'auto'}]`
     const set = (b: number | null | undefined) => b !== null && b !== undefined
@@ -174,7 +196,9 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       if ([chart.yMin, chart.yMax].some(set)) lines.push(`# forced y axis bounds: ${fmtB(chart.yMin, chart.yMax)}`)
     }
     if (lines.length) {
-      raw.push({ kind: 'chart', title: chart.type === 'pca' ? `Chart: PCA of ${(chart.pcaKeys ?? []).length} variables` : `Chart: ${chart.type} of ${[name(chart.measureKey), name(chart.compareKey)].filter(Boolean).join(' vs ')}${chart.groupKey ? ` by ${name(chart.groupKey)}` : ''}`, code: lines })
+      const nSet = (chart.variableSet ?? []).length
+      const multiTitle = chart.type === 'pca' ? `PCA of ${nSet} variables` : chart.type === 'correlation' ? `${chart.corrMethod === 'pearson' ? 'Pearson' : 'Spearman'} correlation matrix of ${nSet} variables` : chart.type === 'heatmap' ? `Heatmap of ${nSet} variables` : null
+      raw.push({ kind: 'chart', title: multiTitle ? `Chart: ${multiTitle}` : `Chart: ${chart.type} of ${[name(chart.measureKey), name(chart.compareKey)].filter(Boolean).join(' vs ')}${chart.groupKey ? ` by ${name(chart.groupKey)}` : ''}`, code: lines })
     }
     if (chart.analysis?.requested && (chart.type === 'distribution' || chart.type === 'scatter')) {
       const on = [chart.analysis.fitLine && 'fit line', chart.analysis.confidenceBand && 'confidence band', chart.analysis.predictionBand && 'prediction band', chart.analysis.meanCi && 'mean CI'].filter(Boolean)

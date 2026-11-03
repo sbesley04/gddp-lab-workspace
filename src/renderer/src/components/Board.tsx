@@ -12,7 +12,8 @@ import { call } from '../api'
 import { useStore, errorText } from '../store'
 import { label, qcPolicyText } from '../lib/format'
 import { EChart, type EChartHandle } from './EChart'
-import { distributionOption, pcaOption, scatterOption } from './chartOptions'
+import { correlationOption, distributionOption, heatmapOption, histogramOption, pcaOption, scatterOption } from './chartOptions'
+import { correlationFromSelection, heatmapData } from '@core/matrix'
 import { StyleEditor } from './ChartControls'
 import { useScheme } from '../pages/Explore'
 
@@ -339,11 +340,19 @@ const ViewChart = forwardRef<CardHandle, { view: ViewRecord; style: ChartStyle |
     if (chart.type === 'distribution' && m) {
       const g = chart.groupKey ? byKey.get(chart.groupKey) ?? null : null
       const cv = chart.colorKey ? byKey.get(chart.colorKey) ?? null : null
-      const data = distributionData(sel, m.index, g?.index ?? null, chart.yScale, { transform: chart.transformMeasure, colorVar: cv?.index ?? null })
-      return { kind: 'chart' as const, ...distributionOption(data, transformedVariable(m, chart.transformMeasure), g, chart, { dark, highlight: new Set(), subtitle, colorTitle: cv ? label(cv) : null }) }
+      const hist = chart.distStyle === 'histogram'
+      const data = distributionData(sel, m.index, g?.index ?? null, hist ? 'linear' : chart.yScale, { transform: chart.transformMeasure, colorVar: hist ? null : cv?.index ?? null })
+      return { kind: 'chart' as const, ...(hist ? histogramOption : distributionOption)(data, transformedVariable(m, chart.transformMeasure), g, chart, { dark, highlight: new Set(), subtitle, colorTitle: cv ? label(cv) : null }) }
+    }
+    if (chart.type === 'correlation' || chart.type === 'heatmap') {
+      const vs = (chart.variableSet ?? []).map((k) => byKey.get(k)).filter((v): v is NonNullable<typeof v> => !!v)
+      if (vs.length < (chart.type === 'correlation' ? 2 : 1)) return { kind: 'note' as const, text: 'Not enough variables in this view.' }
+      if (chart.type === 'correlation') return { kind: 'chart' as const, ...correlationOption(correlationFromSelection(sel, vs, chart.corrMethod), vs, chart, { dark, highlight: new Set(), subtitle }) }
+      const cv = chart.colorKey ? byKey.get(chart.colorKey) ?? null : null
+      return { kind: 'chart' as const, ...heatmapOption(heatmapData(sel, vs, cv?.index ?? null), vs, chart, { dark, highlight: new Set(), subtitle, colorTitle: cv ? label(cv) : null }) }
     }
     if (chart.type === 'pca') {
-      const vs = (chart.pcaKeys ?? []).map((k) => byKey.get(k)).filter((v): v is NonNullable<typeof v> => !!v)
+      const vs = (chart.variableSet ?? []).map((k) => byKey.get(k)).filter((v): v is NonNullable<typeof v> => !!v)
       const cv = chart.colorKey ? byKey.get(chart.colorKey) ?? null : null
       const plot = pcaPlot(sel, vs, cv?.index ?? null)
       if (!plot.result) return { kind: 'note' as const, text: plot.error ?? 'No PCA result.' }

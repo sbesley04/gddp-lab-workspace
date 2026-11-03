@@ -207,3 +207,43 @@ export function scatterData(
   out.categories = orderedCategories(cats)
   return out
 }
+
+export interface HistogramBins {
+  start: number
+  width: number
+  /** Counts per bin; bins are left-closed [a, b) except the last, which also includes its upper edge (R: right = FALSE). */
+  counts: number[]
+}
+
+/** A "nice" width at or above w: 1, 2, 2.5 or 5 times a power of ten. */
+function niceWidth(w: number): number {
+  const p = 10 ** Math.floor(Math.log10(w))
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= w * (1 - 1e-12)) return m * p
+  return 10 * p
+}
+
+/**
+ * Freedman–Diaconis bin width (2 · IQR · n^(−1/3), IQR by type 7 quantiles) rounded up to a nice number, falling back to
+ * Sturges' rule when the IQR is zero. At most 100 bins. The breaks are seq(start, start + width · bins, by = width).
+ */
+export function histogramBins(values: number[]): HistogramBins | null {
+  const xs = values.filter(Number.isFinite).sort((a, b) => a - b)
+  const n = xs.length
+  if (!n) return null
+  const q = (p: number) => {
+    const h = (n - 1) * p
+    const lo = Math.floor(h)
+    return xs[lo] + (h - lo) * ((xs[Math.min(lo + 1, n - 1)] ?? xs[lo]) - xs[lo])
+  }
+  const min = xs[0]
+  const max = xs[n - 1]
+  const range = max - min
+  let w = 2 * (q(0.75) - q(0.25)) * n ** (-1 / 3)
+  if (!(w > 0)) w = range > 0 ? range / Math.ceil(Math.log2(n) + 1) : 1
+  w = niceWidth(Math.max(w, range / 100))
+  const start = Math.floor(min / w) * w
+  const bins = Math.max(1, Math.ceil((max - start) / w + 1e-9))
+  const counts = new Array<number>(bins).fill(0)
+  for (const x of xs) counts[Math.min(bins - 1, Math.floor((x - start) / w + 1e-9))]++
+  return { start, width: w, counts }
+}

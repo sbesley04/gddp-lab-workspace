@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Orbit, Palette, BarChart3, BookmarkPlus, Download, ScrollText, Copy, FlaskConical, GitCompareArrows, Layers, ScatterChart as ScatterIcon, Table2, Upload, MousePointerSquareDashed, AlertTriangle, Info, X, Columns3, Calculator, Sparkles, ChevronDown } from 'lucide-react'
+import { Grid3x3, Rows3, Orbit, Palette, BarChart3, BookmarkPlus, Download, ScrollText, Copy, FlaskConical, GitCompareArrows, Layers, ScatterChart as ScatterIcon, Table2, Upload, MousePointerSquareDashed, AlertTriangle, Info, X, Columns3, Calculator, Sparkles, ChevronDown } from 'lucide-react'
 import type { VariableInfo } from '@core/types'
 import { normalizeChart } from '@core/chartStyle'
 import { SIZE_PRESETS, stampSvg, type SizePresetId } from '@core/chartStamp'
@@ -17,8 +17,9 @@ import { useProvenance } from '../lib/provenance'
 import { APP_VERSION } from '../lib/version'
 import { label, plural, qcPolicyText, STATUS_TEXT, INTERP_TEXT } from '../lib/format'
 import { EChart, type EChartHandle } from '../components/EChart'
-import { distributionOption, pcaOption, scatterOption, screeOption, type FullChart } from '../components/chartOptions'
-import { pcaPlot } from '@core/pca'
+import { correlationOption, distributionOption, heatmapOption, histogramOption, pcaOption, scatterOption, screeOption, type FullChart } from '../components/chartOptions'
+import { correlationFromSelection, heatmapData } from '@core/matrix'
+import { gapSuggestion, pcaPlot } from '@core/pca'
 import type { SelectionResult } from '@core/selection'
 import { AxisBoundsEditor, StyleEditor } from '../components/ChartControls'
 import { DistributionStats, ScatterStats } from '../components/StatsPanel'
@@ -48,6 +49,7 @@ export function Explore() {
   const measure = useVar(chart.measureKey)
   const compare = useVar(chart.compareKey)
   const group = useVar(chart.groupKey)
+  const multi = chart.type === 'pca' || chart.type === 'correlation' || chart.type === 'heatmap'
   const colorable = useMemo(() => [...categorical].sort((a, b) => Number(b.covariate) - Number(a.covariate)), [categorical])
   const [saveOpen, setSaveOpen] = useState(false)
   const baselineOnly = snapshot.visits.length === 1 && /baseline/i.test(snapshot.visits[0].name)
@@ -66,7 +68,7 @@ export function Explore() {
           <div className="seg" role="group" aria-label="View">
             <button aria-pressed={chart.type === 'distribution'} onClick={() => setChart({ type: 'distribution' })}><BarChart3 size={14} /> Distribution</button>
             <button aria-pressed={chart.type === 'scatter'} onClick={() => setChart({ type: 'scatter' })}><ScatterIcon size={14} /> Two measures</button>
-            <button aria-pressed={chart.type === 'pca'} onClick={() => setChart({ type: 'pca' })} data-testid="type-pca"><Orbit size={14} /> PCA</button>
+            <button aria-pressed={multi} onClick={() => !multi && setChart({ type: 'correlation' })} data-testid="type-many" title="PCA, correlation matrix and heatmap over a set of measures"><Grid3x3 size={14} /> Many measures</button>
             <button aria-pressed={chart.type === 'table'} onClick={() => setChart({ type: 'table' })}><Table2 size={14} /> Table</button>
           </div>
           <button className="btn" onClick={() => setSaveOpen(true)} data-testid="save-view" data-tour="save">
@@ -80,8 +82,8 @@ export function Explore() {
       <div className="content page-fade">
         <div className="picker-row" data-tour="pickers">
           <VisitPicker />
-          {chart.type !== 'pca' && <MeasurePicker icon={<FlaskConical size={16} />} k="Measure" value={chart.measureKey} vars={numeric} onChange={(k) => setChart({ measureKey: k })} testId="measure-picker" />}
-          {chart.type !== 'table' && chart.type !== 'pca' && <TransformSelect value={chart.transformMeasure ?? 'none'} onChange={(t) => setChart({ transformMeasure: t })} label="Measure transform" testId="transform-measure" />}
+          {!multi && <MeasurePicker icon={<FlaskConical size={16} />} k="Measure" value={chart.measureKey} vars={numeric} onChange={(k) => setChart({ measureKey: k })} testId="measure-picker" />}
+          {chart.type !== 'table' && !multi && <TransformSelect value={chart.transformMeasure ?? 'none'} onChange={(t) => setChart({ transformMeasure: t })} label="Measure transform" testId="transform-measure" />}
           {chart.type === 'scatter' && (
             <MeasurePicker icon={<GitCompareArrows size={16} />} k="Compare with" value={chart.compareKey} vars={numeric} onChange={(k) => setChart({ compareKey: k })} testId="compare-picker" />
           )}
@@ -89,7 +91,7 @@ export function Explore() {
           {chart.type === 'distribution' && (
             <MeasurePicker icon={<Layers size={16} />} k="Group by" value={chart.groupKey} vars={categorical} onChange={(k) => setChart({ groupKey: k })} none="No grouping" testId="group-picker" />
           )}
-          {chart.type !== 'table' && (
+          {chart.type !== 'table' && chart.type !== 'correlation' && !(chart.type === 'distribution' && chart.distStyle === 'histogram') && (
             <MeasurePicker icon={<Palette size={16} />} k="Colour by" value={chart.colorKey ?? null} vars={colorable} onChange={(k) => setChart({ colorKey: k })} none="No colouring" testId="color-picker" />
           )}
           <QcPolicyPicker />
@@ -97,7 +99,16 @@ export function Explore() {
         <FilterBar />
         {chart.type === 'distribution' && (measure ? <DistributionView measure={measure} group={group} /> : <NoMeasure />)}
         {chart.type === 'scatter' && (measure && compare ? <ScatterView x={compare} y={measure} /> : <NoMeasure two />)}
+        {multi && (
+          <div className="seg" role="group" aria-label="Many-measure view" style={{ alignSelf: 'flex-start' }}>
+            <button aria-pressed={chart.type === 'correlation'} onClick={() => setChart({ type: 'correlation' })} data-testid="type-correlation"><Grid3x3 size={14} /> Correlations</button>
+            <button aria-pressed={chart.type === 'heatmap'} onClick={() => setChart({ type: 'heatmap' })} data-testid="type-heatmap"><Rows3 size={14} /> Heatmap</button>
+            <button aria-pressed={chart.type === 'pca'} onClick={() => setChart({ type: 'pca' })} data-testid="type-pca"><Orbit size={14} /> PCA</button>
+          </div>
+        )}
         {chart.type === 'pca' && <PcaView />}
+        {chart.type === 'correlation' && <CorrelationView />}
+        {chart.type === 'heatmap' && <HeatmapView />}
         {chart.type === 'table' && <TableView />}
       </div>
       <SaveViewDialog open={saveOpen} onOpenChange={setSaveOpen} />
@@ -309,24 +320,32 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
   const statsOpen = useStore((s) => s.statsOpen)
   const dark = useScheme()
   const ref = useRef<EChartHandle>(null)
-  const scale = chart.yScale
+  const hist = chart.distStyle === 'histogram'
+  // A histogram has no log axis; it bins the (optionally transformed) values directly.
+  const scale = hist ? 'linear' : chart.yScale
   const colorVar = useVar(chart.colorKey)
   const tf = chart.transformMeasure
   const shown = useMemo(() => transformedVariable(measure, tf), [measure, tf])
-  const data = useMemo(() => distributionData(sel, measure.index, group?.index ?? null, scale, { transform: tf, colorVar: colorVar?.index ?? null }), [sel, measure, group, scale, tf, colorVar])
+  const data = useMemo(() => distributionData(sel, measure.index, group?.index ?? null, scale, { transform: tf, colorVar: hist ? null : colorVar?.index ?? null }), [sel, measure, group, scale, tf, colorVar, hist])
   const hl = useMemo(() => new Set(highlight), [highlight])
-  const built = useMemo(() => distributionOption(data, shown, group, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc), colorTitle: colorVar ? label(colorVar) : null }), [data, shown, group, chart, dark, hl, sel, qc, colorVar])
+  const built = useMemo(() => (hist ? histogramOption : distributionOption)(data, shown, group, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc), colorTitle: colorVar ? label(colorVar) : null }), [data, shown, group, chart, dark, hl, sel, qc, colorVar, hist])
 
   return (
     <div className="stack">
       <div className="explore-grid">
         <div className="paper chart-card">
-          <ChartToolbar chartRef={ref} name={`${label(shown)} distribution`} showX={false} scales={{ y: { value: scale, disabled: data.logValid ? null : data.logReason } }} />
+          <div className="row" style={{ gap: 8, justifyContent: 'space-between' }}>
+            <div className="seg" role="group" aria-label="Distribution style">
+              <button aria-pressed={!hist} onClick={() => setChart({ distStyle: 'box' })} data-testid="dist-box">Box and points</button>
+              <button aria-pressed={hist} onClick={() => setChart({ distStyle: 'histogram' })} data-testid="dist-histogram">Histogram</button>
+            </div>
+            <ChartToolbar chartRef={ref} name={`${label(shown)} ${hist ? 'histogram' : 'distribution'}`} showX={false} scales={{ y: { value: scale, disabled: data.logValid ? null : data.logReason } }} minimal={hist} />
+          </div>
           {data.groups.length === 0 ? (
             <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No matching data</h3><p>No rows match the current cohort filters.</p></div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <EChart ref={ref} option={built.option} height={CHART_HEIGHT} minWidth={built.minWidth} ariaLabel={`Distribution of ${label(measure)}`} onPointClick={(d) => d?.row !== undefined && inspect({ row: d.row, variable: measure.index })} />
+              <EChart ref={ref} option={built.option} height={CHART_HEIGHT} minWidth={hist ? 0 : built.minWidth} ariaLabel={`${hist ? 'Histogram' : 'Distribution'} of ${label(measure)}`} onPointClick={(d) => d?.row !== undefined && inspect({ row: d.row, variable: measure.index })} />
             </div>
           )}
           <ChartNotices
@@ -339,7 +358,7 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
               ...built.notices
             ]}
           />
-          <Legend />
+          {!hist && <Legend />}
         </div>
         <SidePanel
           id="distribution"
@@ -442,10 +461,145 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
   )
 }
 
-function PcaView() {
+/** The variable set shared by PCA, the correlation matrix and the heatmap (numeric measures only). */
+function useVariableSet() {
   const snapshot = useStore((s) => s.snapshot)!
   const chart = useFullChart()
+  const keys = chart.variableSet
+  const eligible = useMemo(() => snapshot.variables.filter((v) => v.role === 'measure' && (v.kind === 'numeric' || v.kind === 'mixed')), [snapshot])
+  const vars = useMemo(() => keys.map((k) => eligible.find((v) => v.key === k)).filter((v): v is VariableInfo => !!v), [keys, eligible])
+  return { keys, vars, eligible }
+}
+
+function VariableSetCard({ icon, title, prefix, description, actions, children }: { icon: React.ReactNode; title: string; prefix: string; description: string; actions?: React.ReactNode; children?: React.ReactNode }) {
   const setChart = useStore((s) => s.setChart)
+  const { keys, vars, eligible } = useVariableSet()
+  const [open, setOpen] = useState(false)
+  const areas = useMemo(() => {
+    const m = new Map<string, VariableInfo[]>()
+    for (const v of eligible) m.set(v.meta.area.value ?? 'Unassigned', [...(m.get(v.meta.area.value ?? 'Unassigned') ?? []), v])
+    return [...m.entries()]
+  }, [eligible])
+  const addKeys = (add: string[]) => setChart({ variableSet: [...keys, ...add.filter((k) => !keys.includes(k))] })
+  return (
+    <div className="paper card" data-testid={`${prefix}-setup`}>
+      <div className="card-head">
+        <h3>{icon} {title}</h3>
+        <span className="badge outline">Exploratory</span>
+        <span className="spacer" />
+        <Popover.Root open={open} onOpenChange={setOpen}>
+          <Popover.Trigger asChild><button className="btn sm" data-testid={`${prefix}-add`}><Columns3 size={14} /> Add variable</button></Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content className="popover" align="end" sideOffset={8}>
+              <div className="group-label" style={{ paddingTop: 2 }}>Add a whole area</div>
+              <div className="row wrap" style={{ padding: '0 8px 8px', gap: 6 }}>
+                {areas.map(([area, vs]) => {
+                  const missing = vs.filter((v) => !keys.includes(v.key))
+                  return (
+                    <button key={area} className="btn sm" disabled={missing.length === 0} onClick={() => { addKeys(missing.map((v) => v.key)); setOpen(false) }} data-testid={`${prefix}-add-area-${area}`}>
+                      {area} <span className="muted">+{missing.length}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <VariableList vars={eligible.filter((m) => !keys.includes(m.key))} value={null} onPick={(v) => { if (v) addKeys([v.key]); setOpen(false) }} />
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
+        {keys.length > 0 && <button className="btn ghost sm" onClick={() => setChart({ variableSet: [] })}>Reset</button>}
+        {actions}
+      </div>
+      <p className="small muted" style={{ margin: '0 0 8px' }}>{description} The variable set is shared by PCA, Correlations and Heatmap.</p>
+      <div className="row wrap" style={{ maxHeight: 96, overflow: 'auto' }}>
+        {vars.length === 0 && <span className="muted small">Choose two or more numeric variables, or add a whole area.</span>}
+        {vars.map((c) => (
+          <span key={c.key} className="badge outline">
+            {label(c)}
+            <button className="btn ghost sm icon" style={{ height: 18, width: 18 }} aria-label={`Remove ${label(c)}`} onClick={() => setChart({ variableSet: keys.filter((k) => k !== c.key) })}><X size={11} /></button>
+          </span>
+        ))}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function MatrixChartCard({ name, built, aria, onCell }: { name: string; built: ReturnType<typeof correlationOption>; aria: string; onCell?: (d: any) => void }) {
+  const ref = useRef<EChartHandle>(null)
+  return (
+    <div className="paper chart-card">
+      <ChartToolbar chartRef={ref} name={name} showX scales={{ y: { value: 'linear', disabled: null } }} minimal />
+      <div style={{ overflow: 'auto', maxHeight: 900 }}>
+        <EChart ref={ref} option={built.option} height={built.height ?? CHART_HEIGHT} minWidth={built.minWidth} ariaLabel={aria} onPointClick={onCell} />
+      </div>
+      <ChartNotices items={built.notices} />
+    </div>
+  )
+}
+
+function CorrelationView() {
+  const chart = useFullChart()
+  const setChart = useStore((s) => s.setChart)
+  const qc = useStore((s) => s.qcExclude)
+  const sel = useSelection()!
+  const dark = useScheme()
+  const { vars } = useVariableSet()
+  const m = useMemo(() => (vars.length >= 2 ? correlationFromSelection(sel, vars, chart.corrMethod) : null), [sel, vars, chart.corrMethod])
+  const built = useMemo(() => (m ? correlationOption(m, vars, chart, { dark, highlight: new Set(), subtitle: contextLine(sel, qc) }) : null), [m, vars, chart, dark, sel, qc])
+  return (
+    <div className="stack">
+      <VariableSetCard
+        icon={<Grid3x3 size={16} />}
+        title="Correlation matrix"
+        prefix="corr"
+        description="Coefficients from pairwise complete observations (each pair uses every participant with usable values for both). Descriptive only: no p-values are computed, so the matrix cannot be used to screen for 'significant' pairs."
+        actions={
+          <div className="seg" role="group" aria-label="Correlation coefficient">
+            <button aria-pressed={chart.corrMethod === 'spearman'} onClick={() => setChart({ corrMethod: 'spearman' })} title="Rank-based; robust to skew and outliers">Spearman</button>
+            <button aria-pressed={chart.corrMethod === 'pearson'} onClick={() => setChart({ corrMethod: 'pearson' })} title="Linear association">Pearson</button>
+          </div>
+        }
+      />
+      {built && <div data-testid="corr-result"><MatrixChartCard name={`${chart.corrMethod} correlations of ${vars.length} variables`} built={built} aria="Correlation matrix" /></div>}
+    </div>
+  )
+}
+
+function HeatmapView() {
+  const chart = useFullChart()
+  const qc = useStore((s) => s.qcExclude)
+  const inspect = useStore((s) => s.inspect)
+  const sel = useSelection()!
+  const dark = useScheme()
+  const colorVar = useVar(chart.colorKey)
+  const { vars } = useVariableSet()
+  const h = useMemo(() => (vars.length >= 1 ? heatmapData(sel, vars, colorVar?.index ?? null) : null), [sel, vars, colorVar])
+  const built = useMemo(() => (h ? heatmapOption(h, vars, chart, { dark, highlight: new Set(), subtitle: contextLine(sel, qc), colorTitle: colorVar ? label(colorVar) : null }) : null), [h, vars, chart, dark, sel, qc, colorVar])
+  const off = h && h.categories.length > 0 ? 1 : 0
+  return (
+    <div className="stack">
+      <VariableSetCard
+        icon={<Rows3 size={16} />}
+        title="Heatmap"
+        prefix="heat"
+        description="One row per selected participant, one column per variable. Each variable is shown as a z-score over its usable values in the selection, so variables in different units share one colour scale; grey means no usable value. Rows follow the Colour by variable, then participant ID."
+      />
+      {built && h && (
+        <div data-testid="heat-result">
+          <MatrixChartCard
+            name={`Heatmap of ${vars.length} variables`}
+            built={built}
+            aria="Participant by measure heatmap"
+            onCell={(d) => { const col = d?.value?.[0] - off; const row = h.rows[d?.value?.[1]]; if (row !== undefined && col >= 0 && vars[col]) inspect({ row, variable: vars[col].index }) }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PcaView() {
+  const chart = useFullChart()
   const highlight = useStore((s) => s.highlight)
   const qc = useStore((s) => s.qcExclude)
   const inspect = useStore((s) => s.inspect)
@@ -453,16 +607,8 @@ function PcaView() {
   const colorVar = useVar(chart.colorKey)
   const dark = useScheme()
   const ref = useRef<EChartHandle>(null)
-  const keys = chart.pcaKeys
+  const { keys, vars } = useVariableSet()
   const keyStr = keys.join('|')
-  const eligible = useMemo(() => snapshot.variables.filter((v) => v.role === 'measure' && (v.kind === 'numeric' || v.kind === 'mixed')), [snapshot])
-  const vars = useMemo(() => keys.map((k) => eligible.find((v) => v.key === k)).filter((v): v is VariableInfo => !!v), [keys, eligible])
-  const areas = useMemo(() => {
-    const m = new Map<string, VariableInfo[]>()
-    for (const v of eligible) m.set(v.meta.area.value ?? 'Unassigned', [...(m.get(v.meta.area.value ?? 'Unassigned') ?? []), v])
-    return [...m.entries()]
-  }, [eligible])
-  const [open, setOpen] = useState(false)
   const [computedFor, setComputedFor] = useState<{ sel: SelectionResult; keys: string } | null>(null)
   const [xi, setXi] = useState(0)
   const [yi, setYi] = useState(1)
@@ -474,54 +620,35 @@ function PcaView() {
   const hl = useMemo(() => new Set(highlight), [highlight])
   const built = useMemo(() => (plot && r ? pcaOption(plot, ax, ay, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc), colorTitle: colorVar ? label(colorVar) : null }) : null), [plot, r, ax, ay, chart, dark, hl, sel, qc, colorVar])
   const scree = useMemo(() => (r ? screeOption(r, chart, { dark }) : null), [r, chart, dark])
-  const addKeys = (add: string[]) => setChart({ pcaKeys: [...keys, ...add.filter((k) => !keys.includes(k))] })
   const compute = () => setComputedFor({ sel, keys: keyStr })
+  const setChart = useStore((s) => s.setChart)
+  // Complete-case PCA over a wide panel can lose most participants. Offer to drop the variables with the most gaps.
+  const GAP_LIMIT = 0.1
+  const suggestion = useMemo(() => (plot ? gapSuggestion(sel, vars, plot.input, GAP_LIMIT) : null), [plot, vars, sel])
   const showCount = Math.min(3, r?.k ?? 0)
   return (
     <div className="stack">
-      <div className="paper card" data-testid="pca-setup">
-        <div className="card-head">
-          <h3><Orbit size={16} /> Principal component analysis</h3>
-          <span className="badge outline">Exploratory</span>
-          <span className="spacer" />
-          <Popover.Root open={open} onOpenChange={setOpen}>
-            <Popover.Trigger asChild><button className="btn sm" data-testid="pca-add"><Columns3 size={14} /> Add variable</button></Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Content className="popover" align="end" sideOffset={8}>
-                <div className="group-label" style={{ paddingTop: 2 }}>Add a whole area</div>
-                <div className="row wrap" style={{ padding: '0 8px 8px', gap: 6 }}>
-                  {areas.map(([area, vs]) => {
-                    const missing = vs.filter((v) => !keys.includes(v.key))
-                    return (
-                      <button key={area} className="btn sm" disabled={missing.length === 0} onClick={() => { addKeys(missing.map((v) => v.key)); setOpen(false) }} data-testid={`pca-add-area-${area}`}>
-                        {area} <span className="muted">+{missing.length}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-                <VariableList vars={eligible.filter((m) => !keys.includes(m.key))} value={null} onPick={(v) => { if (v) addKeys([v.key]); setOpen(false) }} />
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover.Root>
-          {keys.length > 0 && <button className="btn ghost sm" onClick={() => setChart({ pcaKeys: [] })}>Reset</button>}
-          <button className="btn primary sm" onClick={compute} disabled={vars.length < 2} data-testid="compute-pca">
-            <Calculator size={14} /> Compute PCA
-          </button>
-        </div>
-        <p className="small muted" style={{ margin: '0 0 8px' }}>
-          Variables are centred and scaled to unit variance, so measures in different units are comparable. Only participants with a usable numeric value in every chosen variable are included; nothing is imputed. Runs only when you press Compute.
-        </p>
-        <div className="row wrap" style={{ maxHeight: 96, overflow: 'auto' }}>
-          {vars.length === 0 && <span className="muted small">Choose two or more numeric variables, or add a whole area.</span>}
-          {vars.map((c) => (
-            <span key={c.key} className="badge outline">
-              {label(c)}
-              <button className="btn ghost sm icon" style={{ height: 18, width: 18 }} aria-label={`Remove ${label(c)}`} onClick={() => setChart({ pcaKeys: keys.filter((k) => k !== c.key) })}><X size={11} /></button>
-            </span>
-          ))}
-        </div>
+      <VariableSetCard
+        icon={<Orbit size={16} />}
+        title="Principal component analysis"
+        prefix="pca"
+        description="Variables are centred and scaled to unit variance, so measures in different units are comparable. Only participants with a usable numeric value in every chosen variable are included; nothing is imputed. Runs only when you press Compute."
+        actions={<button className="btn primary sm" onClick={compute} disabled={vars.length < 2} data-testid="compute-pca"><Calculator size={14} /> Compute PCA</button>}
+      >
         {computedFor && !fresh && <div className="callout" style={{ marginTop: 10 }}><Info size={16} /><p>The variables or selection changed. Press <b>Compute PCA</b> to update the result.</p></div>}
-      </div>
+      </VariableSetCard>
+      {suggestion && (
+        <div className="paper card">
+          <div className="callout" data-testid="pca-suggestion">
+            <Info size={16} />
+            <p>
+              {suggestion.removed} variable(s) have no usable value in more than {GAP_LIMIT * 100}% of selected rows. Without them, {suggestion.rows} of {sel.rows.length} rows would be complete (now {plot?.result?.n ?? plot?.input.matrix.length ?? 0}).{' '}
+              <button className="btn sm" onClick={() => setChart({ variableSet: suggestion.keep.map((v) => v.key) })} data-testid="pca-drop-gappy">Remove those {suggestion.removed} variables</button>{' '}
+              Then press <b>Compute PCA</b> again. Which variables to keep is a scientific choice; this only shows the trade-off.
+            </p>
+          </div>
+        </div>
+      )}
       {plot?.error && <div className="paper card"><div className="callout danger" data-testid="pca-error"><AlertTriangle size={16} /><p>{plot.error} {plot.input.matrix.length} complete observation(s) among {sel.rows.length} selected.</p></div></div>}
       {plot && r && built && scree && (
         <div className="explore-grid" data-testid="pca-result">

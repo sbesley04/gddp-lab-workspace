@@ -82,3 +82,22 @@ describe('chart data with transforms and colouring', () => {
     expect(snap.variables[0].meta.displayLabel.value).toBeNull()
   })
 })
+
+describe('histogramBins', () => {
+  it('uses a nice Freedman–Diaconis width and counts every value once', async () => {
+    const { histogramBins } = await import('@core/chartData')
+    const xs = [1, 2, 2, 3, 3, 3, 4, 4, 5, 9]
+    // type 7 IQR = 4 − 2.25 = 1.75; 2 · 1.75 · 10^(−1/3) = 1.6245 → nice width 2
+    const h = histogramBins(xs)!
+    expect(h.width).toBe(2)
+    expect(h.start).toBe(0)
+    expect(h.counts).toEqual([1, 5, 3, 0, 1]) // [0,2) [2,4) [4,6) [6,8) [8,10]
+    expect(h.counts.reduce((a, b) => a + b, 0)).toBe(xs.length)
+  })
+  it('falls back when the IQR is zero and handles a single value', async () => {
+    const { histogramBins } = await import('@core/chartData')
+    expect(histogramBins([5, 5, 5, 5, 9])!.counts.reduce((a, b) => a + b, 0)).toBe(5)
+    expect(histogramBins([3])).toEqual({ start: 3, width: 1, counts: [1] })
+    expect(histogramBins([])).toBeNull()
+  })
+})

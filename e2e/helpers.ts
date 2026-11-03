@@ -1,19 +1,13 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { join } from 'node:path'
-import { existsSync } from 'node:fs'
 
 export const root = join(import.meta.dirname, '..')
 
 export function appExecutable(): { executablePath?: string; args: string[] } {
-  if (process.env.BARI_E2E_PACKAGED) {
-    const candidates = [
-      join(root, 'release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace'),
-      join(root, 'release/mac/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace')
-    ]
-    const exe = candidates.find(existsSync)
-    if (!exe) throw new Error('Packaged app not found; run npm run dist:mac first.')
-    return { executablePath: exe, args: [] }
-  }
+  // Packaged builds disable the EnableNodeCliInspectArguments fuse, so Playwright cannot attach and would wait forever.
+  // Fail at once instead; packaged builds are checked with --self-test (docs/DEVELOPING.md).
+  if (process.env.BARI_E2E_PACKAGED)
+    throw new Error('Playwright cannot drive a packaged build (inspect fuse disabled). Run the packaged app with --self-test <dir> instead; see docs/DEVELOPING.md.')
   return { args: [join(root, 'out/main/index.js')] }
 }
 

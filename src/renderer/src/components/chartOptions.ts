@@ -3,6 +3,8 @@
 import type { EChartsCoreOption } from 'echarts/core'
 import type { ChartConfig, ChartStyle, VariableInfo } from '@core/types'
 import type { DistributionData, ScatterData } from '@core/chartData'
+import { histogramBins } from '@core/chartData'
+import type { CorrelationMatrix, HeatmapData } from '@core/matrix'
 import type { PcaPlot, PcaResult } from '@core/pca'
 import { FONT_STACKS } from '@core/chartStyle'
 import { describe, linearFit } from '@core/analysis'
@@ -25,6 +27,8 @@ export interface Built {
   notices: string[]
   /** Pixel height that keeps boxes well proportioned; width grows (and scrolls) with many groups. */
   minWidth: number
+  /** Height the chart needs (matrix views grow with the number of rows); undefined = the standard chart height. */
+  height?: number
 }
 
 const fmt = (n: number | null | undefined) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : formatNumber(n))
@@ -420,4 +424,152 @@ export function screeOption(r: PcaResult, chart: FullChart, ctx: Pick<BuildCtx, 
       { type: 'line', name: 'Cumulative', data: r.cumulative.map((v) => +(v * 100).toFixed(4)), lineStyle: { color: p.fit, width: 2 }, itemStyle: { color: p.fit }, symbolSize: 6 }
     ]
   }
+}
+
+/** Histogram with bins shared across groups; groups are stacked in category colours. */
+export function histogramOption(data: DistributionData, measure: VariableInfo, group: VariableInfo | null, chart: FullChart, ctx: BuildCtx): Built {
+  const style = chart.style
+  const p = palette(style, ctx.dark)
+  const notices: string[] = []
+  const all = data.groups.flatMap((g) => g.points.map((pt) => pt.value))
+  const bins = histogramBins(all)
+  if (data.transformDropped) notices.push(`${data.transformDropped} value(s) cannot be transformed (e.g. log of a non-positive value) and are left out of this chart.`)
+  if (!bins) return { option: {}, notices, minWidth: 0 }
+  const edges = bins.counts.map((_, i) => bins.start + i * bins.width)
+  // Each bar is labelled with its range, so a label can't be read as the bar's centre.
+  const labels = edges.map((e) => `${fmt(+e.toPrecision(10))}–${fmt(+(e + bins.width).toPrecision(10))}`)
+  const grouped = !!group && data.groups.length > 1
+  const colors = categoryColors(grouped ? data.groups.map((g) => g.label) : [], notices)
+  const series = (grouped ? data.groups : [{ label: 'All selected', points: data.groups.flatMap((g) => g.points) }]).map((g) => {
+    const counts = new Array<number>(bins.counts.length).fill(0)
+    for (const pt of g.points) counts[Math.min(counts.length - 1, Math.floor((pt.value - bins.start) / bins.width + 1e-9))]++
+    return { type: 'bar', name: g.label, stack: 'h', data: counts, barCategoryGap: '4%', itemStyle: { color: grouped ? colors.get(g.label) : p.point, opacity: style.pointOpacity } }
+  })
+  const option: EChartsCoreOption = {
+    animation: false,
+    backgroundColor: p.bg,
+    textStyle: { fontFamily: p.font, fontSize: style.fontSize },
+    title: header(axisTitle(measure), `${ctx.subtitle} · bin width ${fmt(+bins.width.toPrecision(10))} (Freedman–Diaconis, rounded)`, style, p),
+    legend: { show: grouped, data: [...(group ? [{ name: `${label(group)}:`, icon: 'none', textStyle: { color: p.text, fontWeight: 600 } }] : []), ...data.groups.map((g) => g.label)], selectedMode: false, right: 8, top: 2, width: '55%', type: 'scroll', itemWidth: 10, itemHeight: 10, textStyle: { color: p.text2, fontSize: style.fontSize - 0.5 } },
+    grid: { left: 64, right: 24, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: 58 },
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      axisPointer: { type: 'shadow' },
+      formatter: (prm: any[]) => {
+        const i = prm[0].dataIndex
+        const lo = fmt(+edges[i].toPrecision(10))
+        const hi = fmt(+(edges[i] + bins.width).toPrecision(10))
+        return `<b>${lo} to ${i === edges.length - 1 ? `${hi} (inclusive)` : `under ${hi}`}</b><br/>${prm.map((s) => `${grouped ? `${s.seriesName}: ` : 'n = '}${s.value}`).join('<br/>')}`
+      }
+    },
+    xAxis: { type: 'category', data: labels, name: axisTitle(measure), nameLocation: 'middle', nameGap: 34, ...axis(p, style), splitLine: { show: false }, axisLabel: { ...axis(p, style).axisLabel, interval: 'auto' } },
+    yAxis: { type: 'value', name: 'Participants', nameLocation: 'middle', nameGap: 44, minInterval: 1, ...axis(p, style) },
+    series: [...series, ...(group ? [{ type: 'bar', name: `${label(group)}:`, data: [], stack: 'h' }] : [])]
+  }
+  return { option, notices, minWidth: 0 }
+}
+
+// Diverging scale (ColorBrewer RdBu): blue negative, white zero, red positive. Missing is a distinct grey, never zero.
+const DIVERGING = ['#2166ac', '#67a9cf', '#d1e5f0', '#f7f7f7', '#fddbc7', '#ef8a62', '#b2182b']
+const NO_VALUE = '#c9ced8'
+
+function divergingMap(min: number, max: number, p: ReturnType<typeof palette>, style: ChartStyle, text: [string, string], seriesIndex = 0) {
+  return { type: 'continuous', min, max, calculable: false, orient: 'vertical', right: 6, top: 'middle', itemHeight: 160, itemWidth: 12, seriesIndex, text, inRange: { color: DIVERGING }, textStyle: { color: p.text2, fontSize: style.fontSize - 1 } }
+}
+
+export function correlationOption(m: CorrelationMatrix, vars: VariableInfo[], chart: FullChart, ctx: BuildCtx): Built {
+  const style = chart.style
+  const p = palette(style, ctx.dark)
+  const notices: string[] = []
+  const names = vars.map((v) => label(v))
+  const k = vars.length
+  const data: any[] = []
+  let undefinedPairs = 0
+  for (let i = 0; i < k; i++)
+    for (let j = 0; j < k; j++) {
+      const r = m.r[i][j]
+      if (r === null && i < j) undefinedPairs++
+      // White text on the dark ends of the scale keeps strong coefficients readable.
+      data.push(r === null ? { value: [j, i, '-'], n: m.n[i][j], itemStyle: { color: NO_VALUE } } : { value: [j, i, r], n: m.n[i][j], ...(Math.abs(r) >= 0.6 ? { label: { color: '#ffffff' } } : {}) })
+    }
+  if (undefinedPairs) notices.push(`${undefinedPairs} pair(s) have fewer than 3 complete observations or no spread and are shown grey.`)
+  const ns = m.n.flatMap((row, i) => row.filter((_, j) => j > i))
+  if (ns.length) notices.push(`Pairwise complete observations: n = ${Math.min(...ns)}–${Math.max(...ns)} per pair. Coefficients only; no p-values are computed for a matrix of comparisons.`)
+  const showLabels = k <= 14
+  const cell = k <= 14 ? 44 : k <= 40 ? 18 : 9
+  const side = Math.max(260, cell * k)
+  const corrTop = style.showTitle || style.showSubtitle ? 72 : 24
+  const option: EChartsCoreOption = {
+    animation: false,
+    backgroundColor: p.bg,
+    textStyle: { fontFamily: p.font, fontSize: style.fontSize },
+    title: header(`${m.method === 'pearson' ? 'Pearson' : 'Spearman'} correlations`, `${ctx.subtitle} · ${k} variables`, style, p),
+    grid: { left: 150, right: 70, top: corrTop, height: side, width: side },
+    tooltip: { confine: true, formatter: (prm: any) => `<b>${names[prm.value[1]]}</b><br/><b>${names[prm.value[0]]}</b><br/>${m.method === 'pearson' ? 'r' : 'ρ'} = ${prm.value[2] === '-' ? 'not defined' : (prm.value[2] as number).toFixed(3)} · n = ${prm.data.n}` },
+    xAxis: { type: 'category', data: names, ...axis(p, style), splitLine: { show: false }, axisLabel: { ...axis(p, style).axisLabel, rotate: 45, interval: 0, show: k <= 60, width: 120, overflow: 'truncate' } },
+    yAxis: { type: 'category', data: names, inverse: true, ...axis(p, style), splitLine: { show: false }, axisLabel: { ...axis(p, style).axisLabel, interval: 0, show: k <= 60, width: 140, overflow: 'truncate' } },
+    visualMap: divergingMap(-1, 1, p, style, ['+1', '−1']),
+    series: [{ type: 'heatmap', data, label: { show: showLabels, formatter: (prm: any) => (prm.value[2] === '-' ? '—' : (prm.value[2] as number).toFixed(2)), fontSize: style.fontSize - 2, color: '#111827', rich: {} }, itemStyle: { borderColor: p.bg === 'transparent' ? 'rgba(255,255,255,0.6)' : p.bg, borderWidth: k <= 40 ? 1 : 0 } }]
+  }
+  return { option, notices, minWidth: side + 240, height: corrTop + side + 130 }
+}
+
+const Z_CLIP = 3
+
+export function heatmapOption(h: HeatmapData, vars: VariableInfo[], chart: FullChart, ctx: BuildCtx): Built {
+  const style = chart.style
+  const p = palette(style, ctx.dark)
+  const notices: string[] = []
+  const catColors = categoryColors(h.categories, notices)
+  const annotate = h.categories.length > 0
+  const cols = [...(annotate ? [ctx.colorTitle ?? 'Group'] : []), ...vars.map((v) => label(v))]
+  const off = annotate ? 1 : 0
+  const cells: any[] = []
+  let clipped = 0
+  h.z.forEach((row, i) =>
+    row.forEach((z, j) => {
+      if (z === null) {
+        cells.push({ value: [j + off, i, '-'], itemStyle: { color: NO_VALUE } })
+        return
+      }
+      if (Math.abs(z) > Z_CLIP) clipped++
+      cells.push({ value: [j + off, i, Math.max(-Z_CLIP, Math.min(Z_CLIP, z))], z, raw: h.raw[i][j], flagged: h.flagged[i][j], ...(h.flagged[i][j] ? { itemStyle: { borderColor: '#111827', borderWidth: 1.5 } } : {}) })
+    })
+  )
+  const ann = annotate ? h.cats.map((c, i) => ({ value: [0, i, 0], cat: c, itemStyle: { color: c ? catColors.get(c) : NO_VALUE } })) : []
+  if (h.undefinedKeys.length) notices.push(`${h.undefinedKeys.length} variable(s) have fewer than 2 usable values or no spread and are shown grey.`)
+  if (h.missingCells) notices.push(`${h.missingCells} cell(s) have no usable value (missing, censored, text or QC-excluded) and are shown grey.`)
+  if (clipped) notices.push(`${clipped} cell(s) lie beyond ±${Z_CLIP} SD; their colour is capped at the end of the scale (the tooltip shows the value).`)
+  notices.push('Outlined cells carry a QC flag (included under the current policy).')
+  const rowPx = h.rows.length <= 40 ? 16 : h.rows.length <= 120 ? 8 : 4
+  const colPx = cols.length <= 20 ? 38 : cols.length <= 60 ? 16 : 7
+  const height = Math.max(240, rowPx * h.rows.length)
+  const width = Math.max(240, colPx * cols.length)
+  const heatTop = (style.showTitle || style.showSubtitle ? 72 : 24) + (cols.length <= 80 ? 96 : 16) // room for rotated column labels
+  const option: EChartsCoreOption = {
+    animation: false,
+    backgroundColor: p.bg,
+    textStyle: { fontFamily: p.font, fontSize: style.fontSize },
+    title: header('Heatmap (z-scores per variable)', `${ctx.subtitle} · ${h.rows.length} participants × ${vars.length} variables`, style, p),
+    legend: legendOption(catColors, ctx.colorTitle, p, style),
+    grid: { left: 90, right: 70, top: heatTop, height, width },
+    tooltip: {
+      confine: true,
+      formatter: (prm: any) => {
+        const pidText = `<b>${h.participantIds[prm.value[1]]}</b>`
+        if (prm.seriesIndex === 1) return `${pidText}<br/>${ctx.colorTitle ?? 'Group'}: ${prm.data.cat ?? '—'}`
+        return `${pidText}<br/>${cols[prm.value[0]]}<br/>${prm.value[2] === '-' ? 'No usable value' : `value ${fmt(prm.data.raw)} · z ${prm.data.z.toFixed(2)}`}${prm.data.flagged ? '<br/>▲ QC flag (included)' : ''}`
+      }
+    },
+    xAxis: { type: 'category', data: cols, position: 'top', ...axis(p, style), splitLine: { show: false }, axisLabel: { ...axis(p, style).axisLabel, rotate: 45, interval: 0, show: cols.length <= 80, width: 120, overflow: 'truncate' } },
+    yAxis: { type: 'category', data: h.participantIds, inverse: true, ...axis(p, style), splitLine: { show: false }, axisLabel: { ...axis(p, style).axisLabel, interval: h.rows.length <= 60 ? 0 : 'auto', fontSize: style.fontSize - 2 } },
+    visualMap: divergingMap(-Z_CLIP, Z_CLIP, p, style, [`+${Z_CLIP} SD`, `−${Z_CLIP} SD`]),
+    series: [
+      { type: 'heatmap', data: cells, itemStyle: { borderColor: 'transparent' } },
+      ...(annotate ? [{ type: 'heatmap', data: ann }] : []),
+      ...legendSeries(catColors, ctx.colorTitle)
+    ]
+  }
+  return { option, notices, minWidth: width + 200, height: heatTop + height + 24 }
 }

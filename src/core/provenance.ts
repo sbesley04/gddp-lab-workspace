@@ -1,12 +1,14 @@
 // Analysis log: the steps behind a chart, written in R syntax, each with a short signature.
 // This is a readable record of what the app did, not a script that is guaranteed to run. Pure and deterministic:
 // the same dataset version, metadata version, selection and chart always give the same text and signatures.
-// Participant identifiers are never written; restrictions are reported as counts only.
+// Participant identifiers and the source file name are never written (the file is identified by its SHA-256, as in the
+// export manifest); participant restrictions and exclusions are reported as counts only.
 
-import type { ChartConfig, DatasetSnapshot, FilterCondition, FilterNode, SelectionSpec, VariableInfo } from './types'
+import type { ChartConfig, DatasetSnapshot, FilterCondition, FilterNode, QcCategory, SelectionSpec, VariableInfo } from './types'
 import { QC_CATEGORY_LABELS } from './types'
+import { getObservation, type SelectionResult } from './selection'
 import { sha256Hex } from './hash'
-import { TRANSFORM_LABELS, transformR } from './transforms'
+import { TRANSFORM_LABELS, transformR, type TransformId } from './transforms'
 
 export interface ProvenanceStep {
   n: number
@@ -30,6 +32,17 @@ export interface ProvenanceInput {
   spec: SelectionSpec
   chart?: ChartConfig | null
   appVersion: string
+  /** The selection computed from `spec`. When given, the log states the resulting n and the QC exclusions it applied. */
+  sel?: SelectionResult | null
+  /** Variables whose QC exclusions are counted. Defaults to the chart's variables. */
+  variableKeys?: string[]
+}
+
+/** Variables a chart actually draws or groups by. */
+function chartVariableKeys(chart: ChartConfig): string[] {
+  const keys = chart.type === 'pca' ? [...(chart.pcaKeys ?? [])] : chart.type === 'table' ? [...chart.tableColumns] : [chart.measureKey, chart.type === 'scatter' ? chart.compareKey : null, chart.type === 'distribution' ? chart.groupKey : null]
+  if (chart.type !== 'table') keys.push(chart.colorKey ?? null)
+  return [...new Set(keys.filter((k): k is string => !!k))]
 }
 
 const rStr = (s: string) => JSON.stringify(s)
@@ -75,10 +88,10 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
     kind: 'source',
     title: `Dataset version ${snapshot.versionNumber}, metadata revision ${snapshot.metadataVersion}, app ${input.appVersion}`,
     code: [
-      `# source file: ${snapshot.sourceFileName} (sheet "${snapshot.sheetName}"), SHA-256 ${snapshot.sourceSha256.slice(0, 16)}`,
+      `# source ${snapshot.sourceKind === 'csv' ? 'CSV' : 'workbook'} SHA-256 ${snapshot.sourceSha256} (file name not recorded)`,
       snapshot.sourceKind === 'csv'
-        ? `df <- read.csv(${rStr(snapshot.sourceFileName)}, check.names = FALSE)`
-        : `df <- readxl::read_excel(${rStr(snapshot.sourceFileName)}, sheet = ${rStr(snapshot.sheetName)})`
+        ? 'df <- read.csv("source.csv", check.names = FALSE)'
+        : `df <- readxl::read_excel("source.xlsx", sheet = ${rStr(snapshot.sheetName)})`
     ]
   })
 
@@ -101,21 +114,30 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
   }
 
   const excluded = spec.qc.exclude
+  const qcCode = excluded.length
+    ? ['# observations in these categories are set to NA before analysis:', ...excluded.map((c) => `#   ${QC_CATEGORY_LABELS[c]}`)]
+    : ['# no QC categories excluded']
+  const sel = input.sel
+  if (sel) {
+    const keys = input.variableKeys ?? (chart ? chartVariableKeys(chart) : [])
+    const vars = keys.map((k) => byKey.get(k)).filter((v): v is VariableInfo => !!v)
+    const counts = new Map<QcCategory, number>()
+    for (const row of sel.rows) for (const v of vars) for (const c of getObservation(sel.ctx, row, v.index).qcExcludedBy) counts.set(c, (counts.get(c) ?? 0) + 1)
+    for (const c of excluded) if (counts.get(c)) qcCode.push(`#   ${counts.get(c)} observation(s) set to NA in the variables used: ${QC_CATEGORY_LABELS[c]}`)
+    qcCode.push(`# selection result: ${sel.rows.length} row(s), ${sel.participantIds.length} participant(s)`)
+  }
   raw.push({
     kind: 'qc',
     title: excluded.length ? `QC policy: exclude ${excluded.map((c) => QC_CATEGORY_LABELS[c]).join('; ')}` : 'QC policy: flagged observations kept and shown',
-    code: excluded.length
-      ? ['# observations in these categories are set to NA before analysis:', ...excluded.map((c) => `#   ${QC_CATEGORY_LABELS[c]}`)]
-      : ['# no QC categories excluded']
+    code: qcCode
   })
 
   if (chart && chart.type !== 'table') {
     const tfLines: string[] = []
-    const addTransform = (key: string | null, id: string | undefined) => {
+    const addTransform = (key: string | null, id: TransformId | undefined) => {
       if (!key || !id || id === 'none') return
-      const v = byKey.get(key)
-      const x = col(v, key)
-      tfLines.push(`${x} <- ${transformR(id as keyof typeof TRANSFORM_LABELS, x)}  # ${TRANSFORM_LABELS[id as keyof typeof TRANSFORM_LABELS]}`)
+      const x = col(byKey.get(key), key)
+      tfLines.push(`${x} <- ${transformR(id, x)}  # ${TRANSFORM_LABELS[id]}`)
     }
     if (chart.type !== 'pca') addTransform(chart.measureKey, chart.transformMeasure)
     if (chart.type === 'scatter') addTransform(chart.compareKey, chart.transformCompare)
@@ -141,13 +163,20 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       lines.push('pc <- prcomp(pca_data, center = TRUE, scale. = TRUE)  # components fixed so the largest-magnitude loading is positive')
     }
     if (chart.colorKey) lines.push(`# points coloured by ${byKey.get(chart.colorKey)?.meta.displayLabel.value ?? byKey.get(chart.colorKey)?.header ?? chart.colorKey} (categories as recorded; missing shown as its own category)`)
-    if (chart.xScale === 'log' || chart.yScale === 'log') lines.push(`# log scale: x ${chart.xScale}, y ${chart.yScale} (axis only; values unchanged)`)
-    const bounds = [chart.xMin, chart.xMax, chart.yMin, chart.yMax]
-    if (bounds.some((b) => b !== null && b !== undefined)) lines.push(`# forced axis bounds: x [${chart.xMin ?? 'auto'}, ${chart.xMax ?? 'auto'}], y [${chart.yMin ?? 'auto'}, ${chart.yMax ?? 'auto'}]`)
+    // Axis settings only for the axes the chart type actually uses (a distribution's x axis is its groups; PCA has none).
+    const fmtB = (lo: number | null | undefined, hi: number | null | undefined) => `[${lo ?? 'auto'}, ${hi ?? 'auto'}]`
+    const set = (b: number | null | undefined) => b !== null && b !== undefined
+    if (chart.type === 'scatter') {
+      if (chart.xScale === 'log' || chart.yScale === 'log') lines.push(`# log axis: x ${chart.xScale}, y ${chart.yScale} (display only; values unchanged)`)
+      if ([chart.xMin, chart.xMax, chart.yMin, chart.yMax].some(set)) lines.push(`# forced axis bounds: x ${fmtB(chart.xMin, chart.xMax)}, y ${fmtB(chart.yMin, chart.yMax)}`)
+    } else if (chart.type === 'distribution') {
+      if (chart.yScale === 'log') lines.push('# log y axis (display only; values unchanged)')
+      if ([chart.yMin, chart.yMax].some(set)) lines.push(`# forced y axis bounds: ${fmtB(chart.yMin, chart.yMax)}`)
+    }
     if (lines.length) {
       raw.push({ kind: 'chart', title: chart.type === 'pca' ? `Chart: PCA of ${(chart.pcaKeys ?? []).length} variables` : `Chart: ${chart.type} of ${[name(chart.measureKey), name(chart.compareKey)].filter(Boolean).join(' vs ')}${chart.groupKey ? ` by ${name(chart.groupKey)}` : ''}`, code: lines })
     }
-    if (chart.analysis?.requested) {
+    if (chart.analysis?.requested && (chart.type === 'distribution' || chart.type === 'scatter')) {
       const on = [chart.analysis.fitLine && 'fit line', chart.analysis.confidenceBand && 'confidence band', chart.analysis.predictionBand && 'prediction band', chart.analysis.meanCi && 'mean CI'].filter(Boolean)
       raw.push({
         kind: 'statistics',

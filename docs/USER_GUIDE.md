@@ -43,7 +43,19 @@ Importing the same file again is recognised by its checksum, and the app offers 
 - **Wide tables.** In the Table view, **Add column → Add a whole area** adds every measure in an area at once, for example a whole NULISA panel. Tables with many columns render only the columns in view, so they stay fast; the participant and visit columns stay pinned while you scroll sideways.
 - **Click any value** to open the **Inspector**. It shows the source cell address, raw text, source attribution, flags and comments, and lets a curator exclude or re-include that observation, with a reason.
 - **Click a participant ID** for the participant detail drawer.
-- **SVG / PNG** exports the chart. The title and subtitle state n, the cohort rule and the QC policy.
+- **Colour by** colours points by a categorical variable, for example sex or site. Variables tagged as covariates (see Measurements) are listed first. The legend names the variable, missing values get their own grey category, and QC flags keep their shapes. Colour-blind-safe colours repeat after eight categories, and a note says so.
+- **Transform** (next to the measure) shows the chart's values as log2, log10, centred, z-score or rank.
+  - Centre, z-score and rank are computed from every usable value of that measure in the current selection.
+  - Values a transform cannot define (the log of zero or a negative value, or a z-score with no spread) are left out and counted under the chart. Nothing is imputed.
+  - Summaries and statistics for that chart use the transformed values. The table, stored data and exports stay as imported.
+- **PCA** runs a principal component analysis on the numeric variables you choose (**Add variable**, or a whole area). Nothing is computed until you press **Compute PCA**, and changing the variables or selection asks you to compute again.
+  - Variables are centred and scaled to unit variance. Only participants with a usable value in every chosen variable are used, and the notes say how many were left out and which variables caused it.
+  - You get a scores plot (choose the components for each axis), variance explained per component and a loadings table. Component signs are arbitrary; each is set so its largest loading is positive. Results match R `prcomp(scale. = TRUE)`.
+- **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a signature, and the chain signature changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
+- **Download** saves the chart as SVG or PNG.
+  - **Size:** as on screen, journal single column (600 × 420), double column (1200 × 700) or slide (1600 × 900). PNG can be 1×, 2× or 4×.
+  - **Signature footer** (on by default) adds the chain signature, dataset version, metadata revision and app version along the bottom edge.
+  - **Also save settings and log** writes `name.chart.json` (selection, chart settings, signature) and `name.analysis-log.R` beside the image. Each save is recorded in the project's audit log.
 - **Axes** fixes the minimum and maximum of each axis. Points outside the bounds are not drawn, and a note under the chart says how many. Statistics always use every selected observation.
 - **Style** opens the chart editor. Presets are Default (glass), Publication, High contrast, Colour-blind safe (Okabe–Ito) and Greyscale. You can also change point, flag, box and fit colours, background, text colour, font, font size, point size and opacity, gridlines, title and subtitle, and box fill. QC flags always keep their own shapes (▲ ◇), whatever the colours. Styles are saved with views.
 
@@ -86,6 +98,7 @@ The catalog shows each measure's display label, definition, unit, specimen, assa
 - Leave fields unknown rather than guessing. The specimen is suggested only when the header states it explicitly.
 - Raw, scaled, clinic and T-score variants remain separate variables.
 - Mark **quasi-identifiers** (for example age, sex, race, dates, BMI) so that exports require explicit confirmation before including them.
+- Mark **covariates** (for example sex, site, treatment group) so they are offered first under **Colour by**. The tag is an append-only revision, carried to new dataset versions; it changes no data and no export rule. Filter the list with **Covariates**.
 
 ## Data quality
 
@@ -129,6 +142,7 @@ The ZIP contains:
 - `quality_flags.csv`
 - `study_context.md` (which states "baseline observations only" when that applies)
 - `analysis_request.md`
+- `analysis_log.R`, the steps behind the selection in R syntax, with its chain signature (also recorded in the manifest)
 - `manifest.json`, with checksums, selection rules, versions and the software version
 
 **Copy summary** gives you a short text to paste into a chat. To use Claude or another assistant, attach the ZIP yourself: the app sends nothing.

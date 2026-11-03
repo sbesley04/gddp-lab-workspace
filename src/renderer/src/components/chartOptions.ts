@@ -16,7 +16,7 @@ export interface BuildCtx {
   dark: boolean
   highlight: Set<number>
   subtitle: string
-  /** Label of the colour-by covariate, shown in the footer notices. */
+  /** Label of the colour-by covariate, shown at the start of the legend. */
   colorTitle?: string | null
 }
 
@@ -44,7 +44,8 @@ function palette(style: ChartStyle, dark: boolean) {
     box: themed ? (dark ? 'rgba(148,163,184,0.75)' : 'rgba(71,85,105,0.6)') : style.boxColor,
     fit: style.fitColor,
     bg: style.background === 'white' ? '#ffffff' : style.background === 'black' ? '#0b0f17' : 'transparent',
-    font: FONT_STACKS[style.font] ?? getComputedStyle(document.body).fontFamily
+    // Double quotes would end the SVG style attribute ECharts writes the font into, making exports malformed XML.
+    font: (FONT_STACKS[style.font] ?? getComputedStyle(document.body).fontFamily).replace(/"/g, "'")
   }
 }
 
@@ -83,22 +84,31 @@ function categoryColors(categories: string[], notices: string[]): Map<string, st
   return new Map(categories.map((c) => [c, c.startsWith('(') ? MISSING_COLOR : CATEGORY_COLORS[named.indexOf(c) % CATEGORY_COLORS.length]]))
 }
 
-/** Empty series that only exist to give the legend an entry per covariate category. */
-function legendSeries(colors: Map<string, string>) {
-  return [...colors].map(([name, color]) => ({ type: 'scatter', name, data: [], itemStyle: { color }, symbolSize: 10, silent: true, tooltip: { show: false } }))
+// The legend names the covariate first ("Sex:"), so an exported chart says what its colours mean.
+const legendTitle = (title: string | null | undefined) => (title ? `${title}:` : null)
+
+/** Empty series that only exist to give the legend its entries (the covariate name, then one per category). */
+function legendSeries(colors: Map<string, string>, title: string | null | undefined) {
+  if (!colors.size) return []
+  const head = legendTitle(title)
+  return [
+    ...(head ? [{ type: 'scatter', name: head, data: [], silent: true, tooltip: { show: false } }] : []),
+    ...[...colors].map(([name, color]) => ({ type: 'scatter', name, data: [], itemStyle: { color }, symbolSize: 10, silent: true, tooltip: { show: false } }))
+  ]
 }
 
-function legendOption(colors: Map<string, string>, title: string | null, p: ReturnType<typeof palette>, style: ChartStyle) {
+function legendOption(colors: Map<string, string>, title: string | null | undefined, p: ReturnType<typeof palette>, style: ChartStyle) {
+  const head = legendTitle(title)
   return {
     show: colors.size > 0,
-    data: [...colors.keys()],
+    data: [...(head ? [{ name: head, icon: 'none', textStyle: { color: p.text, fontWeight: 600 } }] : []), ...colors.keys()],
     selectedMode: false,
     right: 8,
     top: 2,
+    width: '55%',
     itemWidth: 10,
     itemHeight: 10,
     type: 'scroll',
-    ...(title ? { formatter: (n: string) => n } : {}),
     textStyle: { color: p.text2, fontSize: style.fontSize - 0.5 }
   }
 }
@@ -200,13 +210,13 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
       tooltip: { formatter: (prm: any) => `Mean ${fmt(prm.data[1])}<br/>95% CI ${fmt(prm.data[2])} – ${fmt(prm.data[3])}` }
     })
   }
-  series.push(...legendSeries(catColors))
+  series.push(...legendSeries(catColors, ctx.colorTitle))
   const option: EChartsCoreOption = {
     animation: false,
     backgroundColor: p.bg,
     textStyle: { fontFamily: p.font, fontSize: style.fontSize },
     title: header(axisTitle(measure), ctx.subtitle, style, p),
-    legend: legendOption(catColors, ctx.colorTitle ?? null, p, style),
+    legend: legendOption(catColors, ctx.colorTitle, p, style),
     grid: { left: 76, right: 28, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: group ? 64 : 48 },
     tooltip: { trigger: 'item', confine: true, backgroundColor: cssVar('--paper-solid', '#fff'), borderColor: p.grid, textStyle: { color: cssVar('--text', '#111') } },
     xAxis: { type: 'category', data: data.groups.map((g) => `${g.label}\nn = ${g.summary.n}`), ...axis(p, style), splitLine: { show: false }, name: group ? label(group) : '', nameLocation: 'middle', nameGap: 42 },
@@ -317,12 +327,12 @@ export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInf
       if (fi.info.transformX || fi.info.transformY) notices.push('Fit is computed on the log10 scale shown on the axes.')
     }
   }
-  series.push(...legendSeries(catColors))
+  series.push(...legendSeries(catColors, ctx.colorTitle))
   const option: EChartsCoreOption = {
     animation: false,
     backgroundColor: p.bg,
     textStyle: { fontFamily: p.font, fontSize: style.fontSize },
-    legend: legendOption(catColors, ctx.colorTitle ?? null, p, style),
+    legend: legendOption(catColors, ctx.colorTitle, p, style),
     title: header(`${label(y)} and ${label(x)}`, `${ctx.subtitle} · ${data.points.length} complete pairs`, style, p),
     grid: { left: 76, right: 30, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: 58 },
     brush: { xAxisIndex: 0, yAxisIndex: 0, throttleType: 'debounce', throttleDelay: 150, brushStyle: { color: 'rgba(37,99,235,0.08)', borderColor: p.point, borderWidth: 1 }, outOfBrush: { opacity: 0.35 }, seriesIndex: [0] },
@@ -375,13 +385,13 @@ export function pcaOption(plot: PcaPlot, xi: number, yi: number, chart: FullChar
       data,
       tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b>${prm.data.cat !== undefined ? `<br/>${prm.data.cat}` : ''}<br/>${xName}: ${fmt(prm.data.value[0])}<br/>${yName}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
     },
-    ...legendSeries(catColors)
+    ...legendSeries(catColors, ctx.colorTitle)
   ]
   const option: EChartsCoreOption = {
     animation: false,
     backgroundColor: p.bg,
     textStyle: { fontFamily: p.font, fontSize: style.fontSize },
-    legend: legendOption(catColors, ctx.colorTitle ?? null, p, style),
+    legend: legendOption(catColors, ctx.colorTitle, p, style),
     title: header(`PCA: PC${xi + 1} vs PC${yi + 1}`, `${ctx.subtitle} · ${r.n} complete observations, ${r.p} variables (standardised)`, style, p),
     grid: { left: 76, right: 30, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: 58 },
     tooltip: { trigger: 'item', confine: true, backgroundColor: cssVar('--paper-solid', '#fff'), borderColor: p.grid, textStyle: { color: cssVar('--text', '#111') } },

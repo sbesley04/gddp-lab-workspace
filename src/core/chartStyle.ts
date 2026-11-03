@@ -24,10 +24,11 @@ export const STYLE_PRESETS: Record<Exclude<StylePreset, 'custom'>, { label: stri
   }
 }
 
+/** Font stacks use single quotes only: ECharts writes them into an SVG style="…" attribute, where a double quote breaks the XML. */
 export const FONT_STACKS: Record<FontChoice, string | null> = {
   system: null,
   sans: 'Helvetica Neue, Helvetica, Arial, sans-serif',
-  serif: 'Georgia, "Times New Roman", Times, serif',
+  serif: "Georgia, 'Times New Roman', Times, serif",
   mono: 'ui-monospace, Menlo, Consolas, monospace'
 }
 

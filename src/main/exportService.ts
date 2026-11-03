@@ -100,9 +100,10 @@ export function writeChartFiles(project: Project | null, input: ChartFileInput, 
   const files = [basename(destPath)]
   if (input.sidecars && input.format !== 'r') {
     const base = destPath.slice(0, destPath.length - extname(destPath).length)
+    // Distinctive suffixes, so saving a chart never overwrites an unrelated .json or .R file beside it.
     writeFileSync(`${base}.chart.json`, input.sidecars.settings, 'utf8')
-    writeFileSync(`${base}.R`, input.sidecars.log, 'utf8')
-    files.push(basename(`${base}.chart.json`), basename(`${base}.R`))
+    writeFileSync(`${base}.analysis-log.R`, input.sidecars.log, 'utf8')
+    files.push(basename(`${base}.chart.json`), basename(`${base}.analysis-log.R`))
   }
   if (project) {
     project.db.transaction(() => {

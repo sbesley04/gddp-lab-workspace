@@ -15,6 +15,9 @@ export const TRANSFORM_LABELS: Record<TransformId, string> = {
   rank: 'Rank'
 }
 
+/** Compact labels for the picker. */
+export const TRANSFORM_SHORT: Record<TransformId, string> = { none: 'No transform', log2: 'log2', log10: 'log10', center: 'Centred', zscore: 'Z-score', rank: 'Rank' }
+
 /** Short prefix used in axis titles and the log, e.g. "log2(IL6)". */
 export const TRANSFORM_FN: Record<Exclude<TransformId, 'none'>, string> = { log2: 'log2', log10: 'log10', center: 'centred', zscore: 'z', rank: 'rank' }
 
@@ -82,7 +85,12 @@ export function transformedVariable(v: VariableInfo, id: TransformId): VariableI
     meta: {
       ...v.meta,
       displayLabel: { ...v.meta.displayLabel, value: `${TRANSFORM_FN[id]}(${base})` },
-      unit: dimensionless ? { ...v.meta.unit, value: id === 'zscore' ? 'SD units' : 'rank', status: 'confirmed' } : id === 'center' ? v.meta.unit : { ...v.meta.unit, value: `log scale of ${v.meta.unit.value ?? 'unit unknown'}`, status: 'tentative' }
+      // Centring keeps the unit; a log keeps the unit's status (an unknown unit stays visibly unknown).
+      unit: dimensionless
+        ? { ...v.meta.unit, value: id === 'zscore' ? 'SD units' : 'rank', status: 'confirmed' }
+        : id === 'center'
+          ? v.meta.unit
+          : { ...v.meta.unit, value: v.meta.unit.value ? `${id} ${v.meta.unit.value}` : null }
     }
   }
 }

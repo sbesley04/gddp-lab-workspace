@@ -266,7 +266,7 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
                 </select>
               </label>
               <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={stamp} onChange={(e) => setStamp(e.target.checked)} /> Add analysis signature footer</label>
-              <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={sidecars} onChange={(e) => setSidecars(e.target.checked)} /> Also save settings (.chart.json) and log (.R)</label>
+              <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={sidecars} onChange={(e) => setSidecars(e.target.checked)} /> Also save settings (.chart.json) and log (.analysis-log.R)</label>
               <div className="list">
                 <Popover.Close asChild>
                   <button className="list-item" onClick={() => save('svg')} data-testid="download-svg">
@@ -446,7 +446,6 @@ function PcaView() {
   const snapshot = useStore((s) => s.snapshot)!
   const chart = useFullChart()
   const setChart = useStore((s) => s.setChart)
-  const toast = useStore((s) => s.toast)
   const highlight = useStore((s) => s.highlight)
   const qc = useStore((s) => s.qcExclude)
   const inspect = useStore((s) => s.inspect)
@@ -476,10 +475,7 @@ function PcaView() {
   const built = useMemo(() => (plot && r ? pcaOption(plot, ax, ay, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc), colorTitle: colorVar ? label(colorVar) : null }) : null), [plot, r, ax, ay, chart, dark, hl, sel, qc, colorVar])
   const scree = useMemo(() => (r ? screeOption(r, chart, { dark }) : null), [r, chart, dark])
   const addKeys = (add: string[]) => setChart({ pcaKeys: [...keys, ...add.filter((k) => !keys.includes(k))] })
-  const compute = () => {
-    setComputedFor({ sel, keys: keyStr })
-    toast('info', 'PCA computed. It is exploratory and is not adjusted for the number of analyses you run.')
-  }
+  const compute = () => setComputedFor({ sel, keys: keyStr })
   const showCount = Math.min(3, r?.k ?? 0)
   return (
     <div className="stack">

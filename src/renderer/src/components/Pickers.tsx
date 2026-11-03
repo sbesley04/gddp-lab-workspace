@@ -1,4 +1,4 @@
-import { TRANSFORMS, TRANSFORM_LABELS, type TransformId } from '@core/transforms'
+import { TRANSFORMS, TRANSFORM_LABELS, TRANSFORM_SHORT, type TransformId } from '@core/transforms'
 import { useMemo, useState, type ReactNode } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, Search, Check, Plus, X, Filter, ShieldCheck, CalendarDays, AlertTriangle } from 'lucide-react'
@@ -411,12 +411,12 @@ export function TransformSelect({ value, onChange, label, testId }: { value: Tra
       className="btn sm"
       aria-label={label}
       data-testid={testId}
-      title={`${label}: applied to the values in this chart only; recorded in the analysis log`}
+      title={`${label}: ${TRANSFORM_LABELS[value]}. Applied to the values in this chart only; recorded in the analysis log.`}
       value={value}
       onChange={(e) => onChange(e.target.value as TransformId)}
-      style={value !== 'none' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+      style={{ width: 'auto', alignSelf: 'center', ...(value !== 'none' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }}
     >
-      {TRANSFORMS.map((t) => <option key={t} value={t}>{t === 'none' ? 'No transform' : TRANSFORM_LABELS[t]}</option>)}
+      {TRANSFORMS.map((t) => <option key={t} value={t}>{TRANSFORM_SHORT[t]}</option>)}
     </select>
   )
 }

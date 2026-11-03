@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { Project, ProjectLockedError, syncFolderWarning } from '../src/main/project'
 import { commitImport, inspect, parseSource, previewMapping, validate, datasetContentHash } from '../src/main/importService'
 import { buildSnapshot, listVersions } from '../src/main/snapshot'
-import { decideFormat, editVariableMeta, setCellExclusion } from '../src/main/curation'
+import { decideFormat, editVariableMeta, setCellExclusion, setCovariate } from '../src/main/curation'
 import { getView, saveView } from '../src/main/views'
 import { previewContextExport, writeContextExport } from '../src/main/exportService'
 import { createBackup, restoreBackup } from '../src/main/backup'
@@ -187,6 +187,15 @@ describe('curation, saved views and reproducibility', () => {
     expect(buildSnapshot(project, versionId, reopened.metadataVersion).variables.find((v) => v.key === il6.key)!.meta.unit.value).toBeNull()
   })
 
+  it('tags covariates append-only and as of a metadata revision', () => {
+    const before = project.metadataVersion()
+    const sex = buildSnapshot(project, versionId).variables.find((v) => /sex/i.test(v.header))!
+    expect(sex.covariate).toBe(false)
+    setCovariate(project, { datasetVersionId: versionId, varKey: sex.key, value: true, author: 'Curator', reason: null })
+    expect(buildSnapshot(project, versionId).variables.find((v) => v.key === sex.key)!.covariate).toBe(true)
+    expect(buildSnapshot(project, versionId, before).variables.find((v) => v.key === sex.key)!.covariate).toBe(false)
+  })
+
   it('creates a new immutable version for an updated file and carries curator metadata over', () => {
     const r = importFile(project, 'demo_workbook_v2.xlsx', undefined, { carryOverFrom: versionId })
     expect(r.versionNumber).toBe(2)
@@ -195,6 +204,7 @@ describe('curation, saved views and reproducibility', () => {
     const il6 = v2.variables.find((v) => v.header === 'IL6')!
     expect(il6.meta.unit).toMatchObject({ value: 'NPQ', status: 'confirmed' })
     expect(il6.meta.unit.provenance).toMatch(/Carried over from dataset v1/)
+    expect(v2.variables.find((v) => /sex/i.test(v.header))!.covariate).toBe(true)
     // v1 is untouched
     expect(datasetContentHash(project, versionId)).not.toBe(datasetContentHash(project, r.datasetVersionId))
   })

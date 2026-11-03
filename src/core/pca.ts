@@ -4,7 +4,7 @@
 
 import type { SelectionResult } from './selection'
 import { getObservation } from './selection'
-import { categoryLabel } from './chartData'
+import { categoryLabel, orderedCategories } from './chartData'
 import type { VariableInfo } from './types'
 
 export interface PcaResult {
@@ -178,6 +178,5 @@ export function pcaPlot(sel: SelectionResult, vars: VariableInfo[], colorVar: nu
         return { row, participantId: sel.ctx.snapshot.rows[row].participantId, scores: result!.scores[i], flagged: input.flags[i].flagged, unresolved: input.flags[i].unresolved, cat }
       })
     : []
-  const categories = [...cats].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-  return { input, result, error, points, categories }
+  return { input, result, error, points, categories: orderedCategories(cats) }
 }

@@ -20,3 +20,10 @@ describe('stampSvg', () => {
     expect(() => stampSvg('<html></html>', 'x')).toThrow('not SVG')
   })
 })
+
+describe('font stacks', () => {
+  it('never contain double quotes (they would break the SVG style attribute)', async () => {
+    const { FONT_STACKS } = await import('@core/chartStyle')
+    for (const f of Object.values(FONT_STACKS)) if (f) expect(f).not.toContain('"')
+  })
+})

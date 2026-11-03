@@ -45,6 +45,21 @@ Verified on 2026-10-22 on macOS 26.5 (Apple Silicon), Node 24.14, Electron 44.9.
 | Compare whiteboard (drag, resize, notes, styles, SVG/PNG export, persists across restart) | `tests/features.test.ts` (service), E2E (add views, drag, restart, layout kept, SVG export contains both charts) |
 | Older saved views keep working | `normalizeChart` and schema test with a 0.1-style spec |
 
+## Unreleased additions (2026-11-03)
+
+From the lab meeting notes (R command history, edit signatures, PCA, covariates, more visualisation options, saving charts).
+
+| Feature | Verification |
+| --- | --- |
+| Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in the export ZIP) | `tests/provenance.test.ts` (deterministic text; every upstream change alters the signature; no participant IDs or file name; QC exclusion counts); SHA-256 against NIST vectors; E2E opens History and checks the export ZIP |
+| Chart download: size presets, PNG scale, signature footer, `.chart.json` and `.analysis-log.R` sidecars | `tests/chartStamp.test.ts`, `tests/chartExport.test.ts` (other files beside the chart are not overwritten); `e2e/charts.spec.ts` saves SVG and PNG through the UI and checks size, footer, legend, XML well-formedness and sidecars |
+| Fix: chart SVG/PNG exports were malformed XML with the default (system) and serif fonts, so PNG export failed and strict SVG readers rejected the file | `e2e/charts.spec.ts` parses the saved SVG; font-stack test |
+| Covariate tag (append-only, carried over), colour-by with a named legend | `tests/workflow.test.ts` (as-of and carry-over), `tests/transforms.test.ts` (categories), `e2e/charts.spec.ts` |
+| Display transforms (log2, log10, centre, z-score, rank) | `tests/transforms.test.ts`: hand-computed values; z-score and rank checked against R |
+| Exploratory PCA (correlation matrix, complete cases, Compute on demand; also on Compare boards) | `tests/pca.test.ts` against R `prcomp(scale. = TRUE)` (`tools/pca_reference.R`), to about 1e-8; E2E computes PCA on the demo data |
+
+Not done: heatmap, correlation matrix, histogram/violin and visit-trajectory charts; shape-by and facet-by (shapes already mean QC flags); covariate adjustment; PERMANOVA. The real-workbook reference check (`npm run test:reference`, counts only) still passes, but the new features have not been exercised on the real workbook, and no packaged build or `--self-test` has been run with them.
+
 ## 0.3.0 installers (2026-10-25)
 
 UI changes since 0.2.0: readable callouts and toasts, single-form metadata editing, compact Overview, Explore layout with tabbed side panel, first-run tour, virtualised wide tables, Compare board placement fixes, static background.

@@ -70,8 +70,10 @@ export function numericColumn(sel: SelectionResult, variable: number): number[] 
   return out
 }
 
-function orderedCategories(cats: Iterable<string>): string[] {
-  return [...new Set(cats)].sort((a, b) => (a === MISSING_GROUP ? 1 : b === MISSING_GROUP ? -1 : a.localeCompare(b, undefined, { numeric: true })))
+/** Categories in display order: natural sort, missing/excluded labels last. */
+export function orderedCategories(cats: Iterable<string>): string[] {
+  const special = (c: string) => c.startsWith('(')
+  return [...new Set(cats)].sort((a, b) => (special(a) !== special(b) ? (special(a) ? 1 : -1) : a.localeCompare(b, undefined, { numeric: true })))
 }
 
 export function distributionData(sel: SelectionResult, variable: number, groupVar: number | null, scale: 'linear' | 'log', opts: ChartDataOptions = {}): DistributionData {

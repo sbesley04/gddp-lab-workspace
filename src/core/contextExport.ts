@@ -184,7 +184,7 @@ ${options.analysisQuestion.trim() || '_No question entered._'}
 8. State every analytical assumption, transformation and exclusion explicitly.
 `
 
-  const provenance = buildProvenance({ snapshot, spec, chart: null, appVersion: input.appVersion })
+  const provenance = buildProvenance({ snapshot, spec, chart: null, sel, variableKeys: vars.map((v) => v.key), appVersion: input.appVersion })
   const files: Record<string, string> = {
     'selected_data.csv': data.text,
     'data_dictionary.csv': dictionary.text,

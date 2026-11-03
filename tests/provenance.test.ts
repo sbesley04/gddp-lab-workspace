@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildProvenance } from '@core/provenance'
 import { sha256Hex } from '@core/hash'
+import { computeSelection } from '@core/selection'
 import { emptyFilter } from '@core/types'
 import type { ChartConfig, DatasetSnapshot, SelectionSpec, VariableInfo } from '@core/types'
 
@@ -109,5 +110,37 @@ describe('PCA in the log', () => {
   })
   it('the variable set changes the signature', () => {
     expect(build(spec(), pcaChart).signature).not.toBe(build(spec(), { ...pcaChart, pcaKeys: ['k0'] }).signature)
+  })
+})
+
+describe('log content rules', () => {
+  it('identifies the source by SHA-256, never by file name', () => {
+    const p = build(spec())
+    expect(p.text).not.toContain('study.xlsx')
+    expect(p.text).toContain('a'.repeat(64))
+  })
+
+  it('only describes axes the chart type uses, and statistics only where they exist', () => {
+    const stale = { ...chart, xScale: 'log' as const, xMin: 1, analysis: { requested: true, fitLine: true, confidenceBand: false, predictionBand: false, meanCi: false } }
+    const dist = build(spec(), stale).text
+    expect(dist).not.toContain('log axis: x')
+    expect(dist).not.toContain('forced')
+    const pca = build(spec(), { ...stale, type: 'pca', pcaKeys: ['k0', 'k1'] })
+    expect(pca.steps.map((s) => s.kind)).not.toContain('statistics')
+  })
+
+  it('states the selection result and counts QC exclusions in the variables used', () => {
+    const snap: DatasetSnapshot = {
+      ...snapshot,
+      rows: ['A', 'B', 'C'].map((p, i) => ({ index: i, rowNumber: i + 2, participantId: p, visitId: 'base' })),
+      values: [[1, 2, 3].map((v) => ({ k: 'number' as const, v, raw: String(v) })), ['F', 'M', 'F'].map((raw) => ({ k: 'text' as const, raw }))],
+      flags: [{ row: 1, variable: 0, kind: 'curator_exclusion', status: 'curator_confirmed', category: 'curator_exclusion', formatKey: 'x', detail: 'reason' }]
+    }
+    const s = spec({ qc: { exclude: ['curator_exclusion'] } })
+    const sel = computeSelection(snap, s)
+    const p = buildProvenance({ snapshot: snap, spec: s, chart, sel, appVersion: '0.3.1' })
+    expect(p.text).toContain('# selection result: 3 row(s), 3 participant(s)')
+    expect(p.text).toContain('1 observation(s) set to NA in the variables used: Curator exclusion')
+    expect(p.text).not.toContain('reason')
   })
 })

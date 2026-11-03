@@ -1,4 +1,5 @@
 // Shared domain types. This module is pure: no Node, Electron or DOM dependencies.
+import type { TransformId } from './transforms'
 
 /** Classification of a single source cell. Missing is never zero; censored is never its bound. */
 export type CellValue =
@@ -80,6 +81,8 @@ export interface VariableInfo {
   aliases: Alias[]
   attribution: SourceAttribution | null
   quasiIdentifier: boolean
+  /** Researcher-tagged covariate (age, sex, site...): offered first for colouring and grouping. */
+  covariate: boolean
   /** Distinct text categories, for categorical variables. */
   categories: string[]
   counts: { number: number; missing: number; censored: number; text: number }
@@ -250,13 +253,20 @@ export interface ChartAnalysis {
 }
 
 export interface ChartConfig {
-  type: 'distribution' | 'scatter' | 'table'
+  type: 'distribution' | 'scatter' | 'table' | 'pca'
   measureKey: string | null
   compareKey: string | null
   groupKey: string | null
+  /** Categorical covariate used to colour points (flag shapes are unchanged). */
+  colorKey?: string | null
+  /** Display transforms for the measure (y) and the comparison measure (x). */
+  transformMeasure?: TransformId
+  transformCompare?: TransformId
   xScale: 'linear' | 'log'
   yScale: 'linear' | 'log'
   tableColumns: string[]
+  /** Variables entering the PCA (chart type 'pca'). */
+  pcaKeys?: string[]
   /** Forced axis bounds; null = automatic. Values outside are counted, never silently dropped. */
   xMin?: number | null
   xMax?: number | null

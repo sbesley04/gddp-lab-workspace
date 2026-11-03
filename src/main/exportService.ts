@@ -1,7 +1,7 @@
 // Research-context package (ZIP) and chart file exports.
 import { createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { renameSync, writeFileSync } from 'node:fs'
-import { basename } from 'node:path'
+import { basename, extname } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
 import { buildContextFiles, type ContextExportOptions, type ContextExportPreview } from '@core/contextExport'
 import type { SelectionSpec } from '@core/types'
@@ -76,4 +76,45 @@ export function writeContextExport(project: Project, spec: SelectionSpec, option
 
 export function listExports(project: Project) {
   return project.db.all<any>('SELECT id, kind, dataset_version_id, metadata_version, file_name, created_at FROM export_record ORDER BY created_at DESC LIMIT 200')
+}
+
+export interface ChartFileInput {
+  format: 'svg' | 'png' | 'r'
+  data: string
+  sidecars?: { settings: string; log: string }
+  context?: { datasetVersionId: string; metadataVersion: number; signature: string }
+}
+
+/** Writes a chart (or just its analysis log) and, when asked, the settings and log beside it. Returns every file written. */
+export function writeChartFiles(project: Project | null, input: ChartFileInput, destPath: string, author: string | null): { fileName: string; files: string[] } {
+  if (input.format === 'svg') {
+    if (!input.data.trimStart().startsWith('<svg') && !input.data.trimStart().startsWith('<?xml')) throw new Error('Chart data is not SVG.')
+    writeFileSync(destPath, input.data, 'utf8')
+  } else if (input.format === 'png') {
+    const m = /^data:image\/png;base64,(.+)$/.exec(input.data)
+    if (!m) throw new Error('Chart data is not a PNG image.')
+    writeFileSync(destPath, Buffer.from(m[1], 'base64'))
+  } else {
+    writeFileSync(destPath, input.data, 'utf8')
+  }
+  const files = [basename(destPath)]
+  if (input.sidecars && input.format !== 'r') {
+    const base = destPath.slice(0, destPath.length - extname(destPath).length)
+    writeFileSync(`${base}.chart.json`, input.sidecars.settings, 'utf8')
+    writeFileSync(`${base}.R`, input.sidecars.log, 'utf8')
+    files.push(basename(`${base}.chart.json`), basename(`${base}.R`))
+  }
+  if (project) {
+    project.db.transaction(() => {
+      if (input.context) {
+        project.db.run(
+          'INSERT INTO export_record(id, kind, dataset_version_id, metadata_version, file_name, manifest_json, created_at) VALUES (?,?,?,?,?,?,?)',
+          randomUUID(), 'chart', input.context.datasetVersionId, input.context.metadataVersion, basename(destPath),
+          JSON.stringify({ format: input.format, files, signature: input.context.signature, appVersion: APP_VERSION }), new Date().toISOString()
+        )
+      }
+      project.audit('export.chart', { format: input.format, file: basename(destPath), files: files.length, signature: input.context?.signature ?? null }, author)
+    })
+  }
+  return { fileName: basename(destPath), files }
 }

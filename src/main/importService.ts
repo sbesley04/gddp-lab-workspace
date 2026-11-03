@@ -247,7 +247,7 @@ function carryOver(project: Project, fromVersion: string, toVersion: string, toN
     fromVersion
   )
   for (const r of latest) {
-    if (r.kind === 'variable_meta' || r.kind === 'quasi_identifier') {
+    if (r.kind === 'variable_meta' || r.kind === 'quasi_identifier' || r.kind === 'covariate') {
       if (!keys.has(r.target)) continue
     } else if (r.kind !== 'study_context' && r.kind !== 'segment_name') continue
     db.run(

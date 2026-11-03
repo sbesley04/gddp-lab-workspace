@@ -7,7 +7,7 @@ import type { CellFlag, DatasetSnapshot, FilterCondition, FilterGroup, VariableI
 const meta = () => ({ value: null, status: 'unknown' as const, provenance: '', revisionId: null })
 const variable = (index: number, key: string, kind: VariableInfo['kind'], categories: string[] = []): VariableInfo => ({
   index, columnIndex: index + 1, letter: String.fromCharCode(65 + index), key, header: key, headerRuns: null, role: 'measure', kind,
-  groupSegment: null, subgroupSegment: null, aliases: [], attribution: null, quasiIdentifier: false, categories,
+  groupSegment: null, subgroupSegment: null, aliases: [], attribution: null, quasiIdentifier: false, covariate: false, categories,
   counts: { number: 0, missing: 0, censored: 0, text: 0 },
   meta: { displayLabel: meta(), area: meta(), unit: meta(), specimen: meta(), assay: meta(), scoreType: meta(), definition: meta(), source: meta() }
 })

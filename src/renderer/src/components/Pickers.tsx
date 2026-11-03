@@ -1,3 +1,4 @@
+import { TRANSFORMS, TRANSFORM_LABELS, type TransformId } from '@core/transforms'
 import { useMemo, useState, type ReactNode } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, Search, Check, Plus, X, Filter, ShieldCheck, CalendarDays, AlertTriangle } from 'lucide-react'
@@ -399,5 +400,23 @@ export function FilterBar() {
         <span className="badge warn"><AlertTriangle size={12} /> No rows match</span>
       )}
     </div>
+  )
+}
+
+// ---------------- Transform ----------------
+
+export function TransformSelect({ value, onChange, label, testId }: { value: TransformId; onChange: (t: TransformId) => void; label: string; testId?: string }) {
+  return (
+    <select
+      className="btn sm"
+      aria-label={label}
+      data-testid={testId}
+      title={`${label}: applied to the values in this chart only; recorded in the analysis log`}
+      value={value}
+      onChange={(e) => onChange(e.target.value as TransformId)}
+      style={value !== 'none' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+    >
+      {TRANSFORMS.map((t) => <option key={t} value={t}>{t === 'none' ? 'No transform' : TRANSFORM_LABELS[t]}</option>)}
+    </select>
   )
 }

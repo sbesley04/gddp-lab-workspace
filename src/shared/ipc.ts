@@ -1,6 +1,7 @@
 // IPC contract: channel names and zod schemas validated in the main process for every call.
 import { z } from 'zod'
 import { META_FIELDS, QC_CATEGORIES } from '@core/types'
+import { TRANSFORMS } from '@core/transforms'
 
 const id = z.string().min(1).max(200)
 const author = z.string().max(80).nullable()
@@ -55,13 +56,17 @@ export const chartStyle = z.object({
 })
 
 export const chartConfig = z.object({
-  type: z.enum(['distribution', 'scatter', 'table']),
+  type: z.enum(['distribution', 'scatter', 'table', 'pca']),
   measureKey: z.string().max(200).nullable(),
   compareKey: z.string().max(200).nullable(),
   groupKey: z.string().max(200).nullable(),
+  colorKey: z.string().max(200).nullable().optional(),
+  transformMeasure: z.enum(TRANSFORMS).optional(),
+  transformCompare: z.enum(TRANSFORMS).optional(),
   xScale: z.enum(['linear', 'log']),
   yScale: z.enum(['linear', 'log']),
   tableColumns: z.array(z.string().max(200)).max(2000),
+  pcaKeys: z.array(z.string().max(200)).max(2000).optional(),
   xMin: z.number().finite().nullable().optional(),
   xMax: z.number().finite().nullable().optional(),
   yMin: z.number().finite().nullable().optional(),
@@ -124,6 +129,7 @@ export const schemas = {
   'data:importReport': z.object({ datasetVersionId: id }),
   'curation:editMeta': z.object({ datasetVersionId: id, varKey: id, field: z.enum(META_FIELDS), value: z.string().max(5000).nullable(), status: z.enum(['unknown', 'tentative', 'confirmed']), reason }),
   'curation:setQuasi': z.object({ datasetVersionId: id, varKey: id, value: z.boolean(), reason }),
+  'curation:setCovariate': z.object({ datasetVersionId: id, varKey: id, value: z.boolean(), reason }),
   'curation:decideFormat': z.object({ datasetVersionId: id, groupKey: z.string().max(500), decision: z.enum(['confirm', 'reject', 'reset']), asKind: z.enum(['qc_sample', 'qc_target', 'qc_both']).optional(), reason }),
   'curation:setExclusion': z.object({ datasetVersionId: id, varKey: id, participantId: z.string().max(200), visitId: id, excluded: z.boolean(), reason }),
   'curation:nameSegment': z.object({ datasetVersionId: id, segment: z.number().int().min(0).max(10000), name: z.string().max(200) }),
@@ -135,7 +141,14 @@ export const schemas = {
   'views:delete': z.object({ id }),
   'export:preview': z.object({ spec: selectionSpec, options: contextOptions, metadataVersion: z.number().int().min(0) }),
   'export:write': z.object({ spec: selectionSpec, options: contextOptions, metadataVersion: z.number().int().min(0) }),
-  'export:chart': z.object({ format: z.enum(['svg', 'png']), data: z.string().max(40_000_000), suggestedName: z.string().max(200) }),
+  'export:chart': z.object({
+    format: z.enum(['svg', 'png', 'r']),
+    data: z.string().max(40_000_000),
+    suggestedName: z.string().max(200),
+    /** Optional sidecar files written next to the chart, and the context recorded in the export record. */
+    sidecars: z.object({ settings: z.string().max(2_000_000), log: z.string().max(2_000_000) }).optional(),
+    context: z.object({ datasetVersionId: z.string().max(100), metadataVersion: z.number().int().min(0), signature: z.string().max(64) }).optional()
+  }),
   'settings:setAuthor': z.object({ authorLabel: z.string().max(80) }),
   'boards:get': z.object({ id }),
   'boards:save': z.object({ id: id.nullable(), name: z.string().min(1).max(200), layout: boardLayout }),

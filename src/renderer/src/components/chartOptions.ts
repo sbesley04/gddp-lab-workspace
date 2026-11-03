@@ -3,6 +3,7 @@
 import type { EChartsCoreOption } from 'echarts/core'
 import type { ChartConfig, ChartStyle, VariableInfo } from '@core/types'
 import type { DistributionData, ScatterData } from '@core/chartData'
+import type { PcaPlot, PcaResult } from '@core/pca'
 import { FONT_STACKS } from '@core/chartStyle'
 import { describe, linearFit } from '@core/analysis'
 import { formatNumber } from '@core/values'
@@ -15,6 +16,8 @@ export interface BuildCtx {
   dark: boolean
   highlight: Set<number>
   subtitle: string
+  /** Label of the colour-by covariate, shown in the footer notices. */
+  colorTitle?: string | null
 }
 
 export interface Built {
@@ -70,6 +73,36 @@ function header(title: string, subtitle: string, style: ChartStyle, p: ReturnTyp
 const inBounds = (v: number, min: number | null, max: number | null) => (min === null || v >= min) && (max === null || v <= max)
 const clamp = (v: number | null, min: number | null, max: number | null) => (v === null ? null : Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v)))
 
+/** Okabe–Ito palette: distinguishable under the common forms of colour-vision deficiency. */
+const CATEGORY_COLORS = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7', '#56B4E9', '#F0E442', '#7f7f7f']
+const MISSING_COLOR = '#b0b7c3'
+
+function categoryColors(categories: string[], notices: string[]): Map<string, string> {
+  const named = categories.filter((c) => !c.startsWith('('))
+  if (named.length > CATEGORY_COLORS.length) notices.push(`${named.length} categories: colours repeat after ${CATEGORY_COLORS.length}. Pick a covariate with fewer categories for an unambiguous legend.`)
+  return new Map(categories.map((c) => [c, c.startsWith('(') ? MISSING_COLOR : CATEGORY_COLORS[named.indexOf(c) % CATEGORY_COLORS.length]]))
+}
+
+/** Empty series that only exist to give the legend an entry per covariate category. */
+function legendSeries(colors: Map<string, string>) {
+  return [...colors].map(([name, color]) => ({ type: 'scatter', name, data: [], itemStyle: { color }, symbolSize: 10, silent: true, tooltip: { show: false } }))
+}
+
+function legendOption(colors: Map<string, string>, title: string | null, p: ReturnType<typeof palette>, style: ChartStyle) {
+  return {
+    show: colors.size > 0,
+    data: [...colors.keys()],
+    selectedMode: false,
+    right: 8,
+    top: 2,
+    itemWidth: 10,
+    itemHeight: 10,
+    type: 'scroll',
+    ...(title ? { formatter: (n: string) => n } : {}),
+    textStyle: { color: p.text2, fontSize: style.fontSize - 0.5 }
+  }
+}
+
 function symbolFor(pt: { flagged: boolean; unresolved: boolean }) {
   return pt.flagged ? 'triangle' : pt.unresolved ? 'diamond' : 'circle'
 }
@@ -83,6 +116,7 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
   let outside = 0
   let truncated = false
   const hlActive = ctx.highlight.size > 0
+  const catColors = categoryColors(data.categories, notices)
   const boxHidden = (g: (typeof data.groups)[number]) => scale === 'log' && g.nonPositiveHidden.length > 0
   const boxes = data.groups.map((g) => {
     if (!g.summary.n || boxHidden(g)) return []
@@ -105,12 +139,14 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
         symbol: symbolFor(pt),
         symbolSize: hl ? style.pointSize + 6 : pt.flagged ? style.pointSize + 2 : style.pointSize,
         symbolOffset: [jitter(pt.row + 1) * 14, 0],
+        cat: pt.cat,
         itemStyle: pt.unresolved && !pt.flagged
-          ? { color: 'transparent', borderColor: p.unresolved, borderWidth: 1.8 }
-          : { color: pt.flagged ? p.flag : p.point, opacity: hlActive && !hl ? 0.3 : style.pointOpacity, borderColor: hl ? p.text : 'rgba(255,255,255,0.85)', borderWidth: hl ? 2 : 0.7 }
+          ? { color: 'transparent', borderColor: pt.cat !== undefined ? catColors.get(pt.cat) : p.unresolved, borderWidth: 1.8 }
+          : { color: pt.cat !== undefined ? catColors.get(pt.cat) : pt.flagged ? p.flag : p.point, opacity: hlActive && !hl ? 0.3 : style.pointOpacity, borderColor: hl ? p.text : 'rgba(255,255,255,0.85)', borderWidth: hl ? 2 : 0.7 }
       }]
     })
   )
+  if (data.transformDropped) notices.push(`${data.transformDropped} value(s) cannot be transformed (e.g. log of a non-positive value) and are left out of this chart.`)
   if (outside) notices.push(`${outside} point(s) lie outside the forced Y bounds and are not drawn (they still count in all statistics).`)
   if (truncated) notices.push('Boxes or whiskers are cut at the forced Y bounds.')
   const series: any[] = [
@@ -132,7 +168,7 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
       type: 'scatter',
       z: 3,
       data: points,
-      tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b><br/>${label(measure)}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
+      tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b>${prm.data.cat !== undefined ? `<br/>${prm.data.cat}` : ''}<br/>${label(measure)}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
     }
   ]
   if (chart.analysis.requested && chart.analysis.meanCi) {
@@ -164,11 +200,13 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
       tooltip: { formatter: (prm: any) => `Mean ${fmt(prm.data[1])}<br/>95% CI ${fmt(prm.data[2])} – ${fmt(prm.data[3])}` }
     })
   }
+  series.push(...legendSeries(catColors))
   const option: EChartsCoreOption = {
     animation: false,
     backgroundColor: p.bg,
     textStyle: { fontFamily: p.font, fontSize: style.fontSize },
     title: header(axisTitle(measure), ctx.subtitle, style, p),
+    legend: legendOption(catColors, ctx.colorTitle ?? null, p, style),
     grid: { left: 76, right: 28, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: group ? 64 : 48 },
     tooltip: { trigger: 'item', confine: true, backgroundColor: cssVar('--paper-solid', '#fff'), borderColor: p.grid, textStyle: { color: cssVar('--text', '#111') } },
     xAxis: { type: 'category', data: data.groups.map((g) => `${g.label}\nn = ${g.summary.n}`), ...axis(p, style), splitLine: { show: false }, name: group ? label(group) : '', nameLocation: 'middle', nameGap: 42 },
@@ -210,6 +248,7 @@ export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInf
   const notices: string[] = []
   let outside = 0
   const hlActive = ctx.highlight.size > 1
+  const catColors = categoryColors(data.categories, notices)
   const pts = data.points.flatMap((pt) => {
     if (!inBounds(pt.x, chart.xMin, chart.xMax) || !inBounds(pt.y, chart.yMin, chart.yMax)) {
       outside++
@@ -222,18 +261,20 @@ export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInf
       pid: pt.participantId,
       symbol: symbolFor(pt),
       symbolSize: hl ? style.pointSize + 6 : pt.flagged ? style.pointSize + 3 : style.pointSize + 1,
+      cat: pt.cat,
       itemStyle: pt.unresolved && !pt.flagged
-        ? { color: 'transparent', borderColor: p.unresolved, borderWidth: 1.8 }
-        : { color: pt.flagged ? p.flag : p.point, opacity: hlActive && !hl ? 0.3 : style.pointOpacity, borderColor: hl ? p.text : 'rgba(255,255,255,0.85)', borderWidth: hl ? 2 : 0.7 }
+        ? { color: 'transparent', borderColor: pt.cat !== undefined ? catColors.get(pt.cat) : p.unresolved, borderWidth: 1.8 }
+        : { color: pt.cat !== undefined ? catColors.get(pt.cat) : pt.flagged ? p.flag : p.point, opacity: hlActive && !hl ? 0.3 : style.pointOpacity, borderColor: hl ? p.text : 'rgba(255,255,255,0.85)', borderWidth: hl ? 2 : 0.7 }
     }]
   })
+  if (data.transformDropped) notices.push(`${data.transformDropped} pair(s) include a value that cannot be transformed (e.g. log of a non-positive value) and are left out of this chart.`)
   if (outside) notices.push(`${outside} pair(s) lie outside the forced axis bounds and are not drawn (they still count in all statistics).`)
   const series: any[] = [
     {
       type: 'scatter',
       z: 3,
       data: pts,
-      tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b><br/>${label(x)}: ${fmt(prm.data.value[0])}<br/>${label(y)}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
+      tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b>${prm.data.cat !== undefined ? `<br/>${prm.data.cat}` : ''}<br/>${label(x)}: ${fmt(prm.data.value[0])}<br/>${label(y)}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
     }
   ]
   const a = chart.analysis
@@ -276,10 +317,12 @@ export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInf
       if (fi.info.transformX || fi.info.transformY) notices.push('Fit is computed on the log10 scale shown on the axes.')
     }
   }
+  series.push(...legendSeries(catColors))
   const option: EChartsCoreOption = {
     animation: false,
     backgroundColor: p.bg,
     textStyle: { fontFamily: p.font, fontSize: style.fontSize },
+    legend: legendOption(catColors, ctx.colorTitle ?? null, p, style),
     title: header(`${label(y)} and ${label(x)}`, `${ctx.subtitle} · ${data.points.length} complete pairs`, style, p),
     grid: { left: 76, right: 30, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: 58 },
     brush: { xAxisIndex: 0, yAxisIndex: 0, throttleType: 'debounce', throttleDelay: 150, brushStyle: { color: 'rgba(37,99,235,0.08)', borderColor: p.point, borderWidth: 1 }, outOfBrush: { opacity: 0.35 }, seriesIndex: [0] },
@@ -297,4 +340,74 @@ export function hexAlpha(hex: string, a: number): string {
   if (h.length !== 6) return hex
   const n = parseInt(h, 16)
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
+}
+
+const pct = (v: number) => `${(v * 100).toFixed(1)}%`
+
+/** Scores plot for two chosen components (0-based indexes). Flags keep their shapes; the covariate sets the colour. */
+export function pcaOption(plot: PcaPlot, xi: number, yi: number, chart: FullChart, ctx: BuildCtx): Built {
+  const style = chart.style
+  const p = palette(style, ctx.dark)
+  const notices: string[] = []
+  const r = plot.result!
+  const catColors = categoryColors(plot.categories, notices)
+  const hlActive = ctx.highlight.size > 0
+  const data = plot.points.map((pt) => {
+    const hl = ctx.highlight.has(pt.row)
+    return {
+      value: [pt.scores[xi], pt.scores[yi]],
+      row: pt.row,
+      pid: pt.participantId,
+      cat: pt.cat,
+      symbol: symbolFor(pt),
+      symbolSize: hl ? style.pointSize + 6 : pt.flagged ? style.pointSize + 3 : style.pointSize + 1,
+      itemStyle: pt.unresolved && !pt.flagged
+        ? { color: 'transparent', borderColor: pt.cat !== undefined ? catColors.get(pt.cat) : p.unresolved, borderWidth: 1.8 }
+        : { color: pt.cat !== undefined ? catColors.get(pt.cat) : pt.flagged ? p.flag : p.point, opacity: hlActive && !hl ? 0.3 : style.pointOpacity, borderColor: hl ? p.text : 'rgba(255,255,255,0.85)', borderWidth: hl ? 2 : 0.7 }
+    }
+  })
+  const xName = `PC${xi + 1} (${pct(r.varianceExplained[xi])})`
+  const yName = `PC${yi + 1} (${pct(r.varianceExplained[yi])})`
+  const series: any[] = [
+    {
+      type: 'scatter',
+      z: 3,
+      data,
+      tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b>${prm.data.cat !== undefined ? `<br/>${prm.data.cat}` : ''}<br/>${xName}: ${fmt(prm.data.value[0])}<br/>${yName}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
+    },
+    ...legendSeries(catColors)
+  ]
+  const option: EChartsCoreOption = {
+    animation: false,
+    backgroundColor: p.bg,
+    textStyle: { fontFamily: p.font, fontSize: style.fontSize },
+    legend: legendOption(catColors, ctx.colorTitle ?? null, p, style),
+    title: header(`PCA: PC${xi + 1} vs PC${yi + 1}`, `${ctx.subtitle} · ${r.n} complete observations, ${r.p} variables (standardised)`, style, p),
+    grid: { left: 76, right: 30, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: 58 },
+    tooltip: { trigger: 'item', confine: true, backgroundColor: cssVar('--paper-solid', '#fff'), borderColor: p.grid, textStyle: { color: cssVar('--text', '#111') } },
+    xAxis: { type: 'value', name: xName, nameLocation: 'middle', nameGap: 34, scale: true, ...axis(p, style) },
+    yAxis: { type: 'value', name: yName, nameLocation: 'middle', nameGap: 54, scale: true, ...axis(p, style) },
+    series
+  }
+  return { option, notices, minWidth: 0 }
+}
+
+/** Variance explained per component (bars) with the cumulative total (line). */
+export function screeOption(r: PcaResult, chart: FullChart, ctx: Pick<BuildCtx, 'dark'>): EChartsCoreOption {
+  const style = chart.style
+  const p = palette(style, ctx.dark)
+  const names = Array.from({ length: r.k }, (_, i) => `PC${i + 1}`)
+  return {
+    animation: false,
+    backgroundColor: p.bg,
+    textStyle: { fontFamily: p.font, fontSize: style.fontSize },
+    grid: { left: 56, right: 20, top: 16, bottom: 36 },
+    tooltip: { trigger: 'axis', confine: true, valueFormatter: (v: number) => `${v.toFixed(1)}%` },
+    xAxis: { type: 'category', data: names, ...axis(p, style), axisLabel: { ...axis(p, style).axisLabel, interval: 0, fontSize: style.fontSize - 2 }, splitLine: { show: false } },
+    yAxis: { type: 'value', name: 'Variance explained (%)', nameLocation: 'middle', nameGap: 40, min: 0, max: 100, ...axis(p, style) },
+    series: [
+      { type: 'bar', name: 'Per component', data: r.varianceExplained.map((v) => +(v * 100).toFixed(4)), itemStyle: { color: p.point } },
+      { type: 'line', name: 'Cumulative', data: r.cumulative.map((v) => +(v * 100).toFixed(4)), lineStyle: { color: p.fit, width: 2 }, itemStyle: { color: p.fit }, symbolSize: 6 }
+    ]
+  }
 }

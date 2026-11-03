@@ -41,6 +41,15 @@ export function setQuasiIdentifier(project: Project, input: { datasetVersionId: 
   return insert(project, input.datasetVersionId, 'quasi_identifier', input.varKey, null, input.value, 'confirmed', input.author, input.reason)
 }
 
+export function setCovariate(project: Project, input: { datasetVersionId: string; varKey: string; value: boolean; author: string | null; reason: string | null }): number {
+  ensureVariable(project, input.datasetVersionId, input.varKey)
+  return project.db.transaction(() => {
+    const id = insert(project, input.datasetVersionId, 'covariate', input.varKey, null, input.value, 'confirmed', input.author, input.reason)
+    project.audit('covariate.set', { varKey: input.varKey, value: input.value, revision: id }, input.author)
+    return id
+  })
+}
+
 export function decideFormat(
   project: Project,
   input: { datasetVersionId: string; groupKey: string; decision: 'confirm' | 'reject' | 'reset'; asKind?: InterpretationKind; author: string | null; reason: string | null }

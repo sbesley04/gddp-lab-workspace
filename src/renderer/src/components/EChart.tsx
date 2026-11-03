@@ -1,15 +1,19 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import * as echarts from 'echarts/core'
-import { ScatterChart, BoxplotChart, LineChart, CustomChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent } from 'echarts/components'
+import { ScatterChart, BoxplotChart, LineChart, CustomChart, BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, LegendComponent } from 'echarts/components'
 import { SVGRenderer } from 'echarts/renderers'
 import type { EChartsCoreOption } from 'echarts/core'
 
-echarts.use([ScatterChart, BoxplotChart, LineChart, CustomChart, GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, SVGRenderer])
+echarts.use([ScatterChart, BoxplotChart, LineChart, CustomChart, BarChart, GridComponent, TooltipComponent, TitleComponent, BrushComponent, ToolboxComponent, LegendComponent, SVGRenderer])
 
 export interface EChartHandle {
   svg: () => string
   png: (scale?: number) => Promise<string>
+  /** SVG at an explicit size (null = as shown), rendered offscreen so the on-screen chart is untouched. */
+  svgAt: (width: number | null, height: number | null) => string
+  /** Rasterise any SVG string (e.g. one with a footer) at the given scale. */
+  pngFromSvg: (svg: string, width: number, height: number, scale: number) => Promise<string>
   setBrush: (on: boolean) => void
 }
 
@@ -28,6 +32,8 @@ export const EChart = forwardRef<EChartHandle, Props>(function EChart({ option, 
   const chart = useRef<echarts.ECharts | null>(null)
   const handlers = useRef({ onPointClick, onBrush })
   handlers.current = { onPointClick, onBrush }
+  const latest = useRef(option)
+  latest.current = option
 
   useEffect(() => {
     const el = host.current!
@@ -50,7 +56,37 @@ export const EChart = forwardRef<EChartHandle, Props>(function EChart({ option, 
     chart.current?.setOption(option, { notMerge: true, lazyUpdate: false })
   }, [option])
 
+  const rasterise = async (svg: string, w: number, h: number, scale: number) => {
+    const img = new Image()
+    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res()
+      img.onerror = () => rej(new Error('Could not rasterise chart'))
+      img.src = url
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = w * scale
+    canvas.height = h * scale
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--paper-solid').trim() || '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/png')
+  }
+
   useImperativeHandle(ref, () => ({
+    pngFromSvg: rasterise,
+    svgAt: (width, height) => {
+      if (width === null || height === null) return (chart.current as any).renderToSVGString() as string
+      const el = document.createElement('div')
+      const c = echarts.init(el, undefined, { renderer: 'svg', width, height, ssr: false })
+      try {
+        c.setOption({ ...(latest.current as object), animation: false }, { notMerge: true })
+        return (c as any).renderToSVGString() as string
+      } finally {
+        c.dispose()
+      }
+    },
     svg: () => (chart.current as any).renderToSVGString() as string,
     png: async (scale = 2) => {
       const svg = (chart.current as any).renderToSVGString() as string

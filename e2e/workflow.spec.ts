@@ -76,6 +76,20 @@ test('import, select, save, export, back up — all offline', async () => {
   await page.getByTestId('compute-stats').click()
   await expect(page.getByTestId('stats-panel')).toContainText('Shapiro–Wilk')
 
+  // The analysis log shows every step with a signature
+  await page.getByTestId('history').click()
+  await expect(page.getByTestId('chain-signature')).toHaveText(/^[0-9a-f]{8}$/)
+  await expect(page.getByText('Analysis log', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  // A transform is applied to the chart and recorded in the log, then undone
+  await page.getByTestId('transform-measure').selectOption('log2')
+  await page.getByTestId('history').click()
+  await expect(page.getByText('Display transforms')).toBeVisible()
+  await expect(page.getByText(/log2\(df\[\[/).first()).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByTestId('transform-measure').selectOption('none')
+
   // Save view with the suggested name (Enter accepts it)
   await page.getByTestId('save-view').click()
   const suggested = await page.getByTestId('view-name').inputValue()
@@ -136,7 +150,7 @@ test('import, select, save, export, back up — all offline', async () => {
   await page.screenshot({ path: join(shots, '03-export.png') })
   const files = unzipSync(new Uint8Array(readFileSync(zipPath)))
   const manifest = JSON.parse(strFromU8(files['manifest.json']))
-  expect(Object.keys(files).sort()).toEqual(['analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
+  expect(Object.keys(files).sort()).toEqual(['analysis_log.R', 'analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
   for (const f of manifest.files) expect(createHash('sha256').update(files[f.name]).digest('hex')).toBe(f.sha256)
   expect(manifest.selection.rows).toBe(rows)
   expect(JSON.stringify(manifest)).not.toContain(work)

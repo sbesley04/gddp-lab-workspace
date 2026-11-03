@@ -5,6 +5,7 @@ import type { DatasetSnapshot, SelectionSpec, VariableInfo } from './types'
 import { QC_CATEGORY_LABELS } from './types'
 import { computeSelection, countsFor, describeFilter, getObservation, type SelectionResult } from './selection'
 import { toCsv } from './csv'
+import { buildProvenance } from './provenance'
 
 export const CONTEXT_EXPORT_SCHEMA = 'bari-cns-context-export/1'
 
@@ -183,12 +184,14 @@ ${options.analysisQuestion.trim() || '_No question entered._'}
 8. State every analytical assumption, transformation and exclusion explicitly.
 `
 
+  const provenance = buildProvenance({ snapshot, spec, chart: null, appVersion: input.appVersion })
   const files: Record<string, string> = {
     'selected_data.csv': data.text,
     'data_dictionary.csv': dictionary.text,
     'quality_flags.csv': quality.text,
     'study_context.md': studyContext,
-    'analysis_request.md': analysisRequest
+    'analysis_request.md': analysisRequest,
+    'analysis_log.R': provenance.text
   }
 
   const summary = [
@@ -213,6 +216,7 @@ ${options.analysisQuestion.trim() || '_No question entered._'}
     qcPolicy: { exclude: spec.qc.exclude, description: qcText },
     variables: vars.map((v) => v.key),
     transformations: [] as string[],
+    analysisLog: { file: 'analysis_log.R', signature: provenance.signature },
     participantKeys: {
       mode: options.participantKeyMode,
       note:

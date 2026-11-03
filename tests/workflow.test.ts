@@ -210,7 +210,7 @@ describe('context export', () => {
     expect(() => writeContextExport(project, spec, opts, snap.metadataVersion, dest, 'Test RA')).toThrow(/quasi-identifiers/)
     const res = writeContextExport(project, spec, { ...opts, confirmedQuasiIdentifiers: [keys[2]] }, snap.metadataVersion, dest, 'Test RA')
     const files = unzipSync(new Uint8Array(readFileSync(dest)))
-    expect(Object.keys(files).sort()).toEqual(['analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
+    expect(Object.keys(files).sort()).toEqual(['analysis_log.R', 'analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
     const manifest = JSON.parse(strFromU8(files['manifest.json']))
     for (const f of manifest.files) expect(createHash('sha256').update(files[f.name]).digest('hex')).toBe(f.sha256)
     const data = strFromU8(files['selected_data.csv'])
@@ -224,7 +224,8 @@ describe('context export', () => {
     expect(strFromU8(files['study_context.md'])).toMatch(/baseline observations only/i)
     expect(strFromU8(files['quality_flags.csv'])).toMatch(/excluded by policy/)
     expect(manifest.metadataVersion).toBe(snap.metadataVersion)
-    expect(res.files).toHaveLength(5)
+    expect(res.files).toHaveLength(6)
+    expect(strFromU8(files['analysis_log.R'])).toContain(`chain signature: ${manifest.analysisLog.signature}`)
   })
 })
 

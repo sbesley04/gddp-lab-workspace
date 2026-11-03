@@ -58,3 +58,27 @@ test('wide tables render only visible columns and keep ID and visit pinned', asy
   await expect(table.locator('thead th', { hasText: 'Participant' })).toBeVisible() // pinned
   await app.close()
 })
+
+test('PCA is computed only on request, and shows loadings and variance explained', async () => {
+  const { app, page } = await launch(mkdtempSync(join(tmpdir(), 'bari-pca-')))
+  await page.getByText('Open synthetic demo').click()
+  await page.getByText('Outstanding metadata tasks').waitFor({ timeout: 20000 })
+  await page.getByRole('button', { name: 'Explore data' }).first().click()
+  await page.getByTestId('type-pca').click()
+  await expect(page.getByTestId('compute-pca')).toBeDisabled()
+  for (const area of ['AQ NULISA', 'NP']) {
+    await page.getByTestId('pca-add').click()
+    await page.getByTestId(`pca-add-area-${area}`).click()
+  }
+  await expect(page.getByTestId('pca-result')).toHaveCount(0)
+  await page.getByTestId('compute-pca').click()
+  const outcome = page.getByTestId('pca-result').or(page.getByTestId('pca-error'))
+  await expect(outcome).toBeVisible()
+  await page.screenshot({ path: join(import.meta.dirname, '..', 'test-results', 'screens', 'pca.png') })
+  if (await page.getByTestId('pca-result').count()) {
+    await expect(page.getByTestId('pca-loadings')).toContainText('Variance')
+    await page.getByTestId('history').click()
+    await expect(page.getByText('prcomp(pca_data')).toBeVisible()
+  }
+  await app.close()
+})

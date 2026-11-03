@@ -125,12 +125,14 @@ export function buildSnapshot(project: Project, datasetVersionId: string, asOfIn
   const seed = new Map<string, RevisionRow>()
   const curated = new Map<string, RevisionRow>()
   const qi = new Map<string, RevisionRow>()
+  const cov = new Map<string, RevisionRow>()
   for (const r of revs) {
     if (r.kind === 'variable_meta' && r.field) {
       const k = `${r.target}\u0000${r.field}`
       if (r.author_label === 'Importer') seed.set(k, r)
       else curated.set(k, r)
     } else if (r.kind === 'quasi_identifier') qi.set(r.target, r)
+    else if (r.kind === 'covariate') cov.set(r.target, r)
   }
   const metaField = (key: string, field: MetaFieldName, segName: Segment | undefined): MetaField => {
     const k = `${key}\u0000${field}`
@@ -164,6 +166,7 @@ export function buildSnapshot(project: Project, datasetVersionId: string, asOfIn
         aliases: JSON.parse(v.aliases_json) as Alias[],
         attribution: v.attribution_json ? JSON.parse(v.attribution_json) : null,
         quasiIdentifier: q ? JSON.parse(q.value_json ?? 'false') : v.quasi_identifier === 1,
+        covariate: cov.has(v.var_key) ? JSON.parse(cov.get(v.var_key)!.value_json ?? 'false') : false,
         categories: JSON.parse(v.categories_json),
         counts: JSON.parse(v.counts_json)
       }

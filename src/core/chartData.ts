@@ -3,6 +3,7 @@ import type { SelectionResult, Observation } from './selection'
 import { getObservation, isUsable, pairedObservations } from './selection'
 import { summarize, type Summary } from './stats'
 import type { CellValue } from './types'
+import { buildTransform, type TransformId } from './transforms'
 
 export interface PlotPoint {
   row: number
@@ -10,6 +11,8 @@ export interface PlotPoint {
   value: number
   flagged: boolean // carries any QC-type flag (included under the current policy)
   unresolved: boolean // carries unresolved formatting
+  /** Category of the colour-by covariate for this row (null when not colouring). */
+  cat?: string
 }
 
 export interface DistributionGroup {
@@ -22,6 +25,10 @@ export interface DistributionGroup {
 export interface DistributionData {
   groups: DistributionGroup[]
   totals: { rows: number; participants: number; usableNumeric: number; missing: number; censored: number; nonNumeric: number; qcExcluded: number }
+  /** Values the chosen transform cannot define (e.g. log of a non-positive value); omitted and counted. */
+  transformDropped: number
+  /** Colour-by categories in display order (empty when not colouring). */
+  categories: string[]
   logValid: boolean
   logReason: string | null
 }
@@ -39,7 +46,7 @@ function pointFrom(sel: SelectionResult, o: Observation): PlotPoint {
   }
 }
 
-function groupLabel(sel: SelectionResult, row: number, groupVar: number | null): string {
+export function categoryLabel(sel: SelectionResult, row: number, groupVar: number | null): string {
   if (groupVar === null) return 'All selected'
   const o = getObservation(sel.ctx, row, groupVar)
   if (o.value.k === 'missing') return MISSING_GROUP
@@ -47,12 +54,47 @@ function groupLabel(sel: SelectionResult, row: number, groupVar: number | null):
   return o.value.k === 'number' ? o.value.raw.trim() : o.value.raw.trim()
 }
 
-export function distributionData(sel: SelectionResult, variable: number, groupVar: number | null, scale: 'linear' | 'log'): DistributionData {
+export interface ChartDataOptions {
+  transform?: TransformId
+  /** Variable index of the colour-by covariate. */
+  colorVar?: number | null
+}
+
+/** Usable numeric values of a variable in the selection: what a transform is computed from. */
+export function numericColumn(sel: SelectionResult, variable: number): number[] {
+  const out: number[] = []
+  for (const row of sel.rows) {
+    const o = getObservation(sel.ctx, row, variable)
+    if (isUsable(o) && o.value.k === 'number') out.push(o.value.v)
+  }
+  return out
+}
+
+function orderedCategories(cats: Iterable<string>): string[] {
+  return [...new Set(cats)].sort((a, b) => (a === MISSING_GROUP ? 1 : b === MISSING_GROUP ? -1 : a.localeCompare(b, undefined, { numeric: true })))
+}
+
+export function distributionData(sel: SelectionResult, variable: number, groupVar: number | null, scale: 'linear' | 'log', opts: ChartDataOptions = {}): DistributionData {
+  const tf = opts.transform ?? 'none'
+  const fn = buildTransform(tf, tf === 'none' ? [] : numericColumn(sel, variable))
+  let transformDropped = 0
+  const colorVar = opts.colorVar ?? null
+  const cats = new Set<string>()
   const byGroup = new Map<string, Observation[]>()
   for (const row of sel.rows) {
-    const label = groupLabel(sel, row, groupVar)
+    const label = categoryLabel(sel, row, groupVar)
     const list = byGroup.get(label) ?? []
-    list.push(getObservation(sel.ctx, row, variable))
+    let obs = getObservation(sel.ctx, row, variable)
+    if (tf !== 'none' && isUsable(obs) && obs.value.k === 'number') {
+      const t = fn(obs.value.v)
+      if (t === null) {
+        transformDropped++
+        byGroup.set(label, list)
+        continue
+      }
+      obs = { ...obs, value: { k: 'number', v: t, raw: String(t) } }
+    }
+    list.push(obs)
     byGroup.set(label, list)
   }
   const totals = { rows: sel.rows.length, participants: sel.participantIds.length, usableNumeric: 0, missing: 0, censored: 0, nonNumeric: 0, qcExcluded: 0 }
@@ -69,14 +111,21 @@ export function distributionData(sel: SelectionResult, variable: number, groupVa
     totals.censored += summary.censored
     totals.nonNumeric += summary.nonNumeric
     totals.usableNumeric += summary.n
-    const pts = usable.filter((o) => o.value.k === 'number').map((o) => pointFrom(sel, o))
+    const pts = usable.filter((o) => o.value.k === 'number').map((o) => {
+      const pt = pointFrom(sel, o)
+      if (colorVar !== null) {
+        pt.cat = categoryLabel(sel, o.row, colorVar)
+        cats.add(pt.cat)
+      }
+      return pt
+    })
     const shown = scale === 'log' ? pts.filter((p) => p.value > 0) : pts
     const hidden = scale === 'log' ? pts.filter((p) => p.value <= 0) : []
     if (pts.some((p) => p.value > 0)) anyPositive = true
     groups.push({ label, points: shown, summary, nonPositiveHidden: hidden })
   }
   const logValid = anyPositive
-  return { groups, totals, logValid, logReason: logValid ? null : 'A log axis needs at least one positive value.' }
+  return { groups, totals, transformDropped, categories: orderedCategories(cats), logValid, logReason: logValid ? null : 'A log axis needs at least one positive value.' }
 }
 
 export interface ScatterData {
@@ -89,10 +138,35 @@ export interface ScatterData {
   qcExcluded: number
   logValidX: boolean
   logValidY: boolean
+  transformDropped: number
+  categories: string[]
 }
 
-export function scatterData(sel: SelectionResult, xVar: number, yVar: number, xScale: 'linear' | 'log', yScale: 'linear' | 'log'): ScatterData {
+export function scatterData(
+  sel: SelectionResult,
+  xVar: number,
+  yVar: number,
+  xScale: 'linear' | 'log',
+  yScale: 'linear' | 'log',
+  opts: { transformX?: TransformId; transformY?: TransformId; colorVar?: number | null } = {}
+): ScatterData {
   const pr = pairedObservations(sel, xVar, yVar)
+  const tx = opts.transformX ?? 'none'
+  const ty = opts.transformY ?? 'none'
+  const fx = buildTransform(tx, tx === 'none' ? [] : numericColumn(sel, xVar))
+  const fy = buildTransform(ty, ty === 'none' ? [] : numericColumn(sel, yVar))
+  let transformDropped = 0
+  const cats = new Set<string>()
+  const colorVar = opts.colorVar ?? null
+  pr.pairs = pr.pairs.flatMap((p) => {
+    const x = fx(p.x)
+    const y = fy(p.y)
+    if (x === null || y === null) {
+      transformDropped++
+      return []
+    }
+    return [{ ...p, x, y }]
+  })
   const out: ScatterData = {
     points: [],
     hidden: [],
@@ -102,7 +176,9 @@ export function scatterData(sel: SelectionResult, xVar: number, yVar: number, xS
     unevaluable: pr.unevaluable,
     qcExcluded: pr.qcExcluded,
     logValidX: pr.pairs.some((p) => p.x > 0),
-    logValidY: pr.pairs.some((p) => p.y > 0)
+    logValidY: pr.pairs.some((p) => p.y > 0),
+    transformDropped,
+    categories: []
   }
   for (const p of pr.pairs) {
     const badX = xScale === 'log' && p.x <= 0
@@ -113,9 +189,12 @@ export function scatterData(sel: SelectionResult, xVar: number, yVar: number, xS
       continue
     }
     const flags = [...p.xObs.flags, ...p.yObs.flags]
+    const cat = colorVar !== null ? categoryLabel(sel, p.row, colorVar) : undefined
+    if (cat !== undefined) cats.add(cat)
     out.points.push({
       row: p.row,
       participantId,
+      cat,
       value: p.y,
       x: p.x,
       y: p.y,
@@ -123,5 +202,6 @@ export function scatterData(sel: SelectionResult, xVar: number, yVar: number, xS
       unresolved: flags.some((f) => f.category === 'unresolved_highlight')
     })
   }
+  out.categories = orderedCategories(cats)
   return out
 }

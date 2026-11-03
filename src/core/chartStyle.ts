@@ -45,6 +45,10 @@ export function normalizeChart(c: ChartConfig): Required<ChartConfig> {
     xMax: c.xMax ?? null,
     yMin: c.yMin ?? null,
     yMax: c.yMax ?? null,
+    colorKey: c.colorKey ?? null,
+    pcaKeys: c.pcaKeys ?? [],
+    transformMeasure: c.transformMeasure ?? 'none',
+    transformCompare: c.transformCompare ?? 'none',
     style: { ...defaultStyle(), ...(c.style ?? {}) },
     analysis: { ...DEFAULT_ANALYSIS, ...(c.analysis ?? {}) }
   }

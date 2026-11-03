@@ -5,12 +5,14 @@ import type { ChartStyle, DatasetSnapshot, SavedViewSpec } from '@core/types'
 import { normalizeChart } from '@core/chartStyle'
 import { computeSelection, describeFilter, getObservation } from '@core/selection'
 import { distributionData, scatterData } from '@core/chartData'
+import { transformedVariable } from '@core/transforms'
+import { pcaPlot } from '@core/pca'
 import { displayValue } from '@core/values'
 import { call } from '../api'
 import { useStore, errorText } from '../store'
 import { label, qcPolicyText } from '../lib/format'
 import { EChart, type EChartHandle } from './EChart'
-import { distributionOption, scatterOption } from './chartOptions'
+import { distributionOption, pcaOption, scatterOption } from './chartOptions'
 import { StyleEditor } from './ChartControls'
 import { useScheme } from '../pages/Explore'
 
@@ -336,10 +338,23 @@ const ViewChart = forwardRef<CardHandle, { view: ViewRecord; style: ChartStyle |
     const subtitle = `n = ${sel.participantIds.length} · ${f === 'All rows' ? 'no cohort filter' : f} · QC: ${qcPolicyText(view.spec.selection.qc.exclude)}`
     if (chart.type === 'distribution' && m) {
       const g = chart.groupKey ? byKey.get(chart.groupKey) ?? null : null
-      return { kind: 'chart' as const, ...distributionOption(distributionData(sel, m.index, g?.index ?? null, chart.yScale), m, g, chart, { dark, highlight: new Set(), subtitle }) }
+      const cv = chart.colorKey ? byKey.get(chart.colorKey) ?? null : null
+      const data = distributionData(sel, m.index, g?.index ?? null, chart.yScale, { transform: chart.transformMeasure, colorVar: cv?.index ?? null })
+      return { kind: 'chart' as const, ...distributionOption(data, transformedVariable(m, chart.transformMeasure), g, chart, { dark, highlight: new Set(), subtitle, colorTitle: cv ? label(cv) : null }) }
+    }
+    if (chart.type === 'pca') {
+      const vs = (chart.pcaKeys ?? []).map((k) => byKey.get(k)).filter((v): v is NonNullable<typeof v> => !!v)
+      const cv = chart.colorKey ? byKey.get(chart.colorKey) ?? null : null
+      const plot = pcaPlot(sel, vs, cv?.index ?? null)
+      if (!plot.result) return { kind: 'note' as const, text: plot.error ?? 'No PCA result.' }
+      return { kind: 'chart' as const, ...pcaOption(plot, 0, 1, chart, { dark, highlight: new Set(), subtitle, colorTitle: cv ? label(cv) : null }) }
     }
     const x = chart.compareKey ? byKey.get(chart.compareKey) : undefined
-    if (chart.type === 'scatter' && m && x) return { kind: 'chart' as const, ...scatterOption(scatterData(sel, x.index, m.index, chart.xScale, chart.yScale), x, m, chart, { dark, highlight: new Set(), subtitle }) }
+    if (chart.type === 'scatter' && m && x) {
+      const cv = chart.colorKey ? byKey.get(chart.colorKey) ?? null : null
+      const data = scatterData(sel, x.index, m.index, chart.xScale, chart.yScale, { transformX: chart.transformCompare, transformY: chart.transformMeasure, colorVar: cv?.index ?? null })
+      return { kind: 'chart' as const, ...scatterOption(data, transformedVariable(x, chart.transformCompare), transformedVariable(m, chart.transformMeasure), chart, { dark, highlight: new Set(), subtitle, colorTitle: cv ? label(cv) : null }) }
+    }
     const cols = (chart.tableColumns.length ? chart.tableColumns : [chart.measureKey, chart.compareKey, chart.groupKey]).filter((k): k is string => !!k).map((k) => byKey.get(k)).filter((v): v is NonNullable<typeof v> => !!v)
     return { kind: 'table' as const, sel, cols }
   }, [snap, view, chart, dark])
@@ -356,6 +371,8 @@ const ViewChart = forwardRef<CardHandle, { view: ViewRecord; style: ChartStyle |
         <div style={{ flex: 1, minHeight: 0, overflowX: built.minWidth > width ? 'auto' : 'hidden', overflowY: 'hidden' }}>
           <EChart ref={chartRef} option={built.option} height="100%" minWidth={built.minWidth} ariaLabel={view.name} />
         </div>
+      ) : built.kind === 'note' ? (
+        <div className="empty small"><p>{built.text}</p></div>
       ) : (
         <div className="table-wrap" style={{ flex: 1 }}>
           <table className="data">

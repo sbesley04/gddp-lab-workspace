@@ -12,7 +12,7 @@ import { buildSnapshot, listVersions } from './snapshot'
 import * as curation from './curation'
 import * as views from './views'
 import * as boards from './boards'
-import { listExports, previewContextExport, writeContextExport } from './exportService'
+import { listExports, previewContextExport, writeChartFiles, writeContextExport } from './exportService'
 import { createBackup, restoreBackup } from './backup'
 import { APP_VERSION } from './version'
 import { runSelfTest, abortSelfTest } from './selfTest'
@@ -206,6 +206,7 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   },
   'curation:editMeta': (p) => curation.editVariableMeta(requireProject(), { ...p, author: author() }),
   'curation:setQuasi': (p) => curation.setQuasiIdentifier(requireProject(), { ...p, author: author() }),
+  'curation:setCovariate': (p) => curation.setCovariate(requireProject(), { ...p, author: author() }),
   'curation:decideFormat': (p) => curation.decideFormat(requireProject(), { ...p, author: author() }),
   'curation:setExclusion': (p) => curation.setCellExclusion(requireProject(), { ...p, author: author() }),
   'curation:nameSegment': (p) => curation.nameSegment(requireProject(), { ...p, author: author() }),
@@ -230,19 +231,11 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   },
   'export:list': () => listExports(requireProject()),
   'export:chart': async (p) => {
-    const ext = p.format
-    const r = await dialog.showSaveDialog(mainWindow!, { title: `Save chart as ${ext.toUpperCase()}`, defaultPath: `${p.suggestedName.replace(/[\\/:*?"<>|]+/g, '-')}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
+    const ext = p.format === 'r' ? 'R' : p.format
+    const title = p.format === 'r' ? 'Save analysis log' : `Save chart as ${ext.toUpperCase()}`
+    const r = await dialog.showSaveDialog(mainWindow!, { title, defaultPath: `${p.suggestedName.replace(/[\\/:*?"<>|]+/g, '-')}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
     if (r.canceled || !r.filePath) return null
-    if (ext === 'svg') {
-      if (!p.data.trimStart().startsWith('<svg') && !p.data.trimStart().startsWith('<?xml')) throw new Error('Chart data is not SVG.')
-      writeFileSync(r.filePath, p.data, 'utf8')
-    } else {
-      const m = /^data:image\/png;base64,(.+)$/.exec(p.data)
-      if (!m) throw new Error('Chart data is not a PNG image.')
-      writeFileSync(r.filePath, Buffer.from(m[1], 'base64'))
-    }
-    current?.audit('export.chart', { format: ext, file: basename(r.filePath) }, author())
-    return { fileName: basename(r.filePath) }
+    return writeChartFiles(current, p, r.filePath, author())
   },
   'backup:create': async () => {
     const project = requireProject()

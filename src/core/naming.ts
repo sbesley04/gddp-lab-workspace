@@ -39,6 +39,7 @@ export function suggestViewName(snapshot: DatasetSnapshot, chart: ChartConfig, f
   const m = chart.measureKey ? vars.get(chart.measureKey) : undefined
   const parts: string[] = []
   if (chart.type === 'scatter') parts.push(`${short(m)} vs ${short(chart.compareKey ? vars.get(chart.compareKey) : undefined)}`)
+  else if (chart.type === 'pca') parts.push(`PCA of ${(chart.pcaKeys ?? []).length} variables`)
   else if (chart.type === 'distribution') parts.push(chart.groupKey ? `${short(m)} by ${short(vars.get(chart.groupKey))}` : short(m))
   else parts.push(`Table (${chart.tableColumns.length || [chart.measureKey, chart.compareKey, chart.groupKey].filter(Boolean).length} cols)`)
   const f = filter.children.map((c) => condText(c, vars)).filter(Boolean)

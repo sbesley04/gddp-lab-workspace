@@ -3,7 +3,9 @@
 ## Scope
 
 - **Exploration first.** Charts and descriptive summaries are always available. Inferential statistics (CIs, p-values, effect sizes, correlations, simple linear regression) run **only when the researcher presses Compute** for one chart at a time. They are labelled exploratory and validated against R.
-- **Not included:** multivariable or repeated-measures models, covariate adjustment, power analysis, automated biomarker screening, p-value ranking across many measures, causal analysis and clinical decision support.
+- **Covariates and transforms** are display tools. Tagging a covariate and colouring a chart by it, or applying log2/log10/centre/z-score/rank to a chart's measures, changes how data is drawn and summarised in that chart only. It is recorded in the analysis log, never imputes, and leaves stored data and exports untouched. Colour-by supports categorical variables only; flags keep their shapes.
+- **PCA** is exploratory and runs only when you press Compute, on variables you choose. Variables are standardised, only participants with a usable numeric value in every chosen variable are used (nothing is imputed), and results are checked against R `prcomp(scale. = TRUE)`. There is no PERMANOVA, rotation or automated variable selection.
+- **Not included:** repeated-measures models, covariate adjustment, power analysis, automated biomarker screening, p-value ranking across many measures, causal analysis and clinical decision support.
 - **Multiplicity:** p-values are not adjusted for the number of analyses you run in a session; only pairwise comparisons within one analysis are Holm-adjusted. Pre-specify primary analyses before reporting them.
 - **Baseline-only data.** The reference workbook has one visit. The app is visit-aware, but it draws no trajectories and infers no dates or elapsed time.
 - **No automatic record reconciliation** between dataset versions. Each import is its own immutable version.

@@ -17,7 +17,7 @@ const FIELDS: { f: MetaFieldName; l: string; hint: string }[] = [
   { f: 'source', l: 'Source', hint: 'Originating dataset or collaborator.' }
 ]
 
-type Filt = 'all' | 'no_unit' | 'tentative_unit' | 'no_def' | 'qi'
+type Filt = 'all' | 'no_unit' | 'tentative_unit' | 'no_def' | 'qi' | 'cov'
 
 export function Measurements() {
   const snapshot = useStore((s) => s.snapshot)!
@@ -38,6 +38,7 @@ export function Measurements() {
     if (filt === 'tentative_unit') vs = vs.filter((v) => v.meta.unit.status === 'tentative')
     if (filt === 'no_def') vs = vs.filter((v) => v.meta.definition.status === 'unknown')
     if (filt === 'qi') vs = vs.filter((v) => v.quasiIdentifier)
+    if (filt === 'cov') vs = vs.filter((v) => v.covariate)
     return vs
   }, [measures, q, area, filt])
   const current = snapshot.variables.find((v) => v.key === selected) ?? list[0] ?? null
@@ -79,6 +80,7 @@ export function Measurements() {
                 <option value="tentative_unit">Unit tentative</option>
                 <option value="no_def">No definition</option>
                 <option value="qi">Quasi-identifiers</option>
+                <option value="cov">Covariates</option>
               </select>
             </div>
             <div
@@ -101,6 +103,7 @@ export function Measurements() {
                     <div className="t">{label(v)}</div>
                     <div className="s">{v.letter} · {areaOf(v)}{v.meta.unit.value ? ` · ${v.meta.unit.value}` : ''}</div>
                   </div>
+                  {v.covariate && <span className="badge outline" title="Covariate">Cov</span>}
                   {v.quasiIdentifier && <span className="badge warn" title="Quasi-identifier: needs confirmation before export">QI</span>}
                   <MetaPips v={v} />
                 </button>
@@ -142,6 +145,14 @@ function VariableEditor({ v, onDirty }: { v: VariableInfo; onDirty: (n: number) 
   const toggleQi = async () => {
     try {
       await call('curation:setQuasi', { datasetVersionId: snapshot.datasetVersionId, varKey: v.key, value: !v.quasiIdentifier, reason: null })
+      await useStore.getState().reloadSnapshot()
+    } catch (e) {
+      toast('error', errorText(e))
+    }
+  }
+  const toggleCov = async () => {
+    try {
+      await call('curation:setCovariate', { datasetVersionId: snapshot.datasetVersionId, varKey: v.key, value: !v.covariate, reason: null })
       await useStore.getState().reloadSnapshot()
     } catch (e) {
       toast('error', errorText(e))
@@ -195,6 +206,10 @@ function VariableEditor({ v, onDirty }: { v: VariableInfo; onDirty: (n: number) 
         <label className="check">
           <input type="checkbox" checked={v.quasiIdentifier} onChange={toggleQi} disabled={!editable} />
           <span><ShieldAlert size={14} style={{ verticalAlign: -2 }} /> Quasi-identifier — requires explicit confirmation before it can be exported (e.g. age, sex, race, dates, BMI).</span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={v.covariate} onChange={toggleCov} disabled={!editable} data-testid="covariate-toggle" />
+          <span>Covariate — offered first when colouring charts (e.g. sex, site, treatment group). Does not change any data or export rule.</span>
         </label>
       </div>
       <div className="paper card">

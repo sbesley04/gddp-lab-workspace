@@ -150,7 +150,7 @@ The ZIP contains:
 - `analysis_log.R`, the steps behind the selection in R syntax, with its chain signature (also recorded in the manifest)
 - `manifest.json`, with checksums, selection rules, versions and the software version
 
-**Copy summary** gives you a short text to paste into a chat. To use Claude or another assistant, attach the ZIP yourself: the app sends nothing.
+**Copy summary** gives you a short text to paste into a chat. To use Claude or another assistant, attach the ZIP yourself: the app sends nothing. Alternatively, an assistant can query aggregate results through the MCP server (see below).
 
 Pseudonymisation is **not** anonymisation. The full workbook, unselected columns, comment authors and local file paths are never exported.
 
@@ -158,6 +158,10 @@ Pseudonymisation is **not** anonymisation. The full workbook, unselected columns
 
 - **Backup** (sidebar) writes a `*.bariproj.zip`: a consistent database copy, source snapshots, and a manifest with SHA-256 checksums.
 - **Restore a backup** (start screen) verifies the checksums, the database integrity and the observation hashes before it opens the restored copy in a new folder.
+
+## Connecting an AI assistant (MCP)
+
+A separate, optional MCP server lets an assistant such as Claude Desktop or Claude Code ask the project questions directly: overviews, variable search, counts, summaries, group comparisons, correlations and PCA. It is read-only, returns aggregate results only and suppresses groups smaller than 5 participants. Every result it returns is sent to the AI provider, so **check your IRB approval and data use agreement before connecting a real project**. Setup and the full list of what it returns are in [MCP.md](MCP.md).
 
 ## Checking an installation
 

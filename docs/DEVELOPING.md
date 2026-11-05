@@ -8,6 +8,7 @@ Electron 44, React 19, TypeScript 5.9 and Vite 7, built with `electron-vite`. Ot
 - **Charts:** ECharts 6 with the SVG renderer.
 - **UI:** Radix (dialog, popover), TanStack Virtual, Zustand, lucide icons.
 - **Data handling:** `fflate` for ZIP, `fast-xml-parser` for OOXML, `papaparse` for CSV, `zod` for IPC validation.
+- **MCP server:** `@modelcontextprotocol/sdk`, bundled into one file by `vite.mcp.config.ts`.
 - **Tests:** Vitest and Playwright.
 
 Every runtime library is a devDependency that gets **bundled**, so the packaged app ships no `node_modules`. Licences are MIT, Apache-2.0 or ISC (checked with `npm view <pkg> license`).
@@ -19,7 +20,8 @@ Why the XLSX reader is written in-house: SheetJS Community Edition does not read
 ## Layout
 
 ```
-src/core/       pure TS: types, value classification, stats, selection engine, chart data, CSV, context export
+src/core/       pure TS: types, value classification, stats and inference, selection engine, chart data,
+                transforms, PCA and correlation matrix, analysis log (provenance), CSV, context export
 src/importer/   OOXML reader, CSV reader, legend decoder, import model + validation
 src/main/       Electron main: security, IPC, SQLite (migrations), projects, import, snapshot, curation,
                 saved views, export, backup/restore, --self-test
@@ -28,8 +30,9 @@ src/shared/     IPC channel list and zod schemas
 src/renderer/   React UI (design tokens in styles.css)
 src/mcp/        read-only MCP server for AI assistants (see MCP.md); built separately with vite.mcp.config.ts
 tests/          Vitest unit + integration; tests/reference = opt-in real-workbook check
-e2e/            Playwright Electron tests (UI workflow, screenshots)
-tools/          make_fixtures.py (synthetic fixtures via openpyxl; dev only)
+e2e/            Playwright Electron tests (UI workflow, chart downloads, tour and wide table, screenshots)
+tools/          make_fixtures.py (synthetic fixtures via openpyxl); stats_reference.R and
+                multivariate_reference.R (R reference values for the tests); dev only
 build/          icon, entitlements
 ```
 
@@ -48,12 +51,13 @@ build/          icon, entitlements
 | --- | --- |
 | `npm run dev` | Run with hot reload |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest: stats against hand-computed values, values, colours, CSV, importer fixtures, full service workflow |
+| `npm test` | Vitest (141 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server |
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
-| `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted) and screenshots of every screen in light and dark mode |
+| `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted), chart SVG/PNG downloads with sidecars, PCA and many-measures views, the tour and wide table, and screenshots of every screen in light and dark mode |
 | `npm run build:mcp` | Builds the MCP server into `out/mcp/server.js` (one file, plain Node 22.13+). See [MCP.md](MCP.md). |
 | `npm run fixtures` | Regenerates the synthetic fixtures (needs Python 3 and openpyxl) |
 | `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
+| `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json` | Regenerates the R reference values for `tests/pca.test.ts` and `tests/matrix.test.ts` (base R and jsonlite) |
 | `npm run dist:mac` | Unsigned DMG and ZIP for arm64 and x64 in `release/` |
 | `npm run dist:win` | Unsigned NSIS x64 installer, which cross-builds from macOS |
 
@@ -84,6 +88,8 @@ Notes about a real study workbook (collaborator names, file names, participant r
 ## Testing notes
 
 - **Expected statistics are independent.** `tests/stats.test.ts` uses hand-computed values. `tests/inference.test.ts` compares every distribution, test, CI and regression output with base R / car (`t.test`, `wilcox.test`, `oneway.test`, `kruskal.test`, `leveneTest`, `cor.test`, `lm`, `predict`, `shapiro.test`, `p.adjust`) to 1e-8 relative or better (Shapiro–Wilk: 1e-6, matching R's single-precision coefficients).
+- **Multivariate results** (`tests/pca.test.ts`, `tests/matrix.test.ts`) match R `prcomp(scale. = TRUE)` and `cor(use = "pairwise.complete.obs")` to about 1e-8, with ties and missing values. Histogram counts match R `hist(right = FALSE)`.
+- **Analysis log** (`tests/provenance.test.ts`): the text is deterministic, every upstream change alters the chain signature, and no participant ID or file name is written. SHA-256 is checked against NIST vectors.
 - **Statistics code:** `src/core/distributions.ts` (t, F, χ², normal, binomial via incomplete beta and gamma) and `src/core/analysis.ts`. Statistics are never computed automatically; the UI calls them only after **Compute**.
 - **Fixtures are synthetic** (`DEMO-xx`, `9001…9005`). `demo_workbook.xlsx` is also bundled with the app as the demo, and as the self-test input.
 - **Test-only environment variable:** `BARI_USER_DATA` points the app at an isolated settings folder. It does not affect project data.

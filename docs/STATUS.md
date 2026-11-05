@@ -1,4 +1,23 @@
-# Release status: 0.1.0 (first release)
+# Release status
+
+| Version | Date | State |
+| --- | --- | --- |
+| 0.1.0 | 2026-10-22 | First release; macOS installers smoke-tested |
+| 0.2.0 | 2026-10-23 | On-demand statistics, chart styling, Compare boards |
+| 0.3.0 | 2026-10-25 | UI rework, first-run tour, virtualised wide tables |
+| 0.3.1 | 2026-10-26 | Windows folder-removal fix; **current installers** |
+| Unreleased (`main`) | 2026-11-03 | Analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA |
+| Unreleased (`mcp-server` branch) | 2026-11-05 | Read-only MCP server for AI assistants |
+
+## Current test inventory
+
+- `npm test`: 141 Vitest tests in 16 files, all on synthetic data (including 14 for the MCP server).
+- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
+- `--self-test`: packaged-build smoke test.
+- R reference values: `tools/stats_reference.R` (tests, CIs, regression) and `tools/multivariate_reference.R` (PCA, correlation matrix).
+
+## 0.1.0 (first release, 2026-10-22)
 
 Verified on 2026-10-22 on macOS 26.5 (Apple Silicon), Node 24.14, Electron 44.9.3.
 
@@ -13,25 +32,14 @@ Verified on 2026-10-22 on macOS 26.5 (Apple Silicon), Node 24.14, Electron 44.9.
 | 7 | Export and inspect a context package | **Pass** | Unit and E2E tests unzip the package and check the six files, SHA-256 checksums, pseudonymous keys, absence of source IDs, paths and comment authors, quasi-identifier blocking, and the baseline-only statement |
 | 8 | Backup and restore without changing observations | **Pass** | Content hash equal after restore; a damaged backup is rejected and leaves nothing behind (unit, E2E, reference) |
 | 9 | Core workflow without internet or API credentials | **Pass, with a caveat** | E2E asserts that no non-local request was attempted during the whole workflow. All requests are blocked by policy, and no credentials exist anywhere. The test machine itself was online. |
-| 10 | Package and smoke-test on Windows and macOS | **macOS: pass. Windows: built, untested.** | macOS arm64 and x64 DMGs were mounted, the app copied out and `--self-test` run (import, view reproduce, export checksums, backup/restore, UI load). x64 ran under Rosetta. The Windows NSIS installer was cross-built but never run. All builds are unsigned. Signing steps are in [SIGNING.md](SIGNING.md). |
+| 10 | Package and smoke-test on Windows and macOS | **macOS: pass. Windows: built, untested at 0.1.0** (since passed in CI; see 0.3.1) | macOS arm64 and x64 DMGs were mounted, the app copied out and `--self-test` run (import, view reproduce, export checksums, backup/restore, UI load). x64 ran under Rosetta. The Windows NSIS installer was cross-built but never run. All builds are unsigned. Signing steps are in [SIGNING.md](SIGNING.md). |
 
-## Test inventory
+### Test inventory at 0.1.0
 
 - `npm test`: 53 Vitest tests.
 - `npm run test:reference`: checks against the real workbook. This is opt-in and local only; expected counts live in a git-ignored file.
 - `npm run e2e`: Playwright. The full UI workflow, plus screenshots of every screen in light and dark mode.
 - `--self-test`: packaged-build smoke test.
-
-## Remaining work for a complete multi-platform release
-
-1. Run the NSIS installer on Windows 10/11: install, open, run `--self-test`, then import, save, export and reopen through the UI. The CI workflow does the self-test part once the repository has a GitHub remote.
-2. Obtain signing credentials and notarise or sign (see [SIGNING.md](SIGNING.md)).
-3. Curator decisions recorded in the local workbook notes (see [WORKBOOK_SEMANTICS.md](WORKBOOK_SEMANTICS.md)):
-   - the sample-warning colour mismatch;
-   - column-group naming;
-   - header alias inconsistencies;
-   - "Score" / "Total Score";
-   - units and definitions.
 
 ## 0.2.0 additions (2026-10-23)
 
@@ -45,29 +53,6 @@ Verified on 2026-10-22 on macOS 26.5 (Apple Silicon), Node 24.14, Electron 44.9.
 | Compare whiteboard (drag, resize, notes, styles, SVG/PNG export, persists across restart) | `tests/features.test.ts` (service), E2E (add views, drag, restart, layout kept, SVG export contains both charts) |
 | Older saved views keep working | `normalizeChart` and schema test with a 0.1-style spec |
 
-## Unreleased additions (2026-11-03)
-
-From the lab meeting notes (R command history, edit signatures, PCA, covariates, more visualisation options, saving charts).
-
-| Feature | Verification |
-| --- | --- |
-| Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in the export ZIP) | `tests/provenance.test.ts` (deterministic text; every upstream change alters the signature; no participant IDs or file name; QC exclusion counts); SHA-256 against NIST vectors; E2E opens History and checks the export ZIP |
-| Chart download: size presets, PNG scale, signature footer, `.chart.json` and `.analysis-log.R` sidecars | `tests/chartStamp.test.ts`, `tests/chartExport.test.ts` (other files beside the chart are not overwritten); `e2e/charts.spec.ts` saves SVG and PNG through the UI and checks size, footer, legend, XML well-formedness and sidecars |
-| Fix: chart SVG/PNG exports were malformed XML with the default (system) and serif fonts, so PNG export failed and strict SVG readers rejected the file | `e2e/charts.spec.ts` parses the saved SVG; font-stack test |
-| Covariate tag (append-only, carried over), colour-by with a named legend | `tests/workflow.test.ts` (as-of and carry-over), `tests/transforms.test.ts` (categories), `e2e/charts.spec.ts` |
-| Display transforms (log2, log10, centre, z-score, rank) | `tests/transforms.test.ts`: hand-computed values; z-score and rank checked against R |
-| Exploratory PCA (correlation matrix, complete cases, Compute on demand; also on Compare boards) | `tests/pca.test.ts` against R `prcomp(scale. = TRUE)` (`tools/pca_reference.R`), to about 1e-8; E2E computes PCA on the demo data |
-
-| Histogram (Freedman–Diaconis, exact breaks in the log) | `tests/transforms.test.ts` (counts match R `hist(right = FALSE)`); E2E |
-| Correlation matrix (Spearman/Pearson, pairwise complete, no p-values) and participant × measure heatmap, sharing one variable set with PCA | `tests/matrix.test.ts` against R `cor(use = "pairwise.complete.obs")` with ties and missing values (`tools/multivariate_reference.R`); heatmap ordering and z-scores; E2E |
-| PCA gap suggestion (drop variables with gaps in more than 10% of rows when that regains participants) | `tests/pca.test.ts` |
-
-Real workbook (`npm run test:reference`, counts only): import and export checks pass. The correlation matrix, heatmap, PCA, histograms and analysis log run on the largest numeric area (157 variables) without invalid values, and the log contains neither participant IDs nor the file name. Complete-case PCA over that whole area keeps only 13 of 40 rows, which is what the gap suggestion is for.
-
-Packaged build (macOS arm64, `--dir`, unsigned): `--self-test` passes all steps, including the analysis log in the export and a PCA and correlation run. `npm run e2e:packaged` cannot work by design (the inspect fuse is disabled); it now fails at once with that explanation instead of hanging.
-
-Not done: visit-trajectory charts (the reference data has one visit); violin plots; shape-by and facet-by (shapes already mean QC flags); covariate adjustment; PERMANOVA.
-
 ## 0.3.0 installers (2026-10-25)
 
 UI changes since 0.2.0: readable callouts and toasts, single-form metadata editing, compact Overview, Explore layout with tabbed side panel, first-run tour, virtualised wide tables, Compare board placement fixes, static background.
@@ -80,6 +65,54 @@ UI changes since 0.2.0: readable callouts and toasts, single-form metadata editi
 
 All builds are unsigned (macOS ad-hoc signature valid; Gatekeeper rejects as expected). Each bundle was checked to contain the 0.3.0 code.
 
-## Windows verification (2026-10-26)
+## 0.3.1 installers and Windows verification (2026-10-26)
 
 GitHub Actions run 40348578383 on `windows-latest`: type check, all 72 unit tests and the packaged `--self-test` passed (create project, import, saved-view reproduction, export checksums, backup/restore, UI load, temporary-file removal). The same run passed on macOS. This found and fixed a Windows-only bug: folders containing the read-only source snapshot could not be deleted (affecting re-opening the synthetic demo and failed-restore cleanup). Still untested: running the NSIS install wizard by hand on Windows 10/11.
+
+The 0.3.1 installers were rebuilt with this fix. They contain none of the unreleased work below.
+
+## Unreleased on `main` (2026-11-03)
+
+From the lab meeting notes (R command history, edit signatures, PCA, covariates, more visualisation options, saving charts).
+
+| Feature | Verification |
+| --- | --- |
+| Numbered visits sorted numerically on import (Month 2 before Month 6, not text order) | `tests/visitOrder.test.ts` |
+| Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in the export ZIP) | `tests/provenance.test.ts` (deterministic text; every upstream change alters the signature; no participant IDs or file name; QC exclusion counts); SHA-256 against NIST vectors; E2E opens History and checks the export ZIP |
+| Chart download: size presets, PNG scale, signature footer, `.chart.json` and `.analysis-log.R` sidecars | `tests/chartStamp.test.ts`, `tests/chartExport.test.ts` (other files beside the chart are not overwritten); `e2e/charts.spec.ts` saves SVG and PNG through the UI and checks size, footer, legend, XML well-formedness and sidecars |
+| Fix: chart SVG/PNG exports were malformed XML with the default (system) and serif fonts, so PNG export failed and strict SVG readers rejected the file | `e2e/charts.spec.ts` parses the saved SVG; font-stack test |
+| Covariate tag (append-only, carried over), colour-by with a named legend | `tests/workflow.test.ts` (as-of and carry-over), `tests/transforms.test.ts` (categories), `e2e/charts.spec.ts` |
+| Display transforms (log2, log10, centre, z-score, rank) | `tests/transforms.test.ts`: hand-computed values; z-score and rank checked against R |
+| Exploratory PCA (correlation matrix, complete cases, Compute on demand; also on Compare boards) | `tests/pca.test.ts` against R `prcomp(scale. = TRUE)` (`tools/multivariate_reference.R`), to about 1e-8; E2E computes PCA on the demo data |
+| Histogram (Freedman–Diaconis, exact breaks in the log) | `tests/transforms.test.ts` (counts match R `hist(right = FALSE)`); E2E |
+| Correlation matrix (Spearman/Pearson, pairwise complete, no p-values) and participant × measure heatmap, sharing one variable set with PCA | `tests/matrix.test.ts` against R `cor(use = "pairwise.complete.obs")` with ties and missing values (`tools/multivariate_reference.R`); heatmap ordering and z-scores; E2E |
+| PCA gap suggestion (drop variables with gaps in more than 10% of rows when that regains participants) | `tests/pca.test.ts` |
+
+Real workbook (`npm run test:reference`, counts only): import and export checks pass. The correlation matrix, heatmap, PCA, histograms and analysis log run on the largest numeric area (157 variables) without invalid values, and the log contains neither participant IDs nor the file name. Complete-case PCA over that whole area keeps only 13 of 40 rows, which is what the gap suggestion is for.
+
+Packaged build (macOS arm64, `--dir`, unsigned): `--self-test` passes all steps, including the analysis log in the export and a PCA and correlation run. `npm run e2e:packaged` cannot work by design (the inspect fuse is disabled); it now fails at once with that explanation instead of hanging.
+
+Not done: visit-trajectory charts (the reference data has one visit); violin plots; shape-by and facet-by (shapes already mean QC flags); covariate adjustment; PERMANOVA.
+
+## Unreleased on `mcp-server` (2026-11-05)
+
+| Feature | Verification |
+| --- | --- |
+| Read-only stdio MCP server (`src/mcp/`, built to `out/mcp/server.js`, excluded from the installers) with 12 tools, 2 resources and an analysis prompt; see [MCP.md](MCP.md) | `tests/mcp.test.ts` drives it through an in-memory MCP client on synthetic data: results equal the core statistics for the same selection |
+| Aggregate-only results; groups under the minimum cell size (default 5) suppressed; extremes withheld for quasi-identifiers | `tests/mcp.test.ts` checks suppression and that no participant identifier appears in any output |
+| Opens the database read-only without taking the project lock; logs calls (never results) to `mcp-access.jsonl` | `tests/mcp.test.ts` (writes fail; works while the app holds the lock) |
+
+Not done: it has not been run against the real project. Whether aggregate results may be sent to an AI provider is a decision for the lab's IRB and data use agreements. No row-level mode, and it cannot write saved views back.
+
+## Remaining work
+
+1. Run the NSIS install wizard by hand on Windows 10/11, then import, save, export and reopen through the UI. CI already runs the unit tests and the packaged `--self-test` on Windows.
+2. Build and smoke-test installers that include the unreleased work, then tag a release.
+3. Obtain signing credentials and notarise or sign (see [SIGNING.md](SIGNING.md)).
+4. Curator decisions recorded in the local workbook notes (see [WORKBOOK_SEMANTICS.md](WORKBOOK_SEMANTICS.md)):
+   - the sample-warning colour mismatch;
+   - column-group naming;
+   - header alias inconsistencies;
+   - "Score" / "Total Score";
+   - units and definitions.
+

@@ -26,6 +26,7 @@ src/main/       Electron main: security, IPC, SQLite (migrations), projects, imp
 src/preload/    sandboxed preload exposing window.bari.invoke (allow-listed channels only)
 src/shared/     IPC channel list and zod schemas
 src/renderer/   React UI (design tokens in styles.css)
+src/mcp/        read-only MCP server for AI assistants (see MCP.md); built separately with vite.mcp.config.ts
 tests/          Vitest unit + integration; tests/reference = opt-in real-workbook check
 e2e/            Playwright Electron tests (UI workflow, screenshots)
 tools/          make_fixtures.py (synthetic fixtures via openpyxl; dev only)
@@ -50,6 +51,7 @@ build/          icon, entitlements
 | `npm test` | Vitest: stats against hand-computed values, values, colours, CSV, importer fixtures, full service workflow |
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted) and screenshots of every screen in light and dark mode |
+| `npm run build:mcp` | Builds the MCP server into `out/mcp/server.js` (one file, plain Node 22.13+). See [MCP.md](MCP.md). |
 | `npm run fixtures` | Regenerates the synthetic fixtures (needs Python 3 and openpyxl) |
 | `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
 | `npm run dist:mac` | Unsigned DMG and ZIP for arm64 and x64 in `release/` |

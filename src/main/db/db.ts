@@ -13,7 +13,8 @@ export class Db {
     this.raw = new DatabaseSync(path, { readOnly: opts.readOnly ?? false })
     // Rollback journal (not WAL): a single file plus a transient journal is safer to copy and back up,
     // and avoids WAL's shared-memory requirements on network filesystems.
-    this.raw.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = DELETE; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 3000;')
+    if (opts.readOnly) this.raw.exec('PRAGMA busy_timeout = 3000; PRAGMA query_only = ON;')
+    else this.raw.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = DELETE; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 3000;')
   }
 
   stmt(sql: string): StatementSync {

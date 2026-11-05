@@ -22,6 +22,7 @@
 - **Pseudonymous export keys are not anonymisation.** Quasi-identifiers (age, sex, race, BMI and similar) need explicit confirmation before export.
 - **No regulatory, IRB or institutional approval** is claimed or implied.
 - The app makes **no network requests**. Updates are manual.
+- The optional **MCP server** ([MCP.md](MCP.md)) is read-only and returns aggregate results only, with small-cell suppression. Its results reach whichever AI provider the assistant uses. Suppression reduces risk but is not anonymisation.
 
 ## Platforms
 

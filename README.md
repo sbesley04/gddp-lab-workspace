@@ -21,6 +21,7 @@ It is a research tool for **exploration**. Statistical tests run only when you a
 | Saved views pinned to dataset and metadata versions; reproduced after restart | Working |
 | Research-context ZIP (six files, pseudonymous keys, checksums, preview) | Working |
 | Backup and verified restore | Working |
+| MCP server for AI assistants (read-only, aggregate results, small-cell suppression); see [docs/MCP.md](docs/MCP.md) | Working (unreleased), tested on synthetic data |
 | macOS installers (arm64 and x64 DMG/ZIP, unsigned) | Built and smoke-tested on this Mac |
 | Windows installer (NSIS x64, unsigned) | App self-test passes on Windows in CI (GitHub Actions); the installer's own install wizard has not been run by hand |
 
@@ -50,5 +51,6 @@ The main checks are `npm run typecheck`, `npm test` and `npm run e2e`, and `npm 
 ## Data protection
 
 - No network access, telemetry, accounts or API keys. The app blocks every outgoing request, and tests assert that none were attempted.
+- The optional MCP server makes no network requests either, but the AI assistant you connect it to sends its results to the AI provider. Read [docs/MCP.md](docs/MCP.md) before connecting a real project.
 - Real study data must never go into source control, logs, issues or installers. `.gitignore` excludes spreadsheets except the synthetic fixtures in `tests/fixtures/`.
 - Project databases are protected only by operating-system file permissions. They are **not encrypted**, and this release makes no regulatory-compliance claims. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md).

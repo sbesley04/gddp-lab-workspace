@@ -17,5 +17,5 @@
     "baseUrl": ".",
     "paths": { "@core/*": ["src/core/*"], "@shared/*": ["src/shared/*"], "@importer/*": ["src/importer/*"] }
   },
-  "include": ["src", "tests", "e2e", "electron.vite.config.ts", "vitest.config.ts", "vitest.reference.config.ts", "playwright.config.ts"]
+  "include": ["src", "tests", "e2e", "electron.vite.config.ts", "vitest.config.ts", "vitest.reference.config.ts", "vite.mcp.config.ts", "playwright.config.ts"]
 }

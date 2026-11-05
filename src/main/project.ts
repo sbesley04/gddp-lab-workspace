@@ -4,6 +4,7 @@ import { join, basename, resolve } from 'node:path'
 import { hostname } from 'node:os'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Db } from './db/db'
+import { MIGRATIONS } from './db/migrations'
 
 export const PROJECT_SCHEMA = 'bari-cns-project'
 export const PROJECT_FORMAT_VERSION = 1
@@ -51,10 +52,28 @@ export class Project {
   readonly info: ProjectInfo
   readonly sessionId = randomUUID()
 
-  private constructor(readonly dir: string, info: ProjectInfo) {
+  private constructor(readonly dir: string, info: ProjectInfo, readonly readOnly = false) {
     this.info = info
-    this.db = new Db(join(dir, 'workspace.sqlite'))
-    this.db.migrate()
+    this.db = new Db(join(dir, 'workspace.sqlite'), { readOnly })
+    if (!readOnly) {
+      this.db.migrate()
+      return
+    }
+    // A read-only reader never migrates, so it must match the schema this code understands exactly.
+    let v = 0
+    try {
+      v = this.db.get<{ v: number | null }>('SELECT MAX(version) AS v FROM schema_migrations')?.v ?? 0
+    } catch {
+      v = 0
+    }
+    if (v !== MIGRATIONS.length) {
+      this.db.close()
+      throw new Error(
+        v > MIGRATIONS.length
+          ? `This project was created by a newer version of the app (schema ${v}; this reader supports ${MIGRATIONS.length}).`
+          : `This project uses an older schema (${v}). Open it once in the app to upgrade it, then try again.`
+      )
+    }
   }
 
   get sourcesDir() {
@@ -107,6 +126,16 @@ export class Project {
     return p
   }
 
+  /**
+   * Opens a project for reading only: no lock is taken or checked, no migration runs and SQLite refuses writes.
+   * Safe to use while the app has the same project open (used by the MCP server).
+   */
+  static openReadOnly(dir: string): Project {
+    const info = Project.readInfo(dir)
+    if (!existsSync(join(dir, 'workspace.sqlite'))) throw new Error('This project folder has no workspace.sqlite.')
+    return new Project(dir, info, true)
+  }
+
   meta(key: string): string | null {
     return this.db.get<{ value: string }>('SELECT value FROM meta WHERE key = ?', key)?.value ?? null
   }
@@ -120,6 +149,10 @@ export class Project {
   }
 
   close() {
+    if (this.readOnly) {
+      this.db.close()
+      return
+    }
     try {
       this.db.close()
     } finally {

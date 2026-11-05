@@ -1,6 +1,6 @@
-# Roadmap (not in the first release)
+# Roadmap
 
-Architectural boundaries already exist for each item below. None of them is implemented yet.
+Architectural boundaries already exist for each item below. Item 6 is partly implemented; the others are not started.
 
 1. **Longitudinal data.**
    - The data model already separates scheduled visit names (`visit.event_name`) from actual dates (`visit.actual_date`, never inferred).
@@ -9,6 +9,7 @@ Architectural boundaries already exist for each item below. None of them is impl
    - These would cover repeated-measures methods, diagnostics, effect sizes with uncertainty, multiplicity handling, and reproducible code/environment exports.
    - Each would be validated against statistician-provided reference cases before release.
    - They would be a separate module next to `src/core/stats.ts`, fed by the same `computeSelection` output.
+   - Covariate adjustment, paired tests and PERMANOVA belong here. Covariate tags and PCA already exist, as exploratory tools only.
 3. **REDCap.** API import and metadata (data dictionary) import, source reconciliation, and dataset-version comparison.
 4. **Optional AI assistance with the user's own key.** Implement `AnalysisAssistantProvider` (`src/core/assistant.ts`) with:
    - explicit provider and key setup;
@@ -23,7 +24,12 @@ Architectural boundaries already exist for each item below. None of them is impl
    - Proposed matches are reviewable suggestions that link to their evidence and dataset version.
    - Human, animal and cell-study evidence are kept distinct.
    - No unattended hypothesis searching.
-6. **Agent-readable interface (possibly MCP).** Read-only, versioned access to approved metadata and selections, with project permissions.
-   - Source documents must never be able to change agent instructions.
-   - Protocol and client compatibility must be verified first.
+6. **Agent-readable interface (MCP).** A first version exists (unreleased): a read-only stdio server that returns aggregate results with small-cell suppression and an access log ([MCP.md](MCP.md)). Still to do:
+   - an IRB/DUA decision before it is used with a real project;
+   - an optional pseudonymous row-level mode;
+   - writing saved views back to the app, which needs the project lock and an explicit user step;
+   - per-project permissions beyond file access.
+
+   Source documents must never be able to change agent instructions.
 7. **Multi-user operation.** A purpose-built service with authentication and concurrency control, replacing file-based sharing.
+8. **More chart types.** Visit-trajectory charts once multi-visit data exists, violin plots and facet-by. Point shapes stay reserved for QC flags.

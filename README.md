@@ -7,8 +7,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 ## Versions
 
 - **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
-- **Source (`main`), unreleased:** analysis log with signatures, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA. These are not in the 0.3.1 installers; build from source to use them.
-- **`mcp-server` branch, unreleased:** the read-only MCP server described in [docs/MCP.md](docs/MCP.md).
+- **Source (`main`), unreleased:** analysis log with signatures, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, plus the read-only MCP server described in [docs/MCP.md](docs/MCP.md). These are not in the 0.3.1 installers; build from source to use them.
 
 ## What works
 

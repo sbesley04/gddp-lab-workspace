@@ -24,7 +24,7 @@ Architectural boundaries already exist for each item below. Item 6 is partly imp
    - Proposed matches are reviewable suggestions that link to their evidence and dataset version.
    - Human, animal and cell-study evidence are kept distinct.
    - No unattended hypothesis searching.
-6. **Agent-readable interface (MCP).** A first version exists on the `mcp-server` branch: a read-only stdio server that returns aggregate results with small-cell suppression and an access log ([MCP.md](MCP.md)). Still to do:
+6. **Agent-readable interface (MCP).** A first version exists (unreleased): a read-only stdio server that returns aggregate results with small-cell suppression and an access log ([MCP.md](MCP.md)). Still to do:
    - an IRB/DUA decision before it is used with a real project;
    - an optional pseudonymous row-level mode;
    - writing saved views back to the app, which needs the project lock and an explicit user step;

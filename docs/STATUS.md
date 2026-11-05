@@ -6,8 +6,8 @@
 | 0.2.0 | 2026-10-23 | On-demand statistics, chart styling, Compare boards |
 | 0.3.0 | 2026-10-25 | UI rework, first-run tour, virtualised wide tables |
 | 0.3.1 | 2026-10-26 | Windows folder-removal fix; **current installers** |
-| Unreleased (`main`) | 2026-11-03 | Analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA |
-| Unreleased (`mcp-server` branch) | 2026-11-05 | Read-only MCP server for AI assistants |
+| Unreleased | 2026-11-03 | Analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA |
+| Unreleased | 2026-11-05 | Read-only MCP server for AI assistants |
 
 ## Current test inventory
 
@@ -71,7 +71,7 @@ GitHub Actions run 40348578383 on `windows-latest`: type check, all 72 unit test
 
 The 0.3.1 installers were rebuilt with this fix. They contain none of the unreleased work below.
 
-## Unreleased on `main` (2026-11-03)
+## Unreleased: analysis and charts (2026-11-03)
 
 From the lab meeting notes (R command history, edit signatures, PCA, covariates, more visualisation options, saving charts).
 
@@ -94,7 +94,7 @@ Packaged build (macOS arm64, `--dir`, unsigned): `--self-test` passes all steps,
 
 Not done: visit-trajectory charts (the reference data has one visit); violin plots; shape-by and facet-by (shapes already mean QC flags); covariate adjustment; PERMANOVA.
 
-## Unreleased on `mcp-server` (2026-11-05)
+## Unreleased: MCP server (2026-11-05)
 
 | Feature | Verification |
 | --- | --- |

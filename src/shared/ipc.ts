@@ -69,6 +69,7 @@ export const chartConfig = z.object({
   variableSet: z.array(z.string().max(200)).max(2000).optional(),
   corrMethod: z.enum(['pearson', 'spearman']).optional(),
   distStyle: z.enum(['box', 'histogram']).optional(),
+  pcaVectors: z.boolean().optional(),
   xMin: z.number().finite().nullable().optional(),
   xMax: z.number().finite().nullable().optional(),
   yMin: z.number().finite().nullable().optional(),

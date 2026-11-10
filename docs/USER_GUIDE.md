@@ -44,9 +44,10 @@ Importing the same file again is recognised by its checksum, and the app offers 
 - **Click any value** to open the **Inspector**. It shows the source cell address, raw text, source attribution, flags and comments, and lets a curator exclude or re-include that observation, with a reason.
 - **Click a participant ID** for the participant detail drawer.
 - **Colour by** colours points by a categorical variable, for example sex or site. Variables tagged as covariates (see Measurements) are listed first. The legend names the variable, missing values get their own grey category, and QC flags keep their shapes. Colour-blind-safe colours repeat after eight categories, and a note says so.
-- **Transform** (next to the measure) shows the chart's values as log2, log10, centred, z-score or rank.
-  - Centre, z-score and rank are computed from every usable value of that measure in the current selection.
-  - Values a transform cannot define (the log of zero or a negative value, or a z-score with no spread) are left out and counted under the chart. Nothing is imputed.
+- **Transform** (next to the measure) shows the chart's values as log2, log10, square root, Box-Cox, centred, z-score or rank.
+  - Centre, z-score, rank and Box-Cox are computed from every usable value of that measure in the current selection.
+  - **Box-Cox** estimates its λ by maximum likelihood from the positive values (as R `car::powerTransform`). The chart states λ, and the analysis log writes it into the formula. If λ reaches the search limit of ±10, the chart says Box-Cox fits poorly.
+  - Values a transform cannot define (the log or Box-Cox of zero or a negative value, the square root of a negative value, or a z-score with no spread) are left out and counted under the chart. Nothing is imputed.
   - Summaries and statistics for that chart use the transformed values. The table, stored data and exports stay as imported.
 - **Distribution** can also be drawn as a **Histogram** (Box and points / Histogram). Bins are shared across groups and stacked by group. The bin width follows the Freedman–Diaconis rule, rounded to a nice number, and the analysis log records the exact breaks so R can redraw the same histogram. Colour by does not apply to histograms.
 - **Many measures** opens three views over one shared **variable set**: choose a panel once, then switch views.
@@ -56,6 +57,7 @@ Importing the same file again is recognised by its checksum, and the app offers 
   - Variables are centred and scaled to unit variance. Only participants with a usable value in every chosen variable are used, and the notes say how many were left out and which variables caused it.
   - Over a wide panel, complete cases can be few. When dropping the variables with gaps in more than 10% of rows would keep more participants, the view offers to do that and says how many rows it would regain; you still press Compute.
   - You get a scores plot (choose the components for each axis), variance explained per component and a loadings table. Component signs are arbitrary; each is set so its largest loading is positive. Results match R `prcomp(scale. = TRUE)`.
+  - **Loading vectors (biplot)** draws each variable as an arrow: its correlation with the two components shown (loading × component SD, at most 1). The 10 longest are drawn, all stretched by one factor to fit the scores, and the note under the chart gives that factor. The setting is saved with the view.
 - **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a signature, and the chain signature changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
 - **Download** saves the chart as SVG or PNG.
   - **Size:** as on screen, journal single column (600 × 420), double column (1200 × 700) or slide (1600 × 900). PNG can be 1×, 2× or 4×.

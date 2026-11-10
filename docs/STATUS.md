@@ -8,14 +8,15 @@
 | 0.3.1 | 2026-10-26 | Windows folder-removal fix; **current installers** |
 | Unreleased | 2026-11-03 | Analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA |
 | Unreleased | 2026-11-05 | Read-only MCP server for AI assistants |
+| Unreleased | 2026-11-09 | Square-root and Box-Cox transforms, PCA biplot |
 
 ## Current test inventory
 
-- `npm test`: 141 Vitest tests in 16 files, all on synthetic data (including 14 for the MCP server).
+- `npm test`: 153 Vitest tests in 16 files, all on synthetic data (including 14 for the MCP server).
 - `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test.
-- R reference values: `tools/stats_reference.R` (tests, CIs, regression) and `tools/multivariate_reference.R` (PCA, correlation matrix).
+- R reference values: `tools/stats_reference.R` (tests, CIs, regression) `tools/multivariate_reference.R` (PCA, biplot vectors, correlation matrix) and `tools/transforms_reference.R` (Box-Cox).
 
 ## 0.1.0 (first release, 2026-10-22)
 
@@ -103,6 +104,20 @@ Not done: visit-trajectory charts (the reference data has one visit); violin plo
 | Opens the database read-only without taking the project lock; logs calls (never results) to `mcp-access.jsonl` | `tests/mcp.test.ts` (writes fail; works while the app holds the lock) |
 
 Not done: it has not been run against the real project. Whether aggregate results may be sent to an AI provider is a decision for the lab's IRB and data use agreements. No row-level mode, and it cannot write saved views back.
+
+## Unreleased: transforms and biplot (2026-11-09)
+
+Requested at the Nov 5 data analysis review.
+
+| Feature | Verification |
+| --- | --- |
+| Square-root transform | `tests/transforms.test.ts` (hand-computed; negative values dropped and counted) |
+| Box-Cox transform, λ by maximum likelihood (y ~ 1) over the selection's positive values, stated on the chart, in the analysis log and in MCP warnings | `tests/transforms.test.ts` against `tools/transforms_reference.R`: λ matches R `optimize` on the same likelihood to 1e-6 and `car::powerTransform` to 1e-5, the log-likelihood to 1e-9, and transformed values match `car::bcPower` to 1e-10, on four synthetic samples (right-skewed, near-normal, ties, left-skewed with λ ≈ 5.9). An estimate at the ±10 search limit is reported. E2E applies it and checks the λ notice and log line. |
+| PCA biplot: loading vectors as each variable's correlation with the shown components, 10 longest drawn, one stretch factor stated; saved with views; recorded in the log | `tests/pca.test.ts` against R `cor(X, pc$x)` to 1e-8; E2E turns it on, checks the notice and log line, and saves a screenshot |
+
+Fixed during this work: the direct Box-Cox formula loses precision at large |λ|, which made a false likelihood maximum near λ = −10. The likelihood is now computed on log values centred at the geometric mean, with `expm1`.
+
+Not done: label collision handling for arrows that point the same way; inverse-normal transform (judged unsuitable at the review); 3D PCA.
 
 ## Remaining work
 

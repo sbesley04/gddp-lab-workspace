@@ -88,6 +88,12 @@ test('import, select, save, export, back up — all offline', async () => {
   await expect(page.getByText('Display transforms')).toBeVisible()
   await expect(page.getByText(/log2\(df\[\[/).first()).toBeVisible()
   await page.keyboard.press('Escape')
+  // Box-Cox states its estimated λ on the chart and writes it into the log
+  await page.getByTestId('transform-measure').selectOption('boxcox')
+  await expect(page.getByText(/Box-Cox λ = -?[0-9.]+ for /).first()).toBeVisible()
+  await page.getByTestId('history').click()
+  await expect(page.getByText(/Box-Cox, λ by maximum likelihood/).first()).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.getByTestId('transform-measure').selectOption('none')
 
   // Save view with the suggested name (Enter accepts it)

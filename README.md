@@ -20,9 +20,9 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 | Measurement catalog with append-only metadata revisions, quasi-identifier flags and covariate tags | Working |
 | AND/OR cohort filters with explicit missing handling; QC inclusion policy with impact counts | Working |
 | Distribution (box + all points; histogram unreleased) and two-measure scatter; linked table; forced axis bounds; chart style editor with presets | Working |
-| Colour-by a categorical variable; display transforms (log2, log10, centre, z-score, rank) that never change stored data or exports | Working (unreleased) |
+| Colour-by a categorical variable; display transforms (log2, log10, square root, Box-Cox, centre, z-score, rank) that never change stored data or exports | Working (unreleased) |
 | On-demand statistics: CIs, normality, Welch t / Mann–Whitney / ANOVA / Kruskal–Wallis with effect sizes and Holm-adjusted pairwise tests, Pearson / Spearman / Kendall, linear fit with confidence and prediction bands; copyable tables, APA summaries and methods text | Working, validated against R 4.3 |
-| Many measures: correlation matrix (no p-values), participant × measure heatmap, and exploratory PCA with a gap suggestion for wide panels | Working (unreleased), validated against R |
+| Many measures: correlation matrix (no p-values), participant × measure heatmap, and exploratory PCA with a gap suggestion for wide panels and an optional biplot (loading vectors) | Working (unreleased), validated against R |
 | Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in exports) | Working (unreleased) |
 | Chart download: SVG/PNG, journal and slide size presets, signature footer, `.chart.json` and `.analysis-log.R` sidecars | Working (unreleased) |
 | Saved views pinned to dataset and metadata versions and reproduced after restart; Compare whiteboard of views and notes, exportable as SVG/PNG | Working |
@@ -57,13 +57,13 @@ npm run dev
 | Command | Purpose |
 | --- | --- |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest unit and integration tests (141, synthetic data only) |
+| `npm test` | Vitest unit and integration tests (153, synthetic data only) |
 | `npm run e2e` | Builds, then runs the Playwright UI tests |
 | `npm run test:reference` | Opt-in checks against a local real workbook (counts only) |
 | `npm run build:mcp` | Builds the MCP server to `out/mcp/server.js` |
 | `npm run dist:mac` / `npm run dist:win` | Unsigned installers in `release/` |
 
-Statistics and multivariate results are checked against R with `tools/stats_reference.R` and `tools/multivariate_reference.R`. See [docs/DEVELOPING.md](docs/DEVELOPING.md) for architecture, the security model, the reference-workbook check, packaging and signing.
+Statistics and multivariate results are checked against R with `tools/stats_reference.R`, `tools/multivariate_reference.R` and `tools/transforms_reference.R`. See [docs/DEVELOPING.md](docs/DEVELOPING.md) for architecture, the security model, the reference-workbook check, packaging and signing.
 
 ## Documentation
 

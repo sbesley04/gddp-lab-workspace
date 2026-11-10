@@ -71,7 +71,7 @@ Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-
 | `search_variables` | Fuzzy search by name, alias, group, unit or definition; returns the keys other tools take |
 | `describe_variable` | Metadata with status and provenance, aliases, source attribution, header comments, per-visit counts and statistics |
 | `cohort_counts` | What a selection keeps, per visit, and why rows were excluded |
-| `summarize` | Descriptive statistics, optionally by group and transform |
+| `summarize` | Descriptive statistics, optionally by group and transform (log2, log10, sqrt, Box-Cox, centre, z-score, rank; Box-Cox states its λ in the warnings) |
 | `compare_groups` | Welch t, Hedges g and Mann–Whitney (2 groups); Welch and classic ANOVA, Kruskal–Wallis and Holm-adjusted pairwise tests (3 or more groups) |
 | `correlate` | Spearman, Pearson or Kendall with CI, plus an OLS fit |
 | `correlation_matrix` | Pairwise-complete coefficients and the strongest pairs |

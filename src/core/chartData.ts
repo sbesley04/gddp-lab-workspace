@@ -3,7 +3,7 @@ import type { SelectionResult, Observation } from './selection'
 import { getObservation, isUsable, pairedObservations } from './selection'
 import { summarize, type Summary } from './stats'
 import type { CellValue } from './types'
-import { buildTransform, type TransformId } from './transforms'
+import { buildTransform, transformParams, type TransformId } from './transforms'
 
 export interface PlotPoint {
   row: number
@@ -27,6 +27,8 @@ export interface DistributionData {
   totals: { rows: number; participants: number; usableNumeric: number; missing: number; censored: number; nonNumeric: number; qcExcluded: number }
   /** Values the chosen transform cannot define (e.g. log of a non-positive value); omitted and counted. */
   transformDropped: number
+  /** Parameters a transform estimated from this selection (Box-Cox λ), as sentences for the chart notices. */
+  transformNotes: string[]
   /** Colour-by categories in display order (empty when not colouring). */
   categories: string[]
   logValid: boolean
@@ -58,6 +60,17 @@ export interface ChartDataOptions {
   transform?: TransformId
   /** Variable index of the colour-by covariate. */
   colorVar?: number | null
+}
+
+/** A notice for a transform that estimates a parameter from the selection (Box-Cox λ); null for the others. */
+export function transformNote(sel: SelectionResult, variable: number, tf: TransformId): string | null {
+  const prm = transformParams(tf, tf === 'boxcox' ? numericColumn(sel, variable) : [])
+  if (!prm) return null
+  const v = sel.ctx.snapshot.variables[variable]
+  const name = v?.meta.displayLabel.value ?? v?.header ?? 'this variable'
+  return prm.lambda === null
+    ? `Box-Cox λ cannot be estimated for ${name} (fewer than 3 positive values, or no spread), so no values are drawn.`
+    : `Box-Cox λ = ${+prm.lambda.toPrecision(4)} for ${name}, by maximum likelihood from ${prm.n} positive value(s) in this selection.${prm.atLimit ? ' λ reached the search limit, so Box-Cox fits these values poorly; consider another transform.' : ''}`
 }
 
 /** Usable numeric values of a variable in the selection: what a transform is computed from. */
@@ -127,7 +140,7 @@ export function distributionData(sel: SelectionResult, variable: number, groupVa
     groups.push({ label, points: shown, summary, nonPositiveHidden: hidden })
   }
   const logValid = anyPositive
-  return { groups, totals, transformDropped, categories: orderedCategories(cats), logValid, logReason: logValid ? null : 'A log axis needs at least one positive value.' }
+  return { groups, totals, transformDropped, transformNotes: [transformNote(sel, variable, tf)].filter((x): x is string => !!x), categories: orderedCategories(cats), logValid, logReason: logValid ? null : 'A log axis needs at least one positive value.' }
 }
 
 export interface ScatterData {
@@ -141,6 +154,8 @@ export interface ScatterData {
   logValidX: boolean
   logValidY: boolean
   transformDropped: number
+  /** Box-Cox λ for either axis, as sentences for the chart notices. */
+  transformNotes: string[]
   categories: string[]
 }
 
@@ -180,6 +195,7 @@ export function scatterData(
     logValidX: pr.pairs.some((p) => p.x > 0),
     logValidY: pr.pairs.some((p) => p.y > 0),
     transformDropped,
+    transformNotes: [transformNote(sel, xVar, tx), transformNote(sel, yVar, ty)].filter((x): x is string => !!x),
     categories: []
   }
   for (const p of pr.pairs) {

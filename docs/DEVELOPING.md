@@ -32,7 +32,7 @@ src/mcp/        read-only MCP server for AI assistants (see MCP.md); built separ
 tests/          Vitest unit + integration; tests/reference = opt-in real-workbook check
 e2e/            Playwright Electron tests (UI workflow, chart downloads, tour and wide table, screenshots)
 tools/          make_fixtures.py (synthetic fixtures via openpyxl); stats_reference.R and
-                multivariate_reference.R (R reference values for the tests); dev only
+                multivariate_reference.R and transforms_reference.R (R reference values for the tests); dev only
 build/          icon, entitlements
 ```
 
@@ -51,13 +51,14 @@ build/          icon, entitlements
 | --- | --- |
 | `npm run dev` | Run with hot reload |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest (141 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server |
+| `npm test` | Vitest (153 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server |
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted), chart SVG/PNG downloads with sidecars, PCA and many-measures views, the tour and wide table, and screenshots of every screen in light and dark mode |
 | `npm run build:mcp` | Builds the MCP server into `out/mcp/server.js` (one file, plain Node 22.13+). See [MCP.md](MCP.md). |
 | `npm run fixtures` | Regenerates the synthetic fixtures (needs Python 3 and openpyxl) |
 | `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
-| `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json` | Regenerates the R reference values for `tests/pca.test.ts` and `tests/matrix.test.ts` (base R and jsonlite) |
+| `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json` | Regenerates the R reference values for `tests/pca.test.ts` (including biplot vectors) and `tests/matrix.test.ts` (base R and jsonlite) |
+| `Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json` | Regenerates the Box-Cox reference values for `tests/transforms.test.ts` (needs jsonlite and car) |
 | `npm run dist:mac` | Unsigned DMG and ZIP for arm64 and x64 in `release/` |
 | `npm run dist:win` | Unsigned NSIS x64 installer, which cross-builds from macOS |
 

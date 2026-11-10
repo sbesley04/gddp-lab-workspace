@@ -72,7 +72,7 @@ same variable appears in several sources; those names become aliases.
 - **Change over time:** \`change_between_visits\` (paired by participant, descriptive with CIs).
 - **Many measures:** \`correlation_matrix\` or \`principal_components\`. These are complete-case or pairwise
   analyses; check how many rows survive.
-- Skewed biomarkers (NULISA, cytokines) are often analysed on a log scale: use \`transform: "log2"\` or "log10".
+- Skewed biomarkers (NULISA, cytokines) are often analysed on a log scale: use \`transform: "log2"\` or "log10". "sqrt" and "boxcox" are also available; Box-Cox estimates λ from the selection and states it in the warnings.
   Zeros and negative values cannot be logged and are reported.
 - Grouping covariates (sex, race) may only be recorded at one visit. Use \`groupFrom: "participant"\` to carry a
   participant's value across visits.

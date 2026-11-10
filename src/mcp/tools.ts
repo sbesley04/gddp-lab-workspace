@@ -25,7 +25,7 @@ import {
 } from '@core/analysis'
 import { correlationFromSelection } from '@core/matrix'
 import { gapSuggestion, pcaPlot } from '@core/pca'
-import { buildTransform, TRANSFORM_FN, type TransformId } from '@core/transforms'
+import { buildTransform, TRANSFORM_FN, transformParams, type TransformId } from '@core/transforms'
 import { getStudyContext } from '../main/curation'
 import { segmentsOf } from '../main/snapshot'
 import { getView, listViews } from '../main/views'
@@ -217,8 +217,20 @@ function repeatedWarning(r: Resolved, rows: number[], warnings: string[]) {
     )
 }
 
+/** States a parameter the transform estimated from the selection (Box-Cox λ), so the analysis can be reproduced. */
+function noteTransform(id: TransformId | undefined, basis: number[], warnings: string[], what: string) {
+  const prm = id ? transformParams(id, basis) : null
+  if (!prm) return
+  warnings.push(
+    prm.lambda === null
+      ? `Box-Cox λ cannot be estimated for ${what} (fewer than 3 positive values, or no spread), so it has no transformed values.`
+      : `Box-Cox λ = ${sig(prm.lambda)} for ${what}, estimated by maximum likelihood (y ~ 1) from ${prm.n} positive value(s) in this selection.${prm.atLimit ? ' λ reached the search limit (±10), so Box-Cox fits these values poorly.' : ''}`
+  )
+}
+
 function transformValues(id: TransformId | undefined, basis: number[], values: number[], warnings: string[], what: string): number[] {
   if (!id || id === 'none') return values
+  noteTransform(id, basis, warnings, what)
   const f = buildTransform(id, basis)
   const out: number[] = []
   let dropped = 0
@@ -645,6 +657,8 @@ export function correlate(ws: Workspace, input: SelectionInput & { x: string; y:
   const pr = pairedObservations(r.sel, xv.index, yv.index)
   const fx = buildTransform(input.transformX ?? 'none', numericColumn(r.sel, xv.index))
   const fy = buildTransform(input.transformY ?? 'none', numericColumn(r.sel, yv.index))
+  noteTransform(input.transformX, numericColumn(r.sel, xv.index), warnings, `x (${input.x})`)
+  noteTransform(input.transformY, numericColumn(r.sel, yv.index), warnings, `y (${input.y})`)
   const x: number[] = []
   const y: number[] = []
   const rows: number[] = []
@@ -790,6 +804,7 @@ export function changeBetweenVisits(ws: Workspace, input: SelectionInput & { var
   }
   const basis = numericColumn(r.sel, v.index)
   const f = buildTransform(input.transform ?? 'none', basis)
+  noteTransform(input.transform, basis, warnings, input.variable)
   const pairs: { row: number; a: number; b: number }[] = []
   const skipped = { onlyFrom: 0, onlyTo: 0, notUsable: 0, noTransform: 0 }
   for (const e of byPid.values()) {

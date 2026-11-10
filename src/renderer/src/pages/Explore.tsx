@@ -665,6 +665,9 @@ function PcaView() {
                   {Array.from({ length: r.k }, (_, i) => <option key={i} value={i}>PC{i + 1}</option>)}
                 </select>
               </label>
+              <label className="row small" style={{ gap: 6 }} title="Draw each variable's correlation with the two components as an arrow (the 10 longest).">
+                <input type="checkbox" checked={chart.pcaVectors} onChange={(e) => setChart({ pcaVectors: e.target.checked })} data-testid="pca-vectors" /> Loading vectors (biplot)
+              </label>
               <span className="muted small">Signs of components are arbitrary; each is set so its largest loading is positive.</span>
             </div>
             <EChart ref={ref} option={built.option} height={CHART_HEIGHT} ariaLabel="PCA scores plot" onPointClick={(d) => d?.row !== undefined && inspect({ row: d.row, variable: vars[0].index })} />

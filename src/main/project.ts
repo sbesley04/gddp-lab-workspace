@@ -29,11 +29,22 @@ export class ProjectLockedError extends Error {
   }
 }
 
+/** What to tell the user about a locked project. A lock from another computer never clears by itself, e.g. in a copied folder. */
+export function lockedProjectMessage(e: ProjectLockedError, thisHost = hostname()): string {
+  if (e.lock.host === thisHost) return `${e.message} Close other copies of the app and try again. If that session crashed, the lock clears automatically on this computer.`
+  return (
+    `${e.message} Close the app on that computer first. If nobody has it open there (for example, the folder was copied from another computer), ` +
+    'delete the hidden ".lock" file inside the project folder and try again. To move a project between computers, use Backup and Restore instead of copying the folder.'
+  )
+}
+
 /** Heuristic: folders managed by sync clients or network volumes are unsafe for a live SQLite database. */
 export function syncFolderWarning(path: string): string | null {
-  const p = resolve(path)
+  // Forward slashes, so the same patterns work for Windows paths (\\server\share becomes //server/share).
+  const forward = (s: string) => s.replace(/\\/g, '/')
+  const candidates = [forward(path), forward(resolve(path))]
   const patterns: [RegExp, string][] = [
-    [/Library\/Mobile Documents|iCloud Drive|com~apple~CloudDocs/i, 'iCloud Drive'],
+    [/Library\/Mobile Documents|iCloud ?Drive|com~apple~CloudDocs/i, 'iCloud Drive'],
     [/Dropbox/i, 'Dropbox'],
     [/OneDrive/i, 'OneDrive'],
     [/Google ?Drive|GoogleDrive|My Drive/i, 'Google Drive'],
@@ -42,7 +53,7 @@ export function syncFolderWarning(path: string): string | null {
     [/^\\\\|^\/\/|^\/net\//, 'a network share']
   ]
   for (const [re, name] of patterns)
-    if (re.test(p))
+    if (candidates.some((c) => re.test(c)))
       return `This folder looks like it is on ${name}. Keep the active project on a local disk: sync and network folders can corrupt a live database or create conflicting copies. Share work with Backup / Export packages instead.`
   return null
 }

@@ -1,5 +1,37 @@
 # User guide
 
+New to the app? Read **Your first session** and **Words used in the app**, then dip into the other sections when you need them. To install or update the app, see [INSTALL.md](INSTALL.md).
+
+## Your first session
+
+1. **Try the demo.** On the start screen, click **Open synthetic demo**. It is invented data, so nothing you do matters.
+2. **Look around.** **Overview** summarises the dataset. **Explore** is where you make charts and tables. **Measurements** lists every measure. **Data quality** shows QC highlights and import checks. **Saved views** keeps your work. **Export** packages data for a statistician.
+3. **Make a chart.** In **Explore**, pick a measure. Add a grouping variable to compare groups, or a second measure for a scatterplot. Click any point or value to see exactly which spreadsheet cell it came from.
+4. **Filter.** Add a cohort filter, for example a score range. Every filter asks what to do with missing values, so nothing is dropped silently.
+5. **Get statistics.** Click **Analyze**, then **Compute statistics**. Nothing is calculated until you ask.
+6. **Keep it.** **Save view** stores the chart, filters and settings. **Download** saves the chart as an image.
+7. **Your own data.** Back on the start screen: **Create project**, choose a folder on your computer's own disk, then **Import workbook** (see [Importing](#importing)).
+
+The **?** button at the bottom of the sidebar replays the built-in tour at any time.
+
+## Words used in the app
+
+| Word | Meaning |
+| --- | --- |
+| **Project** | A folder (`<Name>.bariproj`) holding everything for one study. Keep it on your own disk. |
+| **Dataset version** | One import of a workbook. It never changes; importing an updated file makes a new version. |
+| **Measure** (or variable) | One spreadsheet column, such as a cytokine level or a test score. |
+| **Visit** | The time point of a row, from the `Event Name` column (for example, baseline). |
+| **Cohort filter** | Rules choosing which participants or rows are included. |
+| **QC flag** | A quality-control highlight from the spreadsheet (▲ warning, ◇ unresolved formatting). |
+| **QC policy** | Whether flagged values are included (and marked) or excluded from a chart. |
+| **Curation / metadata revision** | Edits to a measure's description, units, flags or exclusions. Each edit is kept; nothing is overwritten. |
+| **Saved view** | A chart plus all its settings, pinned to the dataset and metadata version it was made with. |
+| **Analysis log** | The steps behind a chart, written in R syntax, with a signature that changes if anything upstream changes. |
+| **Quasi-identifier** | A measure, such as age or BMI, that could help identify someone. Exports ask before including it. |
+| **Backup** | A complete copy of a project as one `.bariproj.zip` file, for safekeeping or moving to another computer. |
+| **Export package** | A ZIP of selected data with documentation, for a statistician or an AI assistant. |
+
 ## Projects
 
 A project is a folder named `<Name>.bariproj`. It holds:
@@ -8,7 +40,7 @@ A project is a folder named `<Name>.bariproj`. It holds:
 - `sources/`: read-only copies of every imported file, named by checksum.
 - `project.json`: the project's name and ID.
 
-Keep the active project on a **local disk**. Sync clients (iCloud, Dropbox, OneDrive, Google Drive) and network drives can corrupt a live database or create conflicting copies, and the app warns you if a project is in such a folder. To share work, use **Backup** (sidebar) or an **Export** package. Only one app session can open a project at a time. Simultaneous editing by several people is not supported yet.
+Keep the active project on a **local disk**, not on the lab NAS. Sync clients (iCloud, Dropbox, OneDrive, Google Drive) and network drives can corrupt a live database or create conflicting copies, and the app warns you if a project is in such a folder. To share work, use **Backup** (sidebar) or an **Export** package. Only one app session can open a project at a time. Simultaneous editing by several people is not supported yet.
 
 **Author label** (sidebar, bottom) is a local label, such as your initials, that is stored with your edits. It is not a login.
 
@@ -157,7 +189,7 @@ Pseudonymisation is **not** anonymisation. The full workbook, unselected columns
 ## Backup and restore
 
 - **Backup** (sidebar) writes a `*.bariproj.zip`: a consistent database copy, source snapshots, and a manifest with SHA-256 checksums.
-- **Restore a backup** (start screen) verifies the checksums, the database integrity and the observation hashes before it opens the restored copy in a new folder.
+- **Restore a backup** (start screen) is also the way to move a project to another computer: copying the project folder itself can carry over a lock from the old computer. It verifies the checksums, the database integrity and the observation hashes before it opens the restored copy in a new folder.
 
 ## Connecting an AI assistant (MCP)
 
@@ -165,4 +197,4 @@ A separate, optional MCP server lets an assistant such as Claude Desktop or Clau
 
 ## Checking an installation
 
-Run the app with `--self-test <folder>`. It creates a temporary project from the bundled **synthetic** workbook, then imports, saves a view, reopens it, exports, backs up, restores and loads the interface. It writes `bari-self-test.json` to the folder you gave and exits with code 0 on success. Real projects are not touched.
+Run the app with `--self-test <folder>`. It creates a temporary project from the bundled **synthetic** workbook, then imports, saves a view, reopens it, exports, backs up, restores and loads the interface. It writes `bari-self-test.json` to the folder you gave and exits with code 0 on success. Real projects are not touched. The exact command for Mac and Windows is in [INSTALL.md](INSTALL.md#if-something-goes-wrong).

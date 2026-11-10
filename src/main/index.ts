@@ -6,7 +6,7 @@ import { join, normalize, sep, basename, dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { schemas, type IpcResult } from '@shared/ipc'
 import { CHANNELS, type ChannelName } from '@shared/channels'
-import { Project, ProjectLockedError, syncFolderWarning } from './project'
+import { Project, ProjectLockedError, lockedProjectMessage, syncFolderWarning } from './project'
 import { commitImport, inspect, parseSource, previewMapping, validate, type ParsedSource } from './importService'
 import { buildSnapshot, listVersions } from './snapshot'
 import * as curation from './curation'
@@ -83,7 +83,7 @@ function openProjectAt(dir: string) {
   try {
     current = Project.open(dir)
   } catch (e) {
-    if (e instanceof ProjectLockedError) throw new Error(`${e.message} If that session crashed, close other copies of the app and try again; the lock clears automatically on this computer.`)
+    if (e instanceof ProjectLockedError) throw new Error(lockedProjectMessage(e))
     throw e
   }
   remember(current)

@@ -22,17 +22,16 @@
 - Project databases and source snapshots are **not encrypted**. They rely on operating-system file permissions and disk encryption (FileVault or BitLocker). Store projects only where study data is permitted.
 - **Pseudonymous export keys are not anonymisation.** Quasi-identifiers (age, sex, race, BMI and similar) need explicit confirmation before export.
 - **No regulatory, IRB or institutional approval** is claimed or implied.
-- The app makes **no network requests**. Updates are manual.
+- The app makes **no network requests**. Updates are manual: install the new version from the lab download page ([INSTALL.md](INSTALL.md)).
 - The optional **MCP server** ([MCP.md](MCP.md)) is read-only and returns aggregate results only, with small-cell suppression. Its results reach whichever AI provider the assistant uses. Suppression reduces risk but is not anonymisation: overlapping filters could narrow down individuals. It has been tested on synthetic data only; whether a real project may be connected is for the lab's IRB and data use agreements to decide.
 
 ## Platforms
 
 | Platform | Status |
 | --- | --- |
-| macOS arm64 | DMG installed (copied from the mounted image) and `--self-test` passed, including UI load |
-| macOS x64 | DMG installed and `--self-test` passed under Rosetta 2 on Apple Silicon. Not tested on Intel hardware. |
-| Windows x64 | CI (GitHub Actions, Windows Server) builds the app, passes all unit tests and the packaged `--self-test` (including UI load). The NSIS install wizard itself has not been run by hand on Windows 10/11. |
-| Signing | All builds are **unsigned**. macOS shows a Gatekeeper warning (right-click → Open); Windows shows SmartScreen. See [SIGNING.md](SIGNING.md). |
+| macOS (one universal DMG for Apple Silicon and Intel, from the next release) | CI mounts the DMG, copies the app out and passes `--self-test` natively on Apple Silicon and under Rosetta 2. Not yet run on Intel hardware. 0.3.1 has separate arm64 and x64 DMGs, tested the same way by hand. |
+| Windows x64 | CI installs the setup file silently, passes `--self-test` on the installed app and uninstalls it. The install wizard has not been clicked through by hand on Windows 10/11. |
+| Signing | All builds are **unsigned**. macOS asks you to allow the app once in System Settings → Privacy & Security (**Open Anyway**); Windows shows SmartScreen (**More info → Run anyway**). Steps: [INSTALL.md](INSTALL.md). Signing: [SIGNING.md](SIGNING.md). |
 
 ## Known gaps
 

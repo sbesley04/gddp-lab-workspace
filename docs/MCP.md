@@ -39,7 +39,7 @@ Use absolute paths. Desktop apps often cannot see a Node installed with nvm or H
   "mcpServers": {
     "bari-cns": {
       "command": "/usr/local/bin/node",
-      "args": ["/path/to/BARILabData/out/mcp/server.js", "--project", "/path/to/My Study.bariproj"]
+      "args": ["/path/to/bari-cns-workspace/out/mcp/server.js", "--project", "/path/to/My Study.bariproj"]
     }
   }
 }
@@ -48,7 +48,7 @@ Use absolute paths. Desktop apps often cannot see a Node installed with nvm or H
 **Claude Code:**
 
 ```bash
-claude mcp add bari-cns -- node /path/to/BARILabData/out/mcp/server.js --project "/path/to/My Study.bariproj"
+claude mcp add bari-cns -- node /path/to/bari-cns-workspace/out/mcp/server.js --project "/path/to/My Study.bariproj"
 ```
 
 **Inspect by hand:**

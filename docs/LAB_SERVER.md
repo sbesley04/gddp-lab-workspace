@@ -105,7 +105,7 @@ Do the building on a Mac, on a local disk (not on the NAS share: building there 
 
    These make `BARI-CNS-Research-Workspace-0.4.0-mac.dmg` (works on every Mac) and `BARI-CNS-Research-Workspace-0.4.0-windows-setup.exe`.
 
-   If GitHub CI is still in use, you can instead download the **lab-server-folder** artifact from the run for this commit. It already contains steps 3–5 for both platforms, tested.
+   If GitHub CI is still in use, you can instead download the **lab-server-folder** artifact from the CI run on `main` (or start one with Actions → build → Run workflow). It already contains steps 3–5 for both platforms, tested. Artifacts are kept for 30 days. If uploads fail with "Artifact storage quota has been hit", delete old artifacts on the Actions page; usage is recounted within 12 hours.
 
 4. Test the files researchers will get. Open the DMG, drag the app to a test folder, and run its self-test:
 

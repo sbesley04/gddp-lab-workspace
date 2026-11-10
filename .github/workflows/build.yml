@@ -1,4 +1,9 @@
-# Builds and smoke-tests unsigned installers on macOS and Windows. Not yet run: this repository has no remote.
+# Builds the installers, then tests the exact files researchers download:
+#   macOS:   mounts the DMG, copies the app out as a researcher would, checks the security fuses and
+#            runs --self-test natively (Apple Silicon) and under Rosetta (Intel).
+#   Windows: runs the setup .exe silently, runs --self-test on the installed app, then uninstalls it.
+# The last job assembles the lab-server download folder (tools/lab-release.mjs). Download the
+# "lab-server-folder" artifact from the run and copy its contents to the NAS; see docs/LAB_SERVER.md.
 name: build
 on:
   # Documentation-only changes do not need a full build (macOS minutes bill at 10x on private repos).
@@ -15,7 +20,7 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     # Hard cap so a hung step can never burn GitHub's 6-hour default (Windows minutes bill at 2x on private repos).
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,31 +31,82 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx electron-vite build
-      - name: Package (macOS, unsigned)
+
+      # ---------- macOS ----------
+      - name: Package (macOS universal DMG, unsigned)
         if: runner.os == 'macOS'
-        run: npx electron-builder --mac --arm64 --publish never
+        run: npx electron-builder --mac --universal --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Package (Windows, unsigned)
-        if: runner.os == 'Windows'
-        run: npx electron-builder --win --x64 --publish never
-      - name: Packaged self-test (macOS)
+      - name: Install from the DMG as a researcher would
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          DMG="release/BARI-CNS-Research-Workspace-${VERSION}-mac.dmg"
+          test -f "$DMG" || { echo "Expected $DMG; release/ contains:"; ls -la release; exit 1; }
+          MNT=$(mktemp -d)
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT"
+          mkdir -p "$RUNNER_TEMP/Applications"
+          ditto "$MNT/BARI-CNS Research Workspace.app" "$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app"
+          test -L "$MNT/Applications" || { echo "The DMG has no Applications shortcut to drag the app onto"; exit 1; }
+          hdiutil detach "$MNT"
+          APP="$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app"
+          ARCHS=$(lipo -archs "$APP/Contents/MacOS/BARI-CNS Research Workspace")
+          echo "Architectures: $ARCHS"
+          [[ "$ARCHS" == *x86_64* && "$ARCHS" == *arm64* ]] || { echo "Not a universal app"; exit 1; }
+          # An invalid signature is what makes macOS call a downloaded app "damaged".
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          node tools/check-fuses.mjs "$APP"
+      - name: Self-test the installed app (Apple Silicon)
         if: runner.os == 'macOS'
         timeout-minutes: 6
         run: |
           mkdir -p st
-          "release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st"
+          "$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st"
           cat st/bari-self-test.json
-      - name: Packaged self-test (Windows)
+      - name: Self-test the installed app (Intel, under Rosetta)
+        if: runner.os == 'macOS'
+        timeout-minutes: 8
+        run: |
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::warning::Rosetta is not available on this runner; the Intel half of the universal app was not run."
+            exit 0
+          fi
+          mkdir -p st-intel
+          arch -x86_64 "$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st-intel"
+          cat st-intel/bari-self-test.json
+
+      # ---------- Windows ----------
+      - name: Package (Windows setup, unsigned)
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --x64 --publish never
+      - name: Check security fuses (Windows)
+        if: runner.os == 'Windows'
+        run: node tools/check-fuses.mjs "release/win-unpacked/BARI-CNS Research Workspace.exe"
+      - name: Install with the setup file, self-test, uninstall
         if: runner.os == 'Windows'
         shell: pwsh
-        timeout-minutes: 6
+        timeout-minutes: 12
         env:
           ELECTRON_ENABLE_LOGGING: '1'
         run: |
+          $version = node -p "require('./package.json').version"
+          $setup = "release/BARI-CNS-Research-Workspace-$version-windows-setup.exe"
+          if (-not (Test-Path $setup)) { Get-ChildItem release; Write-Error "Expected $setup"; exit 1 }
+
+          # Silent per-user install, exactly the file researchers download.
+          $p = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru
+          if (-not $p.WaitForExit(180000)) { taskkill /T /F /PID $p.Id | Out-Null; Write-Error 'Installer did not finish within 3 minutes'; exit 1 }
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\BARI-CNS Research Workspace'
+          $exe = Join-Path $dir 'BARI-CNS Research Workspace.exe'
+          for ($i = 0; $i -lt 30 -and -not (Test-Path $exe); $i++) { Start-Sleep -Seconds 2 }
+          if (-not (Test-Path $exe)) { Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -ErrorAction SilentlyContinue; Write-Error "Installed app not found at $exe"; exit 1 }
+          Write-Host "Installed to $dir"
+
+          # Self-test the installed copy (wait for the app process itself, not its helpers, with a 5-minute limit).
           New-Item -ItemType Directory -Force st | Out-Null
-          # Wait for the app process itself (not its helper processes), with a 5-minute limit.
-          $p = Start-Process -FilePath "release/win-unpacked/BARI-CNS Research Workspace.exe" -ArgumentList "--self-test", "`"$PWD\st`"" -PassThru -RedirectStandardOutput st/stdout.txt -RedirectStandardError st/stderr.txt
+          $p = Start-Process -FilePath $exe -ArgumentList '--self-test', "`"$PWD\st`"" -PassThru -RedirectStandardOutput st/stdout.txt -RedirectStandardError st/stderr.txt
           $finished = $p.WaitForExit(300000)
           if (-not $finished) { taskkill /T /F /PID $p.Id | Out-Null }
           Write-Host '--- app stdout'; Get-Content st/stdout.txt -ErrorAction SilentlyContinue
@@ -60,11 +116,49 @@ jobs:
           $p.WaitForExit()
           if ($p.ExitCode -ne 0) { exit $p.ExitCode }
           if (-not (Test-Path st/bari-self-test.json)) { Write-Error 'No self-test report was written'; exit 1 }
+
+          # Uninstall silently and check the program folder is gone.
+          $uninstaller = Join-Path $dir 'Uninstall BARI-CNS Research Workspace.exe'
+          if (-not (Test-Path $uninstaller)) { Write-Error "Uninstaller not found at $uninstaller"; exit 1 }
+          $u = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru
+          $u.WaitForExit(120000) | Out-Null
+          for ($i = 0; $i -lt 30 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 2 }
+          if (Test-Path $exe) { Write-Error 'Uninstall left the app behind'; exit 1 }
+          Write-Host 'Uninstalled cleanly'
+
       - uses: actions/upload-artifact@v4
         with:
-          name: installers-${{ matrix.os }}
+          name: installers-${{ runner.os }}
+          if-no-files-found: error
           path: |
             release/*.dmg
-            release/*.zip
             release/*.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: self-test-${{ runner.os }}
+          if-no-files-found: ignore
+          path: |
             st/bari-self-test.json
+            st-intel/bari-self-test.json
+
+  lab-server-folder:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: installers
+      - name: Assemble the lab-server download folder
+        run: node tools/lab-release.mjs --from installers --out lab-server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lab-server-folder
+          path: lab-server/
+          if-no-files-found: error

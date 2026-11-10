@@ -21,8 +21,9 @@
     "fixtures": "python3 -I tools/make_fixtures.py tests/fixtures",
     "e2e": "npm run build && playwright test",
     "e2e:packaged": "BARI_E2E_PACKAGED=1 playwright test",
-    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64",
-    "dist:win": "npm run build && electron-builder --win --x64"
+    "dist:mac": "npm run build && electron-builder --mac --universal --publish never",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
+    "release:lab": "node tools/lab-release.mjs"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
@@ -85,10 +86,10 @@
     "mac": {
       "target": [
         {
-          "target": "dmg"
-        },
-        {
-          "target": "zip"
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
         }
       ],
       "category": "public.app-category.medical",
@@ -99,7 +100,8 @@
       "notarize": false
     },
     "dmg": {
-      "title": "BARI-CNS Research Workspace"
+      "title": "BARI-CNS Research Workspace",
+      "artifactName": "BARI-CNS-Research-Workspace-${version}-mac.${ext}"
     },
     "win": {
       "target": [
@@ -116,7 +118,7 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "BARI-CNS-Research-Workspace-Setup-${version}.${ext}"
+      "artifactName": "BARI-CNS-Research-Workspace-${version}-windows-setup.${ext}"
     }
   }
 }

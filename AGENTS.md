@@ -31,7 +31,7 @@ src/renderer/   React 19 UI. store.ts (Zustand), api.ts (call()), pages/, compon
 src/mcp/        Read-only stdio MCP server, built separately (vite.mcp.config.ts → out/mcp/server.js).
 tests/          Vitest (synthetic data); tests/reference = opt-in real-workbook check.
 e2e/            Playwright driving the dev Electron build.
-tools/          make_fixtures.py (openpyxl), stats_reference.R, multivariate_reference.R.
+tools/          make_fixtures.py (openpyxl), stats_reference.R, multivariate_reference.R, transforms_reference.R.
 ```
 
 Path aliases: `@core/*`, `@shared/*`, `@importer/*` (tsconfig + electron.vite.config + vite.mcp.config all define them).
@@ -50,7 +50,7 @@ Path aliases: `@core/*`, `@shared/*`, `@importer/*` (tsconfig + electron.vite.co
 - **The main process recomputes exports from the spec** — it never trusts data sent by the renderer. The renderer receives the full snapshot (`data:snapshot`) and runs `computeSelection` locally for interactivity (`src/renderer/src/lib/selection.ts`).
 - **Formatting interpretation**: legend-driven, with statuses `legend_exact | legend_tentative | needs_review | unresolved | curator_confirmed | curator_rejected`. It is tuned to this lab's legend conventions; other workbooks import fine but show mostly "unresolved".
 - **Analysis log** (`src/core/provenance.ts`): deterministic R-syntax text with chained 8-hex SHA-256 step signatures. It is a readable record, not a guaranteed-runnable script. It must never contain participant IDs or the source file name (file is identified by SHA-256). Any upstream change must alter the chain signature — `tests/provenance.test.ts` enforces this.
-- **Display transforms & covariates** (`src/core/transforms.ts`): log2/log10/centre/z-score/rank and colour-by change *drawing and that chart's summaries only*; stored data and exports are untouched. Point shapes are reserved for QC flags (hence no shape-by).
+- **Display transforms & covariates** (`src/core/transforms.ts`): log2/log10/sqrt/Box-Cox/centre/z-score/rank and colour-by change *drawing and that chart's summaries only*; stored data and exports are untouched. Point shapes are reserved for QC flags (hence no shape-by). Box-Cox estimates λ from the selection (`boxcoxLambda`, numerically stable likelihood); anything estimated from the data must be stated on the chart and written into the analysis log.
 - **Saved views** store a `SavedViewSpec` (`schema: 1`). Old specs must keep loading — `normalizeChart` (`src/core/chartStyle.ts`) fills defaults for fields added later. When you add a `ChartConfig` field, make it optional and default it in `normalizeChart`.
 
 ## Database (`src/main/db/migrations.ts`)
@@ -92,7 +92,7 @@ npm run dist:mac       # unsigned DMG/ZIP arm64+x64 in release/
 ```
 
 - Before finishing a change: `npm run typecheck && npm test`; run `npm run e2e` for UI changes.
-- R references: `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` (needs jsonlite, car); `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json`.
+- R references: `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` (needs jsonlite, car); `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json`; `Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json` (needs car).
 - Packaged builds can't be driven by Playwright (inspect fuse disabled). Use `--self-test <dir>` instead; it writes `bari-self-test.json` and exits 0 on success. CI (`.github/workflows/build.yml`) does this on macOS and Windows; docs-only changes skip CI.
 - `BARI_USER_DATA` (test-only) points the app at an isolated settings folder.
 

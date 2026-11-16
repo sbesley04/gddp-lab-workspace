@@ -93,6 +93,9 @@ describe('MCP server', () => {
     expect(json.latest.visits).toEqual([{ name: 'Baseline', order: expect.any(Number), participants: 24 }])
     expect(json.privacy).toEqual({ mode: 'aggregate', minCellSize: 5 })
     expect(json.latest.measures).toBeGreaterThan(15)
+    expect(json.datasetVersions[0].sourceSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(json.datasetVersions[0]).not.toHaveProperty('sourceFile')
+    expect(JSON.stringify(json)).not.toMatch(/\.(xlsx|csv)/i)
   })
 
   it('finds variables by fuzzy search and resolves headers to keys', async () => {

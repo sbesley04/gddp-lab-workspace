@@ -379,7 +379,8 @@ export function studyOverview(ws: Workspace) {
   const study = getStudyContext(ws.project, latest.id, snap.metadataVersion)
   return {
     project: ws.project.info.name,
-    datasetVersions: versions.map((v) => ({ version: v.versionNumber, sourceFile: v.sourceFileName, sheet: v.sheetName, importedAt: v.createdAt.slice(0, 10), rows: v.rows, participants: v.participants, columns: v.columns })),
+    // The source file is identified by SHA-256 only, as in the analysis log: file names often carry dates or study details.
+    datasetVersions: versions.map((v) => ({ version: v.versionNumber, sourceSha256: v.sha256, sheet: v.sheetName, importedAt: v.createdAt.slice(0, 10), rows: v.rows, participants: v.participants, columns: v.columns })),
     latest: {
       version: latest.versionNumber,
       metadataVersion: snap.metadataVersion,

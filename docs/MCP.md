@@ -13,6 +13,7 @@ What the server returns, and what it never returns:
 | Counts, descriptive statistics, test results, correlations, PCA variance and loadings | Participant identifiers, row numbers, individual values, PCA scores |
 | Variable metadata, aliases, source attribution, comments on column headers | Text of comments on individual cells (counted only); comment and curator authors |
 | Short text codes in numeric columns (e.g. `QNS`) and censored values (e.g. `<0.5`) | Free-text cell values (counted only) |
+| The imported file's SHA-256 checksum | The imported file's name |
 
 - **Small-cell suppression:** selections and groups with fewer than 5 participants are suppressed (`"<5"`). Change the threshold with `--min-cell-size`.
 - **Quasi-identifiers:** minimum and maximum are withheld for variables marked as quasi-identifiers (age, BMI and similar).

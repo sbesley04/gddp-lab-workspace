@@ -7,11 +7,8 @@
 # Artifacts are uploaded only for main, tags and manual runs (Actions → build → Run workflow).
 name: build
 on:
-  # Documentation-only changes do not need a full build (macOS minutes bill at 10x on private repos).
   push:
-    paths-ignore: ['**.md', 'docs/**']
   pull_request:
-    paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
 jobs:
   build:
@@ -20,11 +17,11 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # Hard cap so a hung step can never burn GitHub's 6-hour default (Windows minutes bill at 2x on private repos).
+    # Hard cap so a hung step fails the job instead of running to GitHub's 6-hour default.
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -129,7 +126,7 @@ jobs:
 
       # Installers are ~150 MB each and count against the account's artifact storage quota, so they are kept
       # only for main, tags and manual runs, and only for 14 days. Branch pushes still build and test them.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         with:
           name: installers-${{ runner.os }}
@@ -138,7 +135,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         continue-on-error: true # diagnostic only; the self-test steps above already pass or fail the job
         with:
@@ -155,17 +152,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: installers-*
           path: installers
       - name: Assemble the lab-server download folder
         run: node tools/lab-release.mjs --from installers --out lab-server
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lab-server-folder
           path: lab-server/

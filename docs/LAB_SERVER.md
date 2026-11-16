@@ -68,7 +68,7 @@ No SSH? A bare repository on a mounted share also works for one or two maintaine
 ### What does not move with `--mirror`
 
 - **Continuous integration.** `.github/workflows/build.yml` runs only on GitHub. It is the only place the Windows installer is currently tested automatically. Choose one:
-  - keep a private GitHub copy just for CI and push to both (`git remote add github https://github.com/sbesley04/gddp-lab-workspace.git`, then `git push github main`); or
+  - keep the GitHub repository just for CI and push to both (`git remote add github https://github.com/sbesley04/gddp-lab-workspace.git`, then `git push github main`); or
   - drop CI and follow the manual checklist in section 2, including the Windows check on a lab PC. The workflow file is harmless on the NAS.
 - **Issues, pull requests and release pages.** Save anything you need from them before archiving the GitHub repository.
 - **The 0.3.1 installers.** Move them to the download folder with step 4 below.

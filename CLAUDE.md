@@ -120,4 +120,4 @@ Renderer: `sandbox`, `contextIsolation`, no `nodeIntegration`, custom `app://` p
 
 ## Other docs
 
-[USER_GUIDE](docs/USER_GUIDE.md) · [DEVELOPING](docs/DEVELOPING.md) · [MCP](docs/MCP.md) · [LIMITATIONS](docs/LIMITATIONS.md) · [STATUS](docs/STATUS.md) · [ROADMAP](docs/ROADMAP.md) · [WORKBOOK_SEMANTICS](docs/WORKBOOK_SEMANTICS.md) · [SIGNING](docs/SIGNING.md)
+[USER_GUIDE](docs/USER_GUIDE.md) · [DEVELOPING](docs/DEVELOPING.md) · [MCP](docs/MCP.md) · [LIMITATIONS](docs/LIMITATIONS.md) · [STATUS](docs/STATUS.md) · [ROADMAP](docs/ROADMAP.md) · [STRATEGY](docs/STRATEGY.md) · [WORKBOOK_SEMANTICS](docs/WORKBOOK_SEMANTICS.md) · [SIGNING](docs/SIGNING.md)

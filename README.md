@@ -75,6 +75,7 @@ Statistics and multivariate results are checked against R with `tools/stats_refe
 | [STATUS.md](docs/STATUS.md) | Release history and how each feature was verified |
 | [DEVELOPING.md](docs/DEVELOPING.md) | Architecture, commands, security model, testing |
 | [ROADMAP.md](docs/ROADMAP.md) | Planned work |
+| [STRATEGY.md](docs/STRATEGY.md) | Review findings (2026-11-17) and the order in which to address them |
 | [WORKBOOK_SEMANTICS.md](docs/WORKBOOK_SEMANTICS.md) | How to document a study workbook (details stay local) |
 | [SIGNING.md](docs/SIGNING.md) | Code signing and notarisation |
 

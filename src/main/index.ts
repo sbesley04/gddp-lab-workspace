@@ -17,6 +17,7 @@ import { BackupPassphraseError, createBackup, readBackupBytes, restoreBackup } f
 import { listRegister, recordAnalysis } from './register'
 import { verifyIntegrity } from './integrity'
 import { diffVersions } from '@core/versionDiff'
+import { applyDictionary, planFor, readDictionary, type ParsedDictionary } from './dictionary'
 import { APP_VERSION } from './version'
 import { runSelfTest, abortSelfTest } from './selfTest'
 
@@ -47,6 +48,8 @@ let settings: Settings
 // ---------- state ----------
 let current: Project | null = null
 const pendingImports = new Map<string, ParsedSource>()
+/** Data dictionaries read and waiting for the researcher to apply or discard them. */
+const pendingDictionaries = new Map<string, ParsedDictionary>()
 /** Encrypted backups waiting for a passphrase: opaque token to file path, so the renderer never handles the path. */
 const pendingRestores = new Map<string, string>()
 const blockedRequests: { url: string; at: string }[] = []
@@ -224,6 +227,24 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   'curation:setStudyContext': (p) => curation.setStudyContext(requireProject(), { ...p, author: author() }),
   'curation:getStudyContext': (p) => curation.getStudyContext(requireProject(), p.datasetVersionId, p.asOf ?? requireProject().metadataVersion()),
   'curation:history': (p) => curation.history(requireProject(), p.datasetVersionId, { target: p.target, kind: p.kind }),
+  'dictionary:pick': async (p) => {
+    const project = requireProject()
+    const r = await dialog.showOpenDialog(mainWindow!, { title: 'Choose a REDCap data dictionary (CSV)', properties: ['openFile'], filters: [{ name: 'REDCap data dictionary', extensions: ['csv'] }] })
+    if (r.canceled || !r.filePaths[0]) return null
+    if (statSync(r.filePaths[0]).size > 20 * 1024 * 1024) throw new Error('This file is larger than a data dictionary should be (20 MB limit).')
+    const dict = readDictionary(new Uint8Array(readFileSync(r.filePaths[0])))
+    const token = randomUUID()
+    pendingDictionaries.set(token, dict)
+    return { token, fileName: basename(r.filePaths[0]), sha256: dict.sha256, plan: planFor(project, p.datasetVersionId, dict) }
+  },
+  'dictionary:apply': (p) => {
+    const dict = pendingDictionaries.get(p.token)
+    if (!dict) throw new Error('This data dictionary is no longer loaded. Choose the file again.')
+    const result = applyDictionary(requireProject(), p.datasetVersionId, dict, author())
+    pendingDictionaries.delete(p.token)
+    return { ...result, project: projectState() }
+  },
+  'dictionary:discard': (p) => pendingDictionaries.delete(p.token),
   'boards:list': () => boards.listBoards(requireProject()),
   'boards:get': (p) => boards.getBoard(requireProject(), p.id),
   'boards:save': (p) => boards.saveBoard(requireProject(), { ...p, author: author() }),

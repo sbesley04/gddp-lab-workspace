@@ -13,11 +13,12 @@
 | Unreleased | 2026-11-19 | Integrity: hash chain over the audit log, revisions and register with a verify command; full curation audit; MCP small-count and extreme-value suppression |
 | Unreleased | 2026-11-19 | Full fingerprints; chart sidecars rebuilt by the main process; encrypted backups; error boundary; threat model |
 | Unreleased | 2026-11-19 | Dataset-version comparison; keyboard access to table values; automated accessibility check |
+| Unreleased | 2026-11-19 | REDCap data dictionary import |
 
 ## Current test inventory
 
-- `npm test`: 193 Vitest tests in 22 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
-- `npm run e2e`: Playwright, 14 tests. The full UI workflow, the comparison of two imports (`e2e/versions.spec.ts`), the accessibility checks (`e2e/accessibility.spec.ts`), chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm test`: 199 Vitest tests in 23 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
+- `npm run e2e`: Playwright, 15 tests. The full UI workflow, the comparison of two imports (`e2e/versions.spec.ts`), a REDCap export and data dictionary (`e2e/redcap.spec.ts`), the accessibility checks (`e2e/accessibility.spec.ts`), chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test.
@@ -189,6 +190,16 @@ Not done: project folders are not encrypted by the app. The passphrase has no st
 | MCP `--withhold-free-text`: the project name, study context, header comments (counted instead) and saved-view names and descriptions are withheld; saved views stay usable by id | `tests/mcp.test.ts` |
 
 Not done: colour contrast (the translucent backgrounds make it hard to compute), reading order, and testing with a real screen reader. Charts are drawn as SVG with a text label but their points are not reachable from the keyboard; the table beside each chart is the accessible route to the same values. The comparison does not detect renamed columns or renamed participants.
+
+## Unreleased: REDCap files (2026-11-19)
+
+| Feature | Verification |
+| --- | --- |
+| A REDCap record export (CSV with raw column names) imports like any CSV; `record_id` and `redcap_event_name` are suggested as the participant and visit columns, and checkbox fields arrive as one column per option | `tests/redcap.test.ts`, `e2e/redcap.spec.ts`, on a synthetic export |
+| **Measurements → Import data dictionary** reads a REDCap data dictionary (the downloaded CSV or the API column names; UTF-8 or Windows-1252) and proposes a display label, definition (label, note, choice codes, calculation, allowed range), research area (form name) and source for each measure it describes, and a quasi-identifier flag for fields REDCap marks as identifiers. A preview lists every change before anything is written. | `tests/redcap.test.ts`: choices with commas in their labels, HTML removed from labels, both header styles, files that are not dictionaries refused, long questions kept as the definition and not squeezed into the label |
+| Nothing is assumed or overwritten: units, specimens and assays are never set; a value a curator has set is kept and listed; an identifier flag a curator has decided is left alone; values are recorded as tentative, as ordinary append-only revisions that name the file by checksum; one audit entry covers the import; applying the same dictionary again changes nothing | `tests/redcap.test.ts` (including the record chain verifying afterwards); `e2e/redcap.spec.ts` applies it through the UI, then finds nothing to change the second time |
+
+Not done: repeating instruments and repeating events (rows that share a participant and event are refused as duplicates; export one instrument at a time); the REDCap API; branching logic and required-field rules are ignored; a real REDCap export has not been tried, only a synthetic file written from REDCap's documented format.
 
 ## Remaining work
 

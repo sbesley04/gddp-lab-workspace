@@ -6,6 +6,7 @@ export const CHANNELS = [
   'data:versions', 'data:snapshot', 'data:formatGroups', 'data:importReport', 'data:compareVersions',
   'curation:editMeta', 'curation:setQuasi', 'curation:setCovariate', 'curation:decideFormat', 'curation:setExclusion', 'curation:nameSegment',
   'curation:setStudyContext', 'curation:getStudyContext', 'curation:history',
+  'dictionary:pick', 'dictionary:apply', 'dictionary:discard',
   'views:list', 'views:save', 'views:get', 'views:delete',
   'export:preview', 'export:write', 'export:chart', 'export:list',
   'analysis:record', 'analysis:list', 'integrity:verify',

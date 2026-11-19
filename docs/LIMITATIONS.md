@@ -42,3 +42,4 @@
 - Charts are limited to one or two measures plus the many-measures views (correlation matrix, heatmap, PCA). There are no visit-trajectory charts, violin plots, shape-by or facet-by.
 - Formatting interpretation is tuned to this lab's legend conventions (source font colours, QC fills, border groups). A workbook with a different legend style will import correctly, but its formatting will mostly show as "unresolved" until a curator reviews it.
 - Legacy `.xls` files are not supported; save them as `.xlsx` first.
+- All computation runs in the window's own thread, and large cohorts are untested. A bug while drawing a page now shows a message instead of a blank window (unreleased), but the page's unsaved chart settings may be lost.

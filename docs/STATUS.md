@@ -15,7 +15,7 @@
 ## Current test inventory
 
 - `npm test`: 176 Vitest tests in 19 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails and 6 for record integrity).
-- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails and the record check on a two-visit file (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test.
@@ -133,7 +133,7 @@ Phase 1 of [STRATEGY.md](STRATEGY.md), plus two hygiene items from Phase 0.
 | Censoring visibility: percent of measured values censored per group and per measure, the direction of the bias, and a mark on means and SDs above 15% (provisional threshold) | `tests/guardrails.test.ts`: counts by direction, the threshold, the note text, and that summaries use no bound; E2E checks the note and the table cell |
 | Analysis register: one append-only row per distinct analysis, recomputed in the main process from the selection and chart settings, with a full SHA-256 fingerprint, its tests and p-values. Listed in History with a running count, and written to the context package as `analysis_register.json` | `tests/guardrails.test.ts`: stored values equal the core functions; duplicates and display changes are not re-recorded; fingerprints change with visits, filter, QC policy, transforms, log axes and metadata version; update and delete are refused; the export lists details only for exported variables and holds no participant ID. E2E checks the counts in the panel and in History. The packaged self-test has a register step (not yet run on a packaged build). |
 | p-values displayed without emphasis below .05 | E2E asserts no accent badge in the panel |
-| R and package versions recorded in each reference file; `npm run reference:check`; CI job `r-reference` with pinned versions | The check reproduces all three files on macOS with R 4.3.2, and fails when a value or a version is changed by hand. `tests/rReference.test.ts` checks that the workflow pins the recorded versions. **The CI job has not run yet.** |
+| R and package versions recorded in each reference file; `npm run reference:check`; CI workflow `r-reference` with R 4.3.2 and a dated package snapshot | The check reproduces all three files on macOS, and fails when a value or a version is changed by hand. The workflow passes on Linux (GitHub Actions run 44606584321): every value agrees to 1e-9 except Box-Cox λ (1e-6) and the values transformed with it (2e-5), which differ in the last digits between platforms. `tests/rReference.test.ts` checks that the workflow uses the recorded R version. |
 | A copy of `workspace.sqlite` is kept before a schema migration | `tests/guardrails.test.ts` (schema upgrade) |
 | `.codex/` and `Claude outputs/` git-ignored; stale "no remote" comments removed | By inspection |
 
@@ -152,6 +152,7 @@ The first part of Phase 2 of [STRATEGY.md](STRATEGY.md).
 | Projects from earlier versions: existing rows are chained on first open and marked as entered after the fact | `tests/integrity.test.ts`; `tests/guardrails.test.ts` (schema upgrade) |
 | Audit entries for quasi-identifier flags, segment names and study context (the text itself is not copied into the audit detail) | `tests/integrity.test.ts` (audit trail) |
 | Notice on the correlation matrix, heatmap and PCA when a participant appears at more than one visit, with the one-visit fix | E2E |
+| Error boundary: a failure while drawing a page shows a message, the error text and **Try again**, and the sidebar stays usable; a second boundary covers the whole window | `e2e/guardrails.spec.ts` makes the Explore page throw while it draws, checks the message, opens another page, removes the cause and retries. The whole-window boundary is not tested. |
 | MCP: every count below the minimum cell size returned as "<n"; minimum and maximum withheld unless `--show-extremes`; guide and docs corrected | `tests/mcp.test.ts` walks every tool result for count fields below 5, checks counts inside warnings, and confirms the plain numbers return with a cell size of 1 |
 
 Not done: the chain has no secret key, so it does not prove who wrote a record, and a consistent rewrite is caught only by an anchor. Backups are still not encrypted. Chart sidecars still come from the renderer. The MCP server has no defence against differencing and passes free text through. The packaged build was not re-run for this work.
@@ -159,7 +160,7 @@ Not done: the chain has no secret key, so it does not prove who wrote a record, 
 ## Remaining work
 
 1. Run the NSIS install wizard by hand on Windows 10/11, then import, save, export and reopen through the UI. CI already runs the unit tests and the packaged `--self-test` on Windows.
-2. Build and smoke-test installers that include the unreleased work, then tag a release. Push first, so the `r-reference` CI job runs for the first time.
+2. Build and smoke-test installers that include the unreleased work, then tag a release.
 3. Obtain signing credentials and notarise or sign (see [SIGNING.md](SIGNING.md)).
 4. Curator decisions recorded in the local workbook notes (see [WORKBOOK_SEMANTICS.md](WORKBOOK_SEMANTICS.md)):
    - the sample-warning colour mismatch;

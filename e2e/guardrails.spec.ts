@@ -113,3 +113,33 @@ test('repeated visits block tests until one visit is chosen; analyses are regist
   expect((await invoke(page, 'app:networkLog')).blocked).toEqual([])
   await app.close()
 })
+
+test('a failure while drawing one page shows a message, not a blank window', async () => {
+  const { app, page } = await launch(mkdtempSync(join(tmpdir(), 'bari-e2e-boundary-ud-')))
+  await page.getByText('Open synthetic demo').click()
+  await page.getByText('Outstanding metadata tasks').waitFor()
+  // Make the next page fail while it draws, the way a bug would: Explore reads the colour scheme as it renders.
+  await page.evaluate(() => {
+    const w = window as unknown as { __realMatchMedia: typeof window.matchMedia }
+    w.__realMatchMedia = window.matchMedia
+    window.matchMedia = () => { throw new Error('synthetic render failure') }
+  })
+  await page.getByRole('button', { name: 'Explore data' }).first().click()
+  const fallback = page.getByTestId('error-boundary-page')
+  await expect(fallback).toContainText('This page could not be drawn')
+  await expect(fallback).toContainText('synthetic render failure')
+  // The rest of the app still works: the sidebar is there and another page opens.
+  await page.getByRole('button', { name: 'Measurements' }).first().click()
+  await expect(page.getByTestId('error-boundary-page')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Explore data' }).first().click()
+  await expect(fallback).toBeVisible()
+  // Once the cause is gone, Try again draws the page.
+  await page.evaluate(() => {
+    const w = window as unknown as { __realMatchMedia: typeof window.matchMedia }
+    window.matchMedia = w.__realMatchMedia
+  })
+  await page.getByTestId('error-retry').click()
+  await expect(page.getByTestId('error-boundary-page')).toHaveCount(0)
+  await expect(page.getByTestId('analyze')).toBeVisible()
+  await app.close()
+})

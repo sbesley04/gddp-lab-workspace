@@ -18,18 +18,19 @@ Updated 2026-11-19. Everything marked done is in the source, unreleased, and ver
 | S3 Censoring visibility | Done in part | Percent censored is shown per variable and group, with the direction of the bias. Means and SDs are marked above a threshold of 15%, which is **provisional** until Q4 is answered. Censoring-aware estimates remain Phase 3. |
 | S4 Analysis register | Done | Append-only table; the main process recomputes each analysis. Shown in History and written to the context package. Analyses run through the MCP server or in R are not recorded. |
 | S5 Neutral p-values | Done | No accent below .05. |
-| S7 R in CI | Done locally; CI job not yet run | Each reference file records its R and package versions. `npm run reference:check` regenerates and compares them; the `r-reference` CI job does the same with pinned versions, and has not run yet because nothing has been pushed. |
+| S7 R in CI | Done | Each reference file records its R and package versions. `npm run reference:check` regenerates and compares them. The `r-reference` workflow does the same on Linux with R 4.3.2 and a dated package snapshot, and passes (first passing run 2026-11-19). It took three runs: latest CRAN no longer installs car on R 4.3, and Box-Cox values differ from macOS by about 1e-6. |
 | G4 Copy the database before migrating | Done | Brought forward from Phase 2, because the register adds a migration. |
 | G1 Hash chain with a verify command | Done | `src/main/integrity.ts`. Every audit, revision and register row is chained as the app writes it. **Verify** in the sidebar, `--verify-project <folder>` on the command line, and a check on restore. Backups and exports record the chain head as an anchor. The chain has no secret key: a full, consistent rewrite is caught only by an anchor, and only reliably by one kept outside the project folder. Rows written before the chain existed are marked as entered after the fact. |
 | G5 Audit every curation action | Done | Quasi-identifier flags, segment names and study context now write audit entries. |
 | M1 MCP docs overstate the guarantee | Done | Minimum and maximum are withheld for every variable unless the server is started with `--show-extremes`. The guide and [MCP.md](MCP.md) say that a median or quartile can be one participant's value. |
 | M2 Small counts not suppressed everywhere | Done | Every count below the minimum cell size is returned as "<n", including counts inside warnings. No complementary suppression: a small count can sometimes be derived from a total. |
 | M3 Differencing, M4 free text | **Open**, now documented | No query budget or overlap check. Header comments, study context, saved-view names and the project name still pass through. |
+| E2 Error boundary | Done | A failure while drawing a page shows a message with **Try again**; the sidebar stays usable. A second boundary covers the whole window. |
 | G2, G3, G6, E5 (rest of Phase 2) | **Open** | Full fingerprints and renaming "signature"; encrypted backups; recomputing chart sidecars in the main process; signing. Then the validation pack and threat model. |
 
 Phase 2's first "done when" condition is met and tested: a tampered database fails verification (`tests/integrity.test.ts`, seven kinds of tampering). "MCP.md matches what the code returns" is met for M1 and M2.
 
-Phase 1's first "done when" condition is met and tested: a multi-visit fixture cannot produce a test (`tests/guardrails.test.ts`, `e2e/guardrails.spec.ts`). The second is met locally and awaits its first CI run.
+Both of Phase 1's "done when" conditions are met: a multi-visit fixture cannot produce a test (`tests/guardrails.test.ts`, `e2e/guardrails.spec.ts`), and CI fails if R disagrees with the fixtures (workflow `r-reference`).
 
 ## What was checked
 

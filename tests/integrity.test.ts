@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { unzipSync, strFromU8 } from 'fflate'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Project } from '../src/main/project'
 import { commitImport, parseSource, previewMapping, validate } from '../src/main/importService'
 import { buildSnapshot } from '../src/main/snapshot'
@@ -16,6 +16,9 @@ import { CHAIN_GENESIS, chainHead, expectedTriggers, linkHash, startChain, verif
 import { MIGRATIONS } from '../src/main/db/migrations'
 import { emptyFilter } from '@core/types'
 import { decideFormat, editVariableMeta, nameSegment, setCellExclusion, setCovariate, setQuasiIdentifier, setStudyContext } from '../src/main/curation'
+
+// Several tests build a fresh project per case; that is slow on CI's Windows runners (the first run timed out at 5 s).
+vi.setConfig({ testTimeout: 60_000 })
 
 let root: string
 let project: Project

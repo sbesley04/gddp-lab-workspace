@@ -131,3 +131,27 @@ test('correlation matrix, heatmap and histogram share settings and record themse
   await expect(page.getByTestId('compute-pca')).toBeEnabled()
   await app.close()
 })
+
+test('popovers stay reachable at the minimum window size', async () => {
+  // CI's first run of these tests failed here: on a small screen the Add variable popover opened upwards and its
+  // first buttons ended up above the top of the window, where they cannot be scrolled to.
+  const { app, page } = await launch(mkdtempSync(join(tmpdir(), 'bari-small-')))
+  await app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows()[0]
+    w.setSize(1024, 680)
+  })
+  await page.getByText('Open synthetic demo').click()
+  await page.getByText('Outstanding metadata tasks').waitFor({ timeout: 20000 })
+  await page.getByRole('button', { name: 'Explore data' }).first().click()
+  await page.getByTestId('type-many').click()
+  await page.getByTestId('type-pca').click()
+  await page.getByTestId('pca-add').click()
+  const area = page.getByTestId('pca-add-area-AQ NULISA')
+  const box = (await area.boundingBox())!
+  const size = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.y + box.height).toBeLessThanOrEqual(size.h)
+  await area.click({ timeout: 5000 })
+  await expect(page.getByTestId('compute-pca')).toBeEnabled()
+  await app.close()
+})

@@ -21,7 +21,7 @@ All of this uses synthetic data only and needs no study file.
 | 1 | `npm install` | Completes |
 | 2 | `npm run typecheck` | No output |
 | 3 | `npm test` | 188 tests pass |
-| 4 | `npm run e2e` | 10 tests pass |
+| 4 | `npm run e2e` | 11 tests pass |
 | 5 | `npm run reference:check` (needs R 4.3.2 with jsonlite 2.0.0 and car 3.1.3) | "R reproduces all three reference files." |
 | 6 | Packaged app with `--self-test <folder>` | Exit code 0 and `bari-self-test.json` with every step `ok` |
 

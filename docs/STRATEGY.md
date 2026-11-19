@@ -12,7 +12,8 @@ Updated 2026-11-19. Everything marked done is in the source, unreleased, and ver
 | --- | --- | --- |
 | Phase 0: ignore `.codex/` and `Claude outputs/`; fix the stale CI and doc comments (E6, E9 in part) | Done | `CLAUDE.md` and `AGENTS.md` are still kept in sync by hand. |
 | Phase 0: settle the MCP connection (Q1) | **Open** | Needs the developer. The server was still connected to an assistant session on 2026-11-19; it was not called. |
-| Phase 0: push and merge branches, tag a release (E5, E6 in part) | **Open** | Needs a decision on what the release contains. |
+| Phase 0: push and merge branches (E6) | Done | `mcp-server` was merged into `main` on 2026-11-19 (pull request 3), with CI passing on macOS, Windows and the R check. |
+| Phase 0: tag a release with the unreleased work (E5 in part) | **Open** | Needs installers built and smoke-tested, and a decision on what the release contains. `main` and the docs now agree; the installers are still 0.3.1. |
 | S1 Independence guard | Done | `src/core/independence.ts`, used by the app and the MCP server. The app computes no test, interval or fit when a participant contributes more than one row, and offers each visit as a one-click fix. The descriptive many-measures views (correlation matrix, heatmap, PCA) are not blocked but say when visits are pooled. The MCP server still warns instead of refusing (Q6). |
 | S2 Methods and caveat text | Done | Visit and participant wording is derived from the analysed rows. |
 | S3 Censoring visibility | Done in part | Percent censored is shown per variable and group, with the direction of the bias. Means and SDs are marked above a threshold of 15%, which is **provisional** until Q4 is answered. Censoring-aware estimates remain Phase 3. |

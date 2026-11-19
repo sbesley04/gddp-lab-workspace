@@ -7,8 +7,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 ## Versions
 
 - **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
-- **Source (`main`), unreleased:** analysis log with signatures, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, plus the read-only MCP server described in [docs/MCP.md](docs/MCP.md). These are not in the 0.3.1 installers; build from source to use them.
-- **Source (branch `mcp-server`), unreleased:** statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the R reference check, the record hash chain with its verify command, and stricter MCP suppression. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
+- **Source (`main`), unreleased:** analysis log with signatures, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server described in [docs/MCP.md](docs/MCP.md), statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, and stricter MCP suppression. None of this is in the 0.3.1 installers; build from source to use it. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
 
 ## What works
 

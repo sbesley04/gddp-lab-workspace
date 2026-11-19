@@ -382,20 +382,29 @@ function installSecurity() {
   })
 }
 
-/** Self-test: load the bundled renderer in a hidden window and wait for the welcome screen via the real IPC bridge. */
+/**
+ * Self-test: load the bundled renderer in a hidden window and wait for the welcome screen via the real IPC bridge.
+ * The limit is generous because the first launch under Rosetta (CI's Intel check) translates Chromium's helper
+ * processes before they start; a normal launch takes a second or two. The 180 s self-test watchdog still applies.
+ */
+const UI_SMOKE_LIMIT_MS = 90_000
 async function uiSmoke(): Promise<string> {
   createWindow(false)
   const wc = mainWindow!.webContents
-  const deadline = Date.now() + 20000
-  while (Date.now() < deadline) {
-    const state = await wc.executeJavaScript(`({ text: document.body ? document.body.innerText : '', bridge: typeof window.bari?.invoke === 'function', url: location.href })`).catch(() => null)
+  const started = Date.now()
+  let last = 'no response from the window'
+  while (Date.now() - started < UI_SMOKE_LIMIT_MS) {
+    // A renderer that is still starting may not answer at all, so each look is bounded too.
+    const probe = wc.executeJavaScript(`({ text: document.body ? document.body.innerText : '', bridge: typeof window.bari?.invoke === 'function', url: location.href })`).catch(() => null)
+    const state = await Promise.race([probe, new Promise<null>((r) => setTimeout(() => r(null), 5000))])
+    if (state) last = `${state.url}; IPC bridge ${state.bridge ? 'available' : 'missing'}; ${state.text.trim() ? 'page has text' : 'page is empty'}`
     if (state && state.bridge && state.text.includes('Open synthetic demo')) {
       mainWindow!.destroy()
-      return `renderer loaded from ${state.url}; IPC bridge available; welcome screen rendered`
+      return `renderer loaded from ${state.url} in ${((Date.now() - started) / 1000).toFixed(1)} s; IPC bridge available; welcome screen rendered`
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error('Renderer did not reach the welcome screen within 20 s')
+  throw new Error(`Renderer did not reach the welcome screen within ${UI_SMOKE_LIMIT_MS / 1000} s (last seen: ${last})`)
 }
 
 function createWindow(visible = true) {

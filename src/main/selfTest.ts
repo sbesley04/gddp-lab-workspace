@@ -91,7 +91,10 @@ export async function runSelfTest(outDir: string | undefined, demoPath: string, 
     if (uiSmoke) check('user interface loads', true, await uiSmoke())
   } catch (e) {
     code = 1
-    if (!steps.some((s) => !s.ok)) steps.push({ step: 'unexpected error', ok: false, detail: (e as Error).message })
+    if (!steps.some((s) => !s.ok)) {
+      steps.push({ step: 'unexpected error', ok: false, detail: (e as Error).message })
+      process.stdout.write(`[self-test] FAIL unexpected error — ${(e as Error).message}\n`)
+    }
   } finally {
     // Cleanup is checked too: a temp folder that cannot be removed is a real bug (e.g. read-only files on Windows).
     try {

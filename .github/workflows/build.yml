@@ -85,8 +85,11 @@ jobs:
         timeout-minutes: 6
         run: |
           mkdir -p st
-          "$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st"
-          cat st/bari-self-test.json
+          # Print the report whether or not the self-test passed, so a failure shows its reason.
+          code=0
+          "$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st" || code=$?
+          cat st/bari-self-test.json || true
+          exit $code
       - name: Self-test the installed app (Intel, under Rosetta)
         if: runner.os == 'macOS'
         timeout-minutes: 8
@@ -96,8 +99,10 @@ jobs:
             exit 0
           fi
           mkdir -p st-intel
-          arch -x86_64 "$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st-intel"
-          cat st-intel/bari-self-test.json
+          code=0
+          arch -x86_64 "$RUNNER_TEMP/Applications/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test "$PWD/st-intel" || code=$?
+          cat st-intel/bari-self-test.json || true
+          exit $code
 
       # ---------- Windows ----------
       - name: Package (Windows setup, unsigned)

@@ -69,6 +69,7 @@ export const chartConfig = z.object({
   variableSet: z.array(z.string().max(200)).max(2000).optional(),
   corrMethod: z.enum(['pearson', 'spearman']).optional(),
   distStyle: z.enum(['box', 'histogram']).optional(),
+  pcaVectors: z.boolean().optional(),
   xMin: z.number().finite().nullable().optional(),
   xMax: z.number().finite().nullable().optional(),
   yMin: z.number().finite().nullable().optional(),
@@ -151,6 +152,9 @@ export const schemas = {
     sidecars: z.object({ settings: z.string().max(2_000_000), log: z.string().max(2_000_000) }).optional(),
     context: z.object({ datasetVersionId: z.string().max(100), metadataVersion: z.number().int().min(0), signature: z.string().max(64) }).optional()
   }),
+  /** The main process recomputes the analysis from the spec and chart; no result is accepted from the renderer. */
+  'analysis:record': z.object({ spec: selectionSpec, chart: chartConfig, metadataVersion: z.number().int().min(0) }),
+  'analysis:list': z.object({ datasetVersionId: id.nullable(), limit: z.number().int().min(1).max(500).optional() }),
   'settings:setAuthor': z.object({ authorLabel: z.string().max(80) }),
   'boards:get': z.object({ id }),
   'boards:save': z.object({ id: id.nullable(), name: z.string().min(1).max(200), layout: boardLayout }),

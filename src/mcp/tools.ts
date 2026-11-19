@@ -24,8 +24,9 @@ import {
   type Interval
 } from '@core/analysis'
 import { correlationFromSelection } from '@core/matrix'
+import { independenceMessage, repeatInfo } from '@core/independence'
 import { gapSuggestion, pcaPlot } from '@core/pca'
-import { buildTransform, TRANSFORM_FN, type TransformId } from '@core/transforms'
+import { buildTransform, TRANSFORM_FN, transformParams, type TransformId } from '@core/transforms'
 import { getStudyContext } from '../main/curation'
 import { segmentsOf } from '../main/snapshot'
 import { getView, listViews } from '../main/views'
@@ -137,6 +138,7 @@ function toCondition(snap: DatasetSnapshot, c: ConditionInput, i: number): Filte
 }
 
 export interface Resolved {
+  ws: Workspace
   snap: DatasetSnapshot
   spec: SelectionSpec
   sel: SelectionResult
@@ -157,7 +159,7 @@ export function resolveSelection(ws: Workspace, input: SelectionInput, forceVisi
     const snap = ws.snapshot(view.datasetVersionId, view.metadataVersion)
     let spec = view.spec.selection
     if (forceVisits) spec = { ...spec, visitIds: resolveVisits(snap, forceVisits) }
-    return { snap, spec, sel: computeSelection(snap, spec), versionNumber: view.datasetVersionNumber, warnings }
+    return { ws, snap, spec, sel: computeSelection(snap, spec), versionNumber: view.datasetVersionNumber, warnings }
   }
   const ver = ws.version(input.datasetVersion)
   const snap = ws.snapshot(ver.id)
@@ -168,15 +170,24 @@ export function resolveSelection(ws: Workspace, input: SelectionInput, forceVisi
     qc: { exclude: input.qcExclude ?? DEFAULT_QC_POLICY.exclude },
     filter: { type: 'group', id: 'root', op: input.match === 'any' ? 'or' : 'and', children: (input.where ?? []).map((c, i) => toCondition(snap, c, i)) }
   }
-  return { snap, spec, sel: computeSelection(snap, spec), versionNumber: ver.versionNumber, warnings }
+  return { ws, snap, spec, sel: computeSelection(snap, spec), versionNumber: ver.versionNumber, warnings }
 }
 
 // ------------------------------------------------------------------ privacy helpers
 
-/** A participant count, or "<k" when it is below the minimum cell size. Zero is shown as is. */
+/**
+ * Any count of participants, rows, observations or pairs, or "<k" when it is below the minimum cell size.
+ * Zero is shown as is. Every count that leaves this module goes through here, including counts inside warnings:
+ * a count of 1 says something about one person whatever it is a count of.
+ */
 function count(ws: Workspace, n: number): number | string {
   return n === 0 || n >= ws.policy.minCellSize ? n : `<${ws.policy.minCellSize}`
 }
+/** Suppresses every value of a record of counts. */
+function counts<K extends string>(ws: Workspace, c: Record<K, number>): Record<K, number | string> {
+  return Object.fromEntries(Object.entries<number>(c).map(([k, n]) => [k, count(ws, n)])) as Record<K, number | string>
+}
+const EXTREMES_WITHHELD = 'withheld (minimum and maximum are individual values; the server must be started with --show-extremes to return them)'
 const small = (ws: Workspace, n: number) => n > 0 && n < ws.policy.minCellSize
 
 function participantsOfRows(snap: DatasetSnapshot, rows: Iterable<number>): number {
@@ -208,17 +219,26 @@ function selectionInfo(ws: Workspace, r: Resolved) {
   }
 }
 
-/** Warns when a participant contributes several rows (visits), because the tests assume independent observations. */
+/** The app's independence guard (src/core/independence.ts): warns when a participant contributes several rows (visits). */
 function repeatedWarning(r: Resolved, rows: number[], warnings: string[]) {
-  const n = participantsOfRows(r.snap, rows)
-  if (rows.length > n)
-    warnings.push(
-      `${rows.length} observations come from ${n} participants: some participants contribute several visits. Tests assume independent observations, so restrict "visits" to one visit, or use change_between_visits for within-participant change.`
-    )
+  const msg = independenceMessage(repeatInfo(r.snap, rows))
+  if (msg) warnings.push(`${msg} Restrict "visits" to one visit, or use change_between_visits for within-participant change. The app refuses to run these tests on such a selection.`)
 }
 
-function transformValues(id: TransformId | undefined, basis: number[], values: number[], warnings: string[], what: string): number[] {
+/** States a parameter the transform estimated from the selection (Box-Cox λ), so the analysis can be reproduced. */
+function noteTransform(ws: Workspace, id: TransformId | undefined, basis: number[], warnings: string[], what: string) {
+  const prm = id ? transformParams(id, basis) : null
+  if (!prm) return
+  warnings.push(
+    prm.lambda === null
+      ? `Box-Cox λ cannot be estimated for ${what} (fewer than 3 positive values, or no spread), so it has no transformed values.`
+      : `Box-Cox λ = ${sig(prm.lambda)} for ${what}, estimated by maximum likelihood (y ~ 1) from ${count(ws, prm.n)} positive value(s) in this selection.${prm.atLimit ? ' λ reached the search limit (±10), so Box-Cox fits these values poorly.' : ''}`
+  )
+}
+
+function transformValues(ws: Workspace, id: TransformId | undefined, basis: number[], values: number[], warnings: string[], what: string): number[] {
   if (!id || id === 'none') return values
+  noteTransform(ws, id, basis, warnings, what)
   const f = buildTransform(id, basis)
   const out: number[] = []
   let dropped = 0
@@ -227,11 +247,12 @@ function transformValues(id: TransformId | undefined, basis: number[], values: n
     if (t === null) dropped++
     else out.push(t)
   }
-  if (dropped) warnings.push(`${dropped} value(s) of ${what} have no ${TRANSFORM_FN[id as Exclude<TransformId, 'none'>]} transform (e.g. zero or negative under a log) and were left out.`)
+  if (dropped) warnings.push(`${count(ws, dropped)} value(s) of ${what} have no ${TRANSFORM_FN[id as Exclude<TransformId, 'none'>]} transform (e.g. zero or negative under a log) and were left out.`)
   return out
 }
 
-function descriptive(d: Descriptive, quasiIdentifier: boolean) {
+function descriptive(ws: Workspace, d: Descriptive, quasiIdentifier: boolean) {
+  const extreme = (x: number | null) => (quasiIdentifier ? 'withheld (quasi-identifier)' : ws.policy.showExtremes ? sig(x) : EXTREMES_WITHHELD)
   return {
     n: d.n,
     mean: sig(d.mean),
@@ -241,9 +262,10 @@ function descriptive(d: Descriptive, quasiIdentifier: boolean) {
     medianCi95: ci(d.medianCi),
     q1: sig(d.q1),
     q3: sig(d.q3),
-    // Extremes are individual values; they are withheld for quasi-identifiers (age, BMI...).
-    min: quasiIdentifier ? 'withheld (quasi-identifier)' : sig(d.min),
-    max: quasiIdentifier ? 'withheld (quasi-identifier)' : sig(d.max),
+    // Extremes are individual values: withheld unless the server was started with --show-extremes, and always
+    // withheld for quasi-identifiers (age, BMI...). The median and quartiles can also coincide with one person's value.
+    min: extreme(d.min),
+    max: extreme(d.max),
     geometricMean: sig(d.geoMean),
     skewness: sig(d.skewness, 3),
     shapiroWilkP: pval(d.shapiro?.p)
@@ -285,7 +307,7 @@ function groupRows(r: Resolved, groupVar: VariableInfo | null, groupFrom: GroupF
       const l = labelOf(row)
       m.set(l, [...(m.get(l) ?? []), row])
     }
-    if (inconsistent) warnings.push(`${inconsistent} observation(s) belong to participants whose ${groupVar.header} differs between visits; they are grouped as "(inconsistent across visits)".`)
+    if (inconsistent) warnings.push(`${count(r.ws, inconsistent)} observation(s) belong to participants whose ${groupVar.header} differs between visits; they are grouped as "(inconsistent across visits)".`)
     return orderedCategories(m.keys()).map((label) => ({ label, rows: m.get(label)! }))
   }
   const m = new Map<string, number[]>()
@@ -301,7 +323,7 @@ function groupRows(r: Resolved, groupVar: VariableInfo | null, groupFrom: GroupF
     const recoverable = missingRows.filter((row) => known.has(snap.rows[row].participantId)).length
     if (recoverable)
       warnings.push(
-        `${groupVar.header} is missing on ${missingRows.length} of ${rows.length} selected rows, but ${recoverable} of those participants have it at another visit. Set groupFrom to "participant" to use each participant's value from any visit.`
+        `${groupVar.header} is missing on ${count(r.ws, missingRows.length)} of ${count(r.ws, rows.length)} selected rows, but ${count(r.ws, recoverable)} of those participants have it at another visit. Set groupFrom to "participant" to use each participant's value from any visit.`
       )
   }
   return orderedCategories(m.keys()).map((label) => ({ label, rows: m.get(label)! }))
@@ -340,8 +362,8 @@ function measure(r: Resolved, ref: string): VariableInfo {
   return v
 }
 
-function censoredNote(n: number, warnings: string[], what: string) {
-  if (n) warnings.push(`${n} censored value(s) of ${what} (e.g. "<0.5", below a detection limit) are not numbers and were left out, never replaced by their bound. Results may be biased upward when many values are censored.`)
+function censoredNote(ws: Workspace, n: number, warnings: string[], what: string) {
+  if (n) warnings.push(`${count(ws, n)} censored value(s) of ${what} (e.g. "<0.5", below a detection limit) are not numbers and were left out, never replaced by their bound. Results may be biased upward when many values are censored.`)
 }
 
 // ------------------------------------------------------------------ tools
@@ -367,7 +389,8 @@ export function studyOverview(ws: Workspace) {
   const study = getStudyContext(ws.project, latest.id, snap.metadataVersion)
   return {
     project: ws.project.info.name,
-    datasetVersions: versions.map((v) => ({ version: v.versionNumber, sourceFile: v.sourceFileName, sheet: v.sheetName, importedAt: v.createdAt.slice(0, 10), rows: v.rows, participants: v.participants, columns: v.columns })),
+    // The source file is identified by SHA-256 only, as in the analysis log: file names often carry dates or study details.
+    datasetVersions: versions.map((v) => ({ version: v.versionNumber, sourceSha256: v.sha256, sheet: v.sheetName, importedAt: v.createdAt.slice(0, 10), rows: count(ws, v.rows), participants: count(ws, v.participants), columns: v.columns })),
     latest: {
       version: latest.versionNumber,
       metadataVersion: snap.metadataVersion,
@@ -381,7 +404,7 @@ export function studyOverview(ws: Workspace) {
       variableGroups: [...areas.entries()].map(([name, e]) => ({ name, variables: e.count, nameStatus: e.status })),
       covariates: measures.filter((v) => v.covariate).map((v) => v.key),
       quasiIdentifiers: measures.filter((v) => v.quasiIdentifier).map((v) => v.key),
-      qcFlaggedObservations: flagCounts,
+      qcFlaggedObservations: counts(ws, flagCounts),
       measuresWithUnknownUnitOrDefinition: unresolvedMeta,
       formattingNeedingCuratorReview: needsReview,
       comments: snap.annotations.length,
@@ -427,7 +450,7 @@ export function searchVariables(ws: Workspace, input: { query?: string; group?: 
   }
 }
 
-function textCodes(values: CellValue[], rows: number[]) {
+function textCodes(ws: Workspace, values: CellValue[], rows: number[]) {
   const censored = new Map<string, number>()
   const text = new Map<string, number>()
   for (const r of rows) {
@@ -438,8 +461,8 @@ function textCodes(values: CellValue[], rows: number[]) {
   // Short codes such as "QNS" are reported; free text could identify someone and is only counted.
   const codes = [...text.entries()].filter(([t]) => t.length <= 12)
   return {
-    censoredValues: Object.fromEntries(censored),
-    textCodes: codes.length <= 10 ? Object.fromEntries(codes) : undefined,
+    censoredValues: counts(ws, Object.fromEntries(censored)),
+    textCodes: codes.length <= 10 ? counts(ws, Object.fromEntries(codes)) : undefined,
     otherTextValues: text.size - (codes.length <= 10 ? codes.length : 0) || undefined
   }
 }
@@ -463,9 +486,9 @@ export function describeVariable(ws: Workspace, input: SelectionInput & { variab
       return {
         visit: vis.name,
         participants: count(ws, people),
-        counts: c,
-        ...textCodes(snap.values[v.index], rows),
-        summary: v.role === 'measure' && v.kind !== 'categorical' && nums.length >= Math.max(3, ws.policy.minCellSize) ? descriptive(describe(nums), v.quasiIdentifier) : undefined,
+        counts: counts(ws, { ...c }),
+        ...textCodes(ws, snap.values[v.index], rows),
+        summary: v.role === 'measure' && v.kind !== 'categorical' && nums.length >= Math.max(3, ws.policy.minCellSize) ? descriptive(ws, describe(nums), v.quasiIdentifier) : undefined,
         categories:
           v.kind === 'categorical' || (v.kind === 'mixed' && nums.length === 0)
             ? Object.fromEntries(
@@ -494,11 +517,11 @@ export function describeVariable(ws: Workspace, input: SelectionInput & { variab
     quasiIdentifier: v.quasiIdentifier,
     covariate: v.covariate,
     headerComments: headerNotes,
-    cellComments,
+    cellComments: count(ws, cellComments),
     selection: selectionInfo(ws, r),
     byVisit,
-    qcFlagsInSelection: Object.fromEntries(Object.entries(flags).filter(([, x]) => x.observations > 0).map(([, x]) => [x.label, x.observations])),
-    flagsNeedingCuratorReview: reviewFlags,
+    qcFlagsInSelection: Object.fromEntries(Object.entries(flags).filter(([, x]) => x.observations > 0).map(([, x]) => [x.label, count(ws, x.observations)])),
+    flagsNeedingCuratorReview: count(ws, reviewFlags),
     warnings
   }
 }
@@ -521,7 +544,7 @@ export function cohortCounts(ws: Workspace, input: SelectionInput) {
       })
       .filter((x) => x.participants !== 0),
     visitsPerParticipant: Object.fromEntries([...dist.entries()].sort((a, b) => a[0] - b[0]).map(([k, n]) => [`${k} visit${k === 1 ? '' : 's'}`, count(ws, n)])),
-    excludedRowsByReason: Object.fromEntries(reasons),
+    excludedRowsByReason: counts(ws, Object.fromEntries(reasons)),
     warnings: r.warnings
   }
 }
@@ -538,18 +561,18 @@ export function summarize(ws: Workspace, input: SelectionInput & { variable: str
   const out = groups.map((grp) => {
     const { values, notAnalysed } = usableNumbers(r.sel, v.index, grp.rows)
     censored += notAnalysed.censored
-    const xs = transformValues(input.transform, basis, values, warnings, v.header)
+    const xs = transformValues(ws, input.transform, basis, values, warnings, v.header)
     const people = participantsOfRows(r.snap, grp.rows)
     const suppressed = small(ws, people) || xs.length < ws.policy.minCellSize
     return {
       group: grp.label,
       participants: count(ws, people),
       observations: count(ws, grp.rows.length),
-      notAnalysed,
-      summary: suppressed ? `suppressed (fewer than ${ws.policy.minCellSize} values or participants)` : descriptive(describe(xs), v.quasiIdentifier)
+      notAnalysed: counts(ws, notAnalysed),
+      summary: suppressed ? `suppressed (fewer than ${ws.policy.minCellSize} values or participants)` : descriptive(ws, describe(xs), v.quasiIdentifier)
     }
   })
-  censoredNote(censored, warnings, v.header)
+  censoredNote(ws, censored, warnings, v.header)
   repeatedWarning(r, r.sel.rows, warnings)
   return {
     variable: { key: v.key, header: v.header, unit: v.meta.unit.value, unitStatus: v.meta.unit.status },
@@ -581,9 +604,9 @@ export function compareGroups(ws: Workspace, input: SelectionInput & { variable:
   const data = groups.map((gr) => {
     const u = usableNumbers(r.sel, v.index, gr.rows)
     censored += u.notAnalysed.censored
-    return { label: gr.label, xs: transformValues(input.transform, basis, u.values, warnings, v.header), people: participantsOfRows(r.snap, gr.rows) }
+    return { label: gr.label, xs: transformValues(ws, input.transform, basis, u.values, warnings, v.header), people: participantsOfRows(r.snap, gr.rows) }
   })
-  censoredNote(censored, warnings, v.header)
+  censoredNote(ws, censored, warnings, v.header)
   const tooSmall = data.filter((d) => d.xs.length < Math.max(3, ws.policy.minCellSize) || small(ws, d.people))
   if (tooSmall.length)
     throw new ToolError(`Group(s) ${tooSmall.map((d) => `"${d.label}"`).join(', ')} have fewer than ${Math.max(3, ws.policy.minCellSize)} usable values, so the comparison is suppressed. Choose other groups or broaden the selection.`)
@@ -645,6 +668,8 @@ export function correlate(ws: Workspace, input: SelectionInput & { x: string; y:
   const pr = pairedObservations(r.sel, xv.index, yv.index)
   const fx = buildTransform(input.transformX ?? 'none', numericColumn(r.sel, xv.index))
   const fy = buildTransform(input.transformY ?? 'none', numericColumn(r.sel, yv.index))
+  noteTransform(ws, input.transformX, numericColumn(r.sel, xv.index), warnings, `x (${input.x})`)
+  noteTransform(ws, input.transformY, numericColumn(r.sel, yv.index), warnings, `y (${input.y})`)
   const x: number[] = []
   const y: number[] = []
   const rows: number[] = []
@@ -659,8 +684,8 @@ export function correlate(ws: Workspace, input: SelectionInput & { x: string; y:
       rows.push(p.row)
     }
   }
-  if (untransformable) warnings.push(`${untransformable} pair(s) had a value with no defined transform (e.g. zero under a log) and were left out.`)
-  if (pr.unevaluable) warnings.push(`${pr.unevaluable} pair(s) had a censored or text value in one variable and were left out.`)
+  if (untransformable) warnings.push(`${count(ws, untransformable)} pair(s) had a value with no defined transform (e.g. zero under a log) and were left out.`)
+  if (pr.unevaluable) warnings.push(`${count(ws, pr.unevaluable)} pair(s) had a censored or text value in one variable and were left out.`)
   repeatedWarning(r, rows, warnings)
   const people = participantsOfRows(r.snap, rows)
   if (x.length < Math.max(3, ws.policy.minCellSize) || small(ws, people))
@@ -674,7 +699,7 @@ export function correlate(ws: Workspace, input: SelectionInput & { x: string; y:
     x: { key: xv.key, header: xv.header, unit: xv.meta.unit.value, transform: input.transformX ?? 'none' },
     y: { key: yv.key, header: yv.header, unit: yv.meta.unit.value, transform: input.transformY ?? 'none' },
     selection: selectionInfo(ws, r),
-    pairs: { complete: x.length, missingX: pr.missingX, missingY: pr.missingY, missingBoth: pr.missingBoth, censoredOrText: pr.unevaluable, qcExcluded: pr.qcExcluded },
+    pairs: counts(ws, { complete: x.length, missingX: pr.missingX, missingY: pr.missingY, missingBoth: pr.missingBoth, censoredOrText: pr.unevaluable, qcExcluded: pr.qcExcluded }),
     correlation: c && { method: c.method, estimate: sig(c.estimate, 3), ci95: ci(c.ci), statistic: sig(c.statistic), df: c.df, p: pval(c.p) },
     linearFit: fit && {
       formula: 'y = intercept + slope · x (ordinary least squares)',
@@ -683,7 +708,7 @@ export function correlate(ws: Workspace, input: SelectionInput & { x: string; y:
       residualSE: sig(fit.sigma),
       rSquared: sig(pr2 ? pr2.estimate ** 2 : null, 3),
       residualShapiroWilkP: pval(fit.residualShapiro?.p),
-      influentialPoints: fit.influential.length
+      influentialPoints: count(ws, fit.influential.length)
     },
     warnings: [...new Set(warnings)]
   }
@@ -719,7 +744,7 @@ export function correlationMatrix(ws: Workspace, input: SelectionInput & { varia
     selection: selectionInfo(ws, r),
     variables: vars.map((v) => ({ key: v.key, header: v.header })),
     r: rr,
-    n: m.n,
+    n: m.n.map((row) => row.map((n) => count(ws, n))),
     strongestPairs: top.slice(0, 15),
     warnings
   }
@@ -740,11 +765,11 @@ export function principalComponents(ws: Workspace, input: SelectionInput & { var
     exploratory: 'PCA on standardised variables (correlation matrix, like R prcomp(scale. = TRUE)). Complete cases only; nothing is imputed.',
     selection: selectionInfo(ws, r),
     completeRows: count(ws, pin.rows.length),
-    droppedRows: pin.dropped,
-    mostMissingVariables: blockers,
-    suggestion: gap ? `Dropping the ${gap.removed} variable(s) with gaps in more than 10% of rows would keep ${gap.rows} complete rows instead of ${pin.rows.length}: ${gap.keep.map((v) => v.key).join(', ')}` : null
+    droppedRows: count(ws, pin.dropped),
+    mostMissingVariables: blockers.map((b) => ({ ...b, count: count(ws, b.count) })),
+    suggestion: gap ? `Dropping the ${gap.removed} variable(s) with gaps in more than 10% of rows would keep ${count(ws, gap.rows)} complete rows instead of ${count(ws, pin.rows.length)}: ${gap.keep.map((v) => v.key).join(', ')}` : null
   }
-  if (pin.dropped > pin.rows.length) warnings.push(`Complete-case analysis kept only ${pin.rows.length} of ${pin.rows.length + pin.dropped} rows; results describe that subset, which may not be representative.`)
+  if (pin.dropped > pin.rows.length) warnings.push(`Complete-case analysis kept only ${count(ws, pin.rows.length)} of ${count(ws, pin.rows.length + pin.dropped)} rows; results describe that subset, which may not be representative.`)
   if (!result || plot.error) return { ...base, error: plot.error ?? 'PCA could not be computed.', warnings }
   if (small(ws, keptPeople) || pin.rows.length < ws.policy.minCellSize) return { ...base, error: `Fewer than ${ws.policy.minCellSize} complete rows; PCA suppressed.`, warnings }
   repeatedWarning(r, pin.rows, warnings)
@@ -790,6 +815,7 @@ export function changeBetweenVisits(ws: Workspace, input: SelectionInput & { var
   }
   const basis = numericColumn(r.sel, v.index)
   const f = buildTransform(input.transform ?? 'none', basis)
+  noteTransform(ws, input.transform, basis, warnings, input.variable)
   const pairs: { row: number; a: number; b: number }[] = []
   const skipped = { onlyFrom: 0, onlyTo: 0, notUsable: 0, noTransform: 0 }
   for (const e of byPid.values()) {
@@ -828,12 +854,12 @@ export function changeBetweenVisits(ws: Workspace, input: SelectionInput & { var
       fromMedian: sig(a.median),
       toMedian: sig(b.median),
       change: { meanChange: sig(d.mean), meanChangeCi95: ci(d.meanCi), sdChange: sig(d.sd), medianChange: sig(d.median), medianChangeCi95: ci(d.medianCi) },
-      increased: ps.filter((p) => p.b > p.a).length,
-      decreased: ps.filter((p) => p.b < p.a).length,
-      unchanged: ps.filter((p) => p.b === p.a).length
+      increased: count(ws, ps.filter((p) => p.b > p.a).length),
+      decreased: count(ws, ps.filter((p) => p.b < p.a).length),
+      unchanged: count(ws, ps.filter((p) => p.b === p.a).length)
     }
   })
-  if (skipped.notUsable) warnings.push(`${skipped.notUsable} participant(s) had a missing, censored, text or QC-excluded value at one of the visits and were left out.`)
+  if (skipped.notUsable) warnings.push(`${count(ws, skipped.notUsable)} participant(s) had a missing, censored, text or QC-excluded value at one of the visits and were left out.`)
   return {
     exploratory:
       'Within-participant change, descriptive. Paired significance tests are not offered yet (not validated against R). Without a control group, change over time is not evidence of a treatment effect.',
@@ -842,8 +868,8 @@ export function changeBetweenVisits(ws: Workspace, input: SelectionInput & { var
     change: `"${input.to}" minus "${input.from}"`,
     groupBy: g ? { key: g.key, header: g.header, from: input.groupFrom ?? 'participant' } : null,
     selection: selectionInfo(ws, r),
-    participantsWithOnlyFrom: skipped.onlyFrom,
-    participantsWithOnlyTo: skipped.onlyTo,
+    participantsWithOnlyFrom: count(ws, skipped.onlyFrom),
+    participantsWithOnlyTo: count(ws, skipped.onlyTo),
     groups: out,
     warnings: [...new Set(warnings)]
   }
@@ -862,22 +888,24 @@ export function qcOverview(ws: Workspace, input: SelectionInput & { variables?: 
       return { key: v.key, header: v.header, flagged, missing: c.missing, censored: c.censored, text: c.text, qcExcluded: c.qcExcluded }
     })
     .sort((a, b) => b.flagged - a.flagged || b.missing - a.missing)
+    .slice(0, 20)
+    .map((x) => ({ key: x.key, header: x.header, ...counts(ws, { flagged: x.flagged, missing: x.missing, censored: x.censored, text: x.text, qcExcluded: x.qcExcluded }) }))
   const statusCounts: Record<string, number> = {}
   for (const f of snap.flags) if (f.category) statusCounts[f.status] = (statusCounts[f.status] ?? 0) + 1
   return {
     selection: selectionInfo(ws, r),
     policy: `Excluded categories: ${r.spec.qc.exclude.map((c) => QC_CATEGORY_LABELS[c]).join(', ') || 'none'}. Flagged values in other categories are included in analyses.`,
     byCategory: Object.fromEntries(
-      Object.entries(impact).map(([cat, x]) => [x.label, { observations: x.observations, participants: count(ws, x.participants), excludedNow: r.spec.qc.exclude.includes(cat as QcCategory) }])
+      Object.entries(impact).map(([cat, x]) => [x.label, { observations: count(ws, x.observations), participants: count(ws, x.participants), excludedNow: r.spec.qc.exclude.includes(cat as QcCategory) }])
     ),
-    flagStatus: statusCounts,
+    flagStatus: counts(ws, statusCounts),
     statusMeaning: {
       legend_exact: 'Colour exactly matches a legend entry.',
       needs_review: 'Colour resembles a legend QC colour; a curator must confirm. Never confirmed automatically.',
       unresolved: 'Undocumented formatting with unknown meaning; never an automatic exclusion.',
       curator_confirmed: 'Confirmed by a curator.'
     },
-    variablesMostAffected: perVar.slice(0, 20),
+    variablesMostAffected: perVar,
     warnings: r.warnings
   }
 }

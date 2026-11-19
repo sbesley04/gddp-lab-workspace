@@ -51,6 +51,7 @@ export function normalizeChart(c: ChartConfig): Required<ChartConfig> {
     variableSet: c.variableSet ?? (c as { pcaKeys?: string[] }).pcaKeys ?? [],
     corrMethod: c.corrMethod ?? 'spearman',
     distStyle: c.distStyle ?? 'box',
+    pcaVectors: c.pcaVectors ?? false,
     transformMeasure: c.transformMeasure ?? 'none',
     transformCompare: c.transformCompare ?? 'none',
     style: { ...defaultStyle(), ...(c.style ?? {}) },

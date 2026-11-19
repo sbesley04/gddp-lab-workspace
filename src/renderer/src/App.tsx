@@ -17,6 +17,7 @@ import { ParticipantDrawer } from './components/ParticipantDrawer'
 import { CommandPalette } from './components/CommandPalette'
 import { ViewBanner } from './components/ViewBanner'
 import { Tour, tourSeen } from './components/Tour'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Loader2 } from 'lucide-react'
 
 export function App() {
@@ -87,18 +88,11 @@ export function App() {
               <Loader2 className="spin" />
               <span>Loading dataset…</span>
             </div>
-          ) : page === 'overview' ? (
-            <Overview />
-          ) : page === 'explore' ? (
-            <Explore />
-          ) : page === 'measurements' ? (
-            <Measurements />
-          ) : page === 'quality' ? (
-            <DataQuality />
-          ) : page === 'views' ? (
-            <SavedViews />
           ) : (
-            <ExportPage />
+            // Keyed by page: going to another page clears a failure, and the sidebar stays usable throughout.
+            <ErrorBoundary key={page} scope="page" actions={() => (page !== 'overview' ? <button className="btn" onClick={() => useStore.getState().setPage('overview')}>Go to Overview</button> : null)}>
+              {page === 'overview' ? <Overview /> : page === 'explore' ? <Explore /> : page === 'measurements' ? <Measurements /> : page === 'quality' ? <DataQuality /> : page === 'views' ? <SavedViews /> : <ExportPage />}
+            </ErrorBoundary>
           )}
           <ContextBar />
         </main>

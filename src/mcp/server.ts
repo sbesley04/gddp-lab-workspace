@@ -28,7 +28,7 @@ const selection = {
   qcExclude: z.array(z.enum(QC_CATEGORIES)).optional().describe('QC categories whose flagged values are excluded. Default ["curator_exclusion"].')
 }
 
-const transform = z.enum(TRANSFORMS).optional().describe('Transform applied before analysis: none (default), log2, log10, center, zscore, rank')
+const transform = z.enum(TRANSFORMS).optional().describe('Transform applied before analysis: none (default), log2, log10, sqrt, boxcox (λ estimated by maximum likelihood from the selection and stated in warnings), center, zscore, rank')
 const groupFrom = z
   .enum(['same_row', 'participant'])
   .optional()

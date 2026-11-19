@@ -8,6 +8,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 
 - **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
 - **Source (`main`), unreleased:** analysis log with signatures, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, plus the read-only MCP server described in [docs/MCP.md](docs/MCP.md). These are not in the 0.3.1 installers; build from source to use them.
+- **Source (branch `mcp-server`), unreleased:** statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the R reference check, the record hash chain with its verify command, and stricter MCP suppression. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
 
 ## What works
 
@@ -20,16 +21,19 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 | Measurement catalog with append-only metadata revisions, quasi-identifier flags and covariate tags | Working |
 | AND/OR cohort filters with explicit missing handling; QC inclusion policy with impact counts | Working |
 | Distribution (box + all points; histogram unreleased) and two-measure scatter; linked table; forced axis bounds; chart style editor with presets | Working |
-| Colour-by a categorical variable; display transforms (log2, log10, centre, z-score, rank) that never change stored data or exports | Working (unreleased) |
+| Colour-by a categorical variable; display transforms (log2, log10, square root, Box-Cox, centre, z-score, rank) that never change stored data or exports | Working (unreleased) |
 | On-demand statistics: CIs, normality, Welch t / Mann–Whitney / ANOVA / Kruskal–Wallis with effect sizes and Holm-adjusted pairwise tests, Pearson / Spearman / Kendall, linear fit with confidence and prediction bands; copyable tables, APA summaries and methods text | Working, validated against R 4.3 |
-| Many measures: correlation matrix (no p-values), participant × measure heatmap, and exploratory PCA with a gap suggestion for wide panels | Working (unreleased), validated against R |
+| Statistical guardrails: no test, interval or fit when a participant contributes more than one visit (with a one-click fix); percent censored beside every summary; p-values shown without emphasis | Working (unreleased) |
+| Analysis register: every distinct analysis computed, with its p-values, recorded append-only by the main process; shown in History and exported | Working (unreleased) |
+| Record check: the audit log, curation history and analysis register are hash-chained; **Verify** (or `--verify-project`) reports any row changed, removed or added outside the app | Working (unreleased) |
+| Many measures: correlation matrix (no p-values), participant × measure heatmap, and exploratory PCA with a gap suggestion for wide panels and an optional biplot (loading vectors) | Working (unreleased), validated against R |
 | Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in exports) | Working (unreleased) |
 | Chart download: SVG/PNG, journal and slide size presets, signature footer, `.chart.json` and `.analysis-log.R` sidecars | Working (unreleased) |
 | Saved views pinned to dataset and metadata versions and reproduced after restart; Compare whiteboard of views and notes, exportable as SVG/PNG | Working |
 | First-run tour, ⌘K search and ⌘1–⌘6 shortcuts; wide tables virtualised in both directions | Working |
-| Research-context ZIP (pseudonymous keys, checksums, preview); `analysis_log.R` is the seventh file in unreleased builds | Working |
+| Research-context ZIP (pseudonymous keys, checksums, preview); `analysis_log.R` and `analysis_register.json` are the seventh and eighth files in unreleased builds | Working |
 | Backup and verified restore | Working |
-| MCP server for AI assistants (read-only, aggregate results, small-cell suppression, access log) | Working (unreleased), tested on synthetic data only |
+| MCP server for AI assistants (read-only, aggregate results, every small count suppressed, extremes withheld, access log) | Working (unreleased), tested on synthetic data only |
 | macOS installers (arm64 and x64 DMG/ZIP, unsigned) | Built and smoke-tested with `--self-test` (x64 under Rosetta) |
 | Windows installer (NSIS x64, unsigned) | Unit tests and the packaged `--self-test` pass on Windows in CI; the install wizard has not been run by hand |
 
@@ -57,13 +61,14 @@ npm run dev
 | Command | Purpose |
 | --- | --- |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest unit and integration tests (141, synthetic data only) |
+| `npm test` | Vitest unit and integration tests (176, synthetic data only) |
 | `npm run e2e` | Builds, then runs the Playwright UI tests |
 | `npm run test:reference` | Opt-in checks against a local real workbook (counts only) |
+| `npm run reference:check` | Regenerates the R reference values and compares them with the committed files (needs R) |
 | `npm run build:mcp` | Builds the MCP server to `out/mcp/server.js` |
 | `npm run dist:mac` / `npm run dist:win` | Unsigned installers in `release/` |
 
-Statistics and multivariate results are checked against R with `tools/stats_reference.R` and `tools/multivariate_reference.R`. See [docs/DEVELOPING.md](docs/DEVELOPING.md) for architecture, the security model, the reference-workbook check, packaging and signing.
+Statistics and multivariate results are checked against R with `tools/stats_reference.R`, `tools/multivariate_reference.R` and `tools/transforms_reference.R`. See [docs/DEVELOPING.md](docs/DEVELOPING.md) for architecture, the security model, the reference-workbook check, packaging and signing.
 
 ## Documentation
 
@@ -75,6 +80,7 @@ Statistics and multivariate results are checked against R with `tools/stats_refe
 | [STATUS.md](docs/STATUS.md) | Release history and how each feature was verified |
 | [DEVELOPING.md](docs/DEVELOPING.md) | Architecture, commands, security model, testing |
 | [ROADMAP.md](docs/ROADMAP.md) | Planned work |
+| [STRATEGY.md](docs/STRATEGY.md) | Review findings (2026-11-17) and the order in which to address them |
 | [WORKBOOK_SEMANTICS.md](docs/WORKBOOK_SEMANTICS.md) | How to document a study workbook (details stay local) |
 | [SIGNING.md](docs/SIGNING.md) | Code signing and notarisation |
 
@@ -83,4 +89,4 @@ Statistics and multivariate results are checked against R with `tools/stats_refe
 - No network access, telemetry, accounts or API keys. The app blocks every outgoing request, and tests assert that none were attempted.
 - The optional MCP server makes no network requests either, but the AI assistant you connect it to sends its results to the AI provider. Read [docs/MCP.md](docs/MCP.md) and check your IRB approval and data use agreement before connecting a real project.
 - Real study data must never go into source control, logs, issues or installers. `.gitignore` excludes spreadsheets except the synthetic fixtures in `tests/fixtures/`, and study-specific notes stay in the git-ignored `docs/private/`.
-- Project databases are protected only by operating-system file permissions. They are **not encrypted**, and the app makes no regulatory-compliance claims. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+- Project databases are protected only by operating-system file permissions. A record check (unreleased) detects changes made to the audit log and curation history outside the app, but it does not prevent them. Databases and backups are **not encrypted**, and the app makes no regulatory-compliance claims. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md).

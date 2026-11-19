@@ -78,8 +78,13 @@ test('PCA is computed only on request, and shows loadings and variance explained
   await page.screenshot({ path: join(import.meta.dirname, '..', 'test-results', 'screens', 'pca.png') })
   if (await page.getByTestId('pca-result').count()) {
     await expect(page.getByTestId('pca-loadings')).toContainText('Variance')
+    // Biplot: loading vectors are drawn on request, explained in a notice and recorded in the log
+    await page.getByTestId('pca-vectors').check()
+    await expect(page.getByText(/^Arrows: each variable's correlation with PC1 and PC2/)).toBeVisible()
+    await page.screenshot({ path: join(import.meta.dirname, '..', 'test-results', 'screens', 'pca-biplot.png') })
     await page.getByTestId('history').click()
     await expect(page.getByText('prcomp(pca_data')).toBeVisible()
+    await expect(page.getByText(/# biplot: arrows are each variable's correlation/)).toBeVisible()
   }
   await app.close()
 })

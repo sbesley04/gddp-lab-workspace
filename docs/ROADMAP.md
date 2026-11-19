@@ -2,6 +2,8 @@
 
 Architectural boundaries already exist for each item below. Item 6 is partly implemented; the others are not started.
 
+This list is not in priority order. [STRATEGY.md](STRATEGY.md) sets the order and lists the work that should come first.
+
 1. **Longitudinal data.**
    - The data model already separates scheduled visit names (`visit.event_name`) from actual dates (`visit.actual_date`, never inferred).
    - Next steps: visit windows, explicit missing-visit rules, change-from-baseline views and treatment timelines. The `observation_context.treatment_exposure` column is reserved for exposure data.

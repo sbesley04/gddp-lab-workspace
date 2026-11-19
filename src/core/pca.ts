@@ -149,6 +149,8 @@ export interface PcaPoint {
 }
 
 export interface PcaPlot {
+  /** The chosen variables in order, with display labels (for loading vectors and tables). */
+  variables: { key: string; label: string }[]
   input: PcaInput
   result: PcaResult | null
   /** Why no result could be computed (too few complete rows, constant variable, fewer than two variables). */
@@ -178,7 +180,8 @@ export function pcaPlot(sel: SelectionResult, vars: VariableInfo[], colorVar: nu
         return { row, participantId: sel.ctx.snapshot.rows[row].participantId, scores: result!.scores[i], flagged: input.flags[i].flagged, unresolved: input.flags[i].unresolved, cat }
       })
     : []
-  return { input, result, error, points, categories: orderedCategories(cats) }
+  const variables = vars.map((v) => ({ key: v.key, label: v.meta.displayLabel.value ?? v.header }))
+  return { variables, input, result, error, points, categories: orderedCategories(cats) }
 }
 
 /**
@@ -193,4 +196,42 @@ export function gapSuggestion(sel: SelectionResult, vars: VariableInfo[], input:
   if (keep.length === vars.length || keep.length < 2) return null
   const rows = pcaInput(sel, keep).rows.length
   return rows > input.rows.length ? { keep, removed: vars.length - keep.length, rows } : null
+}
+
+export interface BiplotVector {
+  /** Variable index in the PCA (row of loadings). */
+  index: number
+  /** Correlation of the standardised variable with the x and y components: loading × component SD (R: cor(pca_data, pc$x)). */
+  x: number
+  y: number
+  length: number
+}
+
+/** Default number of loading vectors drawn on a biplot; the rest are counted, never silently dropped. */
+export const BIPLOT_MAX_VECTORS = 10
+
+/**
+ * Loading vectors for a correlation biplot of components xi and yi (0-based): each variable's correlation with the two
+ * components, longest first, at most `max` of them. A vector's length is how well the two components represent it (≤ 1).
+ */
+export function biplotVectors(r: PcaResult, xi: number, yi: number, max = BIPLOT_MAX_VECTORS): { vectors: BiplotVector[]; hidden: number } {
+  const all = r.loadings.map((row, index) => {
+    const x = row[xi] * r.sdev[xi]
+    const y = row[yi] * r.sdev[yi]
+    return { index, x, y, length: Math.hypot(x, y) }
+  })
+  // Longest first; ties keep variable order so the drawing is deterministic.
+  all.sort((a, b) => b.length - a.length || a.index - b.index)
+  return { vectors: all.slice(0, max), hidden: Math.max(0, all.length - max) }
+}
+
+/**
+ * One factor that stretches the vectors to the score plot, the same on both axes so angles are kept: the longest
+ * coordinate reaches 85% of the smaller score half-range.
+ */
+export function biplotScale(scores: number[][], xi: number, yi: number, vectors: BiplotVector[]): number {
+  const half = (c: number) => Math.max(...scores.map((s) => Math.abs(s[c])))
+  const reach = Math.max(...vectors.map((v) => Math.max(Math.abs(v.x), Math.abs(v.y))))
+  if (!(reach > 0) || !scores.length) return 1
+  return (0.85 * Math.min(half(xi), half(yi))) / reach
 }

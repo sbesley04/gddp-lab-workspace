@@ -6,6 +6,7 @@ import { QC_CATEGORY_LABELS } from './types'
 import { computeSelection, countsFor, describeFilter, getObservation, type SelectionResult } from './selection'
 import { toCsv } from './csv'
 import { buildProvenance } from './provenance'
+import type { AnalysisRecord } from './analysisRun'
 
 export const CONTEXT_EXPORT_SCHEMA = 'bari-cns-context-export/1'
 
@@ -18,6 +19,47 @@ export interface ContextExportOptions {
   analysisQuestion: string
 }
 
+/** One analysis-register row, as the main process hands it to the export. */
+export interface RegisterExportEntry {
+  fingerprint: string
+  at: string
+  appVersion: string
+  record: AnalysisRecord
+}
+
+export const ANALYSIS_REGISTER_EXPORT_SCHEMA = 'bari-analysis-register/1'
+
+/**
+ * analysis_register.json: the tests already run in the app on this dataset version, so a reader can judge any p-value
+ * against how many were computed. Entries about variables outside this export are counted, not listed, and group
+ * summaries are left out: the package must not describe data the researcher did not choose to export.
+ */
+export function registerExport(entries: RegisterExportEntry[], exportedKeys: Set<string>, datasetVersionNumber: number) {
+  const listed = entries.filter((e) => e.record.variableKeys.every((k) => exportedKeys.has(k)))
+  const pValues = (list: RegisterExportEntry[]) => list.reduce((n, e) => n + e.record.tests.length, 0)
+  return {
+    schema: ANALYSIS_REGISTER_EXPORT_SCHEMA,
+    note: 'Exploratory analyses computed in the app statistics panel for this dataset version. p-values are unadjusted for the number of analyses; pairwise comparisons within one analysis carry a Holm-adjusted value. Analyses run elsewhere (R, the MCP server) are not recorded.',
+    datasetVersion: datasetVersionNumber,
+    totals: { analyses: entries.length, pValues: pValues(entries) },
+    listed: { analyses: listed.length, pValues: pValues(listed) },
+    notListed: { analyses: entries.length - listed.length, reason: 'They use at least one variable that is not part of this export.' },
+    analyses: listed.map((e) => ({
+      fingerprint: e.fingerprint,
+      computedAt: e.at,
+      appVersion: e.appVersion,
+      metadataVersion: e.record.dataset.metadataVersion,
+      kind: e.record.kind,
+      title: e.record.title,
+      variables: e.record.variables,
+      transforms: e.record.transforms,
+      selection: e.record.selection,
+      analysed: e.record.analysed,
+      tests: e.record.tests
+    }))
+  }
+}
+
 export interface ContextExportInput {
   snapshot: DatasetSnapshot
   spec: SelectionSpec
@@ -26,6 +68,8 @@ export interface ContextExportInput {
   appVersion: string
   createdAt: string
   keyFor: (participantId: string) => string
+  /** Analysis-register rows for this dataset version (oldest first). Omitted in tests of the pure builder. */
+  analysisRegister?: RegisterExportEntry[]
 }
 
 export interface ContextExportPreview {
@@ -143,6 +187,8 @@ export function buildContextFiles(input: ContextExportInput): ContextExportPrevi
     (otherQc.length ? `Excluded flag categories: ${otherQc.map((c) => QC_CATEGORY_LABELS[c]).join('; ')}` : 'All QC-flagged observations included (flags listed in quality_flags.csv)') +
     (spec.qc.exclude.includes('curator_exclusion') ? '; curator exclusions honoured' : '; curator exclusions NOT applied')
 
+  const register = registerExport(input.analysisRegister ?? [], new Set(vars.map((v) => v.key)), snapshot.versionNumber)
+
   const studyContext = `# Study context
 
 ${input.studyContext.trim() || '_No curator-entered study context yet._'}
@@ -164,6 +210,7 @@ ${baselineOnly ? '- **This export contains baseline observations only.** It cann
 - Raw, scaled, clinic and T-score variants are separate variables unless a curator has documented their relationship.
 - Missing values are blank. Censored values (e.g. "<0.5") are exported as text and were never replaced by their bound. Values excluded by the QC policy are blank and listed in quality_flags.csv.
 - No inferential statistics, hypothesis tests or causal analyses were performed by the export tool.
+- Exploratory analyses already computed in the app on this dataset version: ${register.totals.analyses} (${register.totals.pValues} p-values, unadjusted for the number of analyses). See analysis_register.json.
 `
 
   const analysisRequest = `# Analysis request
@@ -182,6 +229,8 @@ ${options.analysisQuestion.trim() || '_No question entered._'}
 6. Identify missing metadata (units, definitions, specimens, score types) that limit interpretation, and say what would be needed to resolve it.
 7. Do not combine variables with different units, specimens or score types without documented justification.
 8. State every analytical assumption, transformation and exclusion explicitly.
+9. analysis_register.json lists the exploratory tests already run in the app. Count them, and your own, when judging any p-value.
+10. Each row of selected_data.csv is one participant at one visit. Do not treat several visits from one participant as independent observations.
 `
 
   const provenance = buildProvenance({ snapshot, spec, chart: null, sel, variableKeys: vars.map((v) => v.key), appVersion: input.appVersion })
@@ -191,7 +240,8 @@ ${options.analysisQuestion.trim() || '_No question entered._'}
     'quality_flags.csv': quality.text,
     'study_context.md': studyContext,
     'analysis_request.md': analysisRequest,
-    'analysis_log.R': provenance.text
+    'analysis_log.R': provenance.text,
+    'analysis_register.json': JSON.stringify(register, null, 2)
   }
 
   const summary = [
@@ -217,6 +267,7 @@ ${options.analysisQuestion.trim() || '_No question entered._'}
     variables: vars.map((v) => v.key),
     transformations: [] as string[],
     analysisLog: { file: 'analysis_log.R', signature: provenance.signature },
+    analysisRegister: { file: 'analysis_register.json', analyses: register.totals.analyses, pValues: register.totals.pValues, listed: register.listed.analyses },
     participantKeys: {
       mode: options.participantKeyMode,
       note:

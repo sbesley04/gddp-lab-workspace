@@ -6,8 +6,10 @@ import type { DistributionData, ScatterData } from '@core/chartData'
 import { histogramBins } from '@core/chartData'
 import type { CorrelationMatrix, HeatmapData } from '@core/matrix'
 import type { PcaPlot, PcaResult } from '@core/pca'
+import { biplotScale, biplotVectors } from '@core/pca'
 import { FONT_STACKS } from '@core/chartStyle'
 import { describe, linearFit } from '@core/analysis'
+import { fitInputs, overlaysAllowed } from '@core/analysisRun'
 import { formatNumber } from '@core/values'
 import { axisTitle, label } from '../lib/format'
 import { cssVar, jitter } from './EChart'
@@ -160,6 +162,7 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
       }]
     })
   )
+  notices.push(...data.transformNotes)
   if (data.transformDropped) notices.push(`${data.transformDropped} value(s) cannot be transformed (e.g. log of a non-positive value) and are left out of this chart.`)
   if (outside) notices.push(`${outside} point(s) lie outside the forced Y bounds and are not drawn (they still count in all statistics).`)
   if (truncated) notices.push('Boxes or whiskers are cut at the forced Y bounds.')
@@ -185,7 +188,10 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
       tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b>${prm.data.cat !== undefined ? `<br/>${prm.data.cat}` : ''}<br/>${label(measure)}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
     }
   ]
-  if (chart.analysis.requested && chart.analysis.meanCi) {
+  // A confidence interval assumes independent observations: not drawn when a participant contributes several rows.
+  const independent = overlaysAllowed(data.groups.flatMap((g) => g.points))
+  if (chart.analysis.requested && chart.analysis.meanCi && !independent) notices.push('Mean ± 95% CI is not drawn: some participants contribute more than one visit. Restrict the selection to one visit.')
+  if (chart.analysis.requested && chart.analysis.meanCi && independent) {
     const bars = data.groups.map((g, gi) => {
       const d = describe(g.points.map((x) => x.value))
       return d.meanCi ? [gi, d.mean, d.meanCi.lower, d.meanCi.upper] : null
@@ -230,31 +236,7 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
   return { option, notices, minWidth: Math.max(0, data.groups.length * 120 + 110) }
 }
 
-export interface FitInfo {
-  transformX: boolean
-  transformY: boolean
-  excluded: number
-}
-
-/** Values entering the regression: on log axes the fit uses log10 of positive values, as displayed. */
-export function fitInputs(data: ScatterData, chart: FullChart) {
-  const tx = chart.xScale === 'log'
-  const ty = chart.yScale === 'log'
-  const xs: number[] = []
-  const ys: number[] = []
-  const rows: number[] = []
-  let excluded = 0
-  for (const pt of data.points) {
-    if ((tx && pt.x <= 0) || (ty && pt.y <= 0)) {
-      excluded++
-      continue
-    }
-    xs.push(tx ? Math.log10(pt.x) : pt.x)
-    ys.push(ty ? Math.log10(pt.y) : pt.y)
-    rows.push(pt.row)
-  }
-  return { xs, ys, rows, info: { transformX: tx, transformY: ty, excluded } as FitInfo }
-}
+export { fitInputs, type FitInfo } from '@core/analysisRun'
 
 export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInfo, chart: FullChart, ctx: BuildCtx): Built {
   const style = chart.style
@@ -281,6 +263,7 @@ export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInf
         : { color: pt.cat !== undefined ? catColors.get(pt.cat) : pt.flagged ? p.flag : p.point, opacity: hlActive && !hl ? 0.3 : style.pointOpacity, borderColor: hl ? p.text : 'rgba(255,255,255,0.85)', borderWidth: hl ? 2 : 0.7 }
     }]
   })
+  notices.push(...data.transformNotes)
   if (data.transformDropped) notices.push(`${data.transformDropped} pair(s) include a value that cannot be transformed (e.g. log of a non-positive value) and are left out of this chart.`)
   if (outside) notices.push(`${outside} pair(s) lie outside the forced axis bounds and are not drawn (they still count in all statistics).`)
   const series: any[] = [
@@ -292,7 +275,10 @@ export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInf
     }
   ]
   const a = chart.analysis
-  if (a.requested && (a.fitLine || a.confidenceBand || a.predictionBand)) {
+  // The fit and its bands assume independent observations: not drawn when a participant contributes several rows.
+  const independent = overlaysAllowed(data.points)
+  if (a.requested && (a.fitLine || a.confidenceBand || a.predictionBand) && !independent) notices.push('Fit line and bands are not drawn: some participants contribute more than one visit. Restrict the selection to one visit.')
+  if (a.requested && (a.fitLine || a.confidenceBand || a.predictionBand) && independent) {
     const fi = fitInputs(data, chart)
     const fit = linearFit(fi.xs, fi.ys)
     if (fit) {
@@ -391,12 +377,52 @@ export function pcaOption(plot: PcaPlot, xi: number, yi: number, chart: FullChar
     },
     ...legendSeries(catColors, ctx.colorTitle)
   ]
+  if (chart.pcaVectors && xi !== yi) {
+    // Correlation biplot: each arrow is a variable's correlation with the two components, all stretched by one factor.
+    const { vectors, hidden } = biplotVectors(r, xi, yi)
+    const f = biplotScale(r.scores, xi, yi, vectors)
+    const ink = p.fit
+    series.push({
+      type: 'custom',
+      name: 'Loading vectors',
+      z: 4,
+      silent: false,
+      data: vectors.map((v) => ({ value: [v.x * f, v.y * f], name: plot.variables[v.index]?.label ?? `Variable ${v.index + 1}`, rx: v.x, ry: v.y })),
+      encode: { x: 0, y: 1 },
+      tooltip: { formatter: (prm: any) => `<b>${prm.data.name}</b><br/>r with PC${xi + 1}: ${prm.data.rx.toFixed(3)}<br/>r with PC${yi + 1}: ${prm.data.ry.toFixed(3)}` },
+      renderItem: (params: any, api: any) => {
+        const [x0, y0] = api.coord([0, 0])
+        const [x1, y1] = api.coord([api.value(0), api.value(1)])
+        const ang = Math.atan2(y1 - y0, x1 - x0)
+        const head = 8
+        const left = [x1 - head * Math.cos(ang - 0.4), y1 - head * Math.sin(ang - 0.4)]
+        const right = [x1 - head * Math.cos(ang + 0.4), y1 - head * Math.sin(ang + 0.4)]
+        const name = vectors[params.dataIndex] ? plot.variables[vectors[params.dataIndex].index]?.label ?? '' : ''
+        return {
+          type: 'group',
+          children: [
+            { type: 'line', shape: { x1: x0, y1: y0, x2: x1, y2: y1 }, style: { stroke: ink, lineWidth: 1.6 } },
+            { type: 'polygon', shape: { points: [[x1, y1], left, right] }, style: { fill: ink } },
+            {
+              type: 'text',
+              x: x1 + 6 * Math.cos(ang),
+              y: y1 + 6 * Math.sin(ang),
+              style: { text: name, fill: p.text, fontSize: style.fontSize - 1, fontFamily: p.font, align: Math.cos(ang) >= 0 ? 'left' : 'right', verticalAlign: Math.sin(ang) >= 0 ? 'top' : 'bottom' }
+            }
+          ]
+        }
+      }
+    })
+    notices.push(
+      `Arrows: each variable's correlation with PC${xi + 1} and PC${yi + 1} (loading × component SD), drawn ×${+f.toPrecision(3)} to fit the scores. ${hidden ? `The ${vectors.length} longest of ${vectors.length + hidden} are shown; the loadings table lists all.` : 'All variables are shown.'}`
+    )
+  }
   const option: EChartsCoreOption = {
     animation: false,
     backgroundColor: p.bg,
     textStyle: { fontFamily: p.font, fontSize: style.fontSize },
     legend: legendOption(catColors, ctx.colorTitle, p, style),
-    title: header(`PCA: PC${xi + 1} vs PC${yi + 1}`, `${ctx.subtitle} · ${r.n} complete observations, ${r.p} variables (standardised)`, style, p),
+    title: header(`${chart.pcaVectors && xi !== yi ? 'PCA biplot' : 'PCA'}: PC${xi + 1} vs PC${yi + 1}`, `${ctx.subtitle} · ${r.n} complete observations, ${r.p} variables (standardised)`, style, p),
     grid: { left: 76, right: 30, top: style.showTitle || style.showSubtitle ? 72 : 24, bottom: 58 },
     tooltip: { trigger: 'item', confine: true, backgroundColor: cssVar('--paper-solid', '#fff'), borderColor: p.grid, textStyle: { color: cssVar('--text', '#111') } },
     xAxis: { type: 'value', name: xName, nameLocation: 'middle', nameGap: 34, scale: true, ...axis(p, style) },
@@ -433,6 +459,7 @@ export function histogramOption(data: DistributionData, measure: VariableInfo, g
   const notices: string[] = []
   const all = data.groups.flatMap((g) => g.points.map((pt) => pt.value))
   const bins = histogramBins(all)
+  notices.push(...data.transformNotes)
   if (data.transformDropped) notices.push(`${data.transformDropped} value(s) cannot be transformed (e.g. log of a non-positive value) and are left out of this chart.`)
   if (!bins) return { option: {}, notices, minWidth: 0 }
   const edges = bins.counts.map((_, i) => bins.start + i * bins.width)

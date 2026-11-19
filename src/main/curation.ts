@@ -9,7 +9,9 @@ function insert(project: Project, datasetVersionId: string, kind: string, target
     'INSERT INTO revision(dataset_version_id, kind, target, field, value_json, status, author_label, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
     datasetVersionId, kind, target, field, JSON.stringify(value ?? null), status, author, reason, new Date().toISOString()
   )
-  return Number(r.lastInsertRowid)
+  const id = Number(r.lastInsertRowid)
+  project.chain('revision', id - 1)
+  return id
 }
 
 function ensureVersion(project: Project, id: string) {
@@ -38,7 +40,11 @@ export function editVariableMeta(
 
 export function setQuasiIdentifier(project: Project, input: { datasetVersionId: string; varKey: string; value: boolean; author: string | null; reason: string | null }): number {
   ensureVariable(project, input.datasetVersionId, input.varKey)
-  return insert(project, input.datasetVersionId, 'quasi_identifier', input.varKey, null, input.value, 'confirmed', input.author, input.reason)
+  return project.db.transaction(() => {
+    const id = insert(project, input.datasetVersionId, 'quasi_identifier', input.varKey, null, input.value, 'confirmed', input.author, input.reason)
+    project.audit('quasi_identifier.set', { varKey: input.varKey, value: input.value, revision: id }, input.author)
+    return id
+  })
 }
 
 export function setCovariate(project: Project, input: { datasetVersionId: string; varKey: string; value: boolean; author: string | null; reason: string | null }): number {
@@ -80,12 +86,21 @@ export function setCellExclusion(
 
 export function nameSegment(project: Project, input: { datasetVersionId: string; segment: number; name: string; author: string | null }): number {
   ensureVersion(project, input.datasetVersionId)
-  return insert(project, input.datasetVersionId, 'segment_name', `segment:${input.segment}`, null, input.name.trim() || null, 'confirmed', input.author, null)
+  return project.db.transaction(() => {
+    const id = insert(project, input.datasetVersionId, 'segment_name', `segment:${input.segment}`, null, input.name.trim() || null, 'confirmed', input.author, null)
+    project.audit('segment.name', { segment: input.segment, revision: id }, input.author)
+    return id
+  })
 }
 
 export function setStudyContext(project: Project, input: { datasetVersionId: string; text: string; author: string | null }): number {
   ensureVersion(project, input.datasetVersionId)
-  return insert(project, input.datasetVersionId, 'study_context', 'project', null, input.text, 'confirmed', input.author, null)
+  return project.db.transaction(() => {
+    const id = insert(project, input.datasetVersionId, 'study_context', 'project', null, input.text, 'confirmed', input.author, null)
+    // The text itself is in the revision; the audit entry records only that it changed, and its length.
+    project.audit('study_context.set', { characters: input.text.length, revision: id }, input.author)
+    return id
+  })
 }
 
 export function getStudyContext(project: Project, datasetVersionId: string, asOf: number): { text: string; revisionId: number | null } {

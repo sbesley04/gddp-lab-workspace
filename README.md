@@ -81,6 +81,8 @@ Statistics and multivariate results are checked against R with `tools/stats_refe
 | [ROADMAP.md](docs/ROADMAP.md) | Planned work |
 | [STRATEGY.md](docs/STRATEGY.md) | Review findings (2026-11-17), the order in which to address them, and progress |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | What the app defends against, and what it leaves to the lab |
+| [VALIDATION.md](docs/VALIDATION.md) | The evidence that the app does what it says, and how to re-run it |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 | [WORKBOOK_SEMANTICS.md](docs/WORKBOOK_SEMANTICS.md) | How to document a study workbook (details stay local) |
 | [SIGNING.md](docs/SIGNING.md) | Code signing and notarisation |
 

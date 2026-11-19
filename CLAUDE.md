@@ -129,8 +129,9 @@ Renderer: `sandbox`, `contextIsolation`, no `nodeIntegration`, custom `app://` p
 - [docs/STRATEGY.md](docs/STRATEGY.md) sets the order of work; its **Progress** table says what is done. Phase 1 (statistical guardrails) is done apart from the open questions. Phase 2 is done except signing (needs credentials) and the validation pack: hash chain, curation audit, MCP suppression, full fingerprints, encrypted backups, main-process chart sidecars and a threat model ([docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)). Phase 0 still needs the MCP connection settled and a release. Update that table when you finish a strategy item. Check `git log main..HEAD` to see what is on your branch versus `main`.
 - [docs/STATUS.md](docs/STATUS.md) records how each feature was verified; update it (and the README "What works" table, test counts in README/DEVELOPING/STATUS) when you add a feature or tests.
 - Docs style: plain, short sentences, British spelling (colour, visualise, normalise), tables for feature/verification lists, no marketing language, honest about what is untested.
+- `CHANGELOG.md` lists user-visible changes per version; add to **Unreleased** when you add or change a feature, and update the test counts in [docs/VALIDATION.md](docs/VALIDATION.md) with the others.
 - Commit messages: short imperative summary, optionally prefixed by area (`Docs:`, `CI:`, `Fix …`).
 
 ## Other docs
 
-[USER_GUIDE](docs/USER_GUIDE.md) · [DEVELOPING](docs/DEVELOPING.md) · [MCP](docs/MCP.md) · [LIMITATIONS](docs/LIMITATIONS.md) · [STATUS](docs/STATUS.md) · [ROADMAP](docs/ROADMAP.md) · [STRATEGY](docs/STRATEGY.md) · [THREAT_MODEL](docs/THREAT_MODEL.md) · [WORKBOOK_SEMANTICS](docs/WORKBOOK_SEMANTICS.md) · [SIGNING](docs/SIGNING.md)
+[USER_GUIDE](docs/USER_GUIDE.md) · [DEVELOPING](docs/DEVELOPING.md) · [MCP](docs/MCP.md) · [LIMITATIONS](docs/LIMITATIONS.md) · [STATUS](docs/STATUS.md) · [ROADMAP](docs/ROADMAP.md) · [STRATEGY](docs/STRATEGY.md) · [THREAT_MODEL](docs/THREAT_MODEL.md) · [VALIDATION](docs/VALIDATION.md) · [WORKBOOK_SEMANTICS](docs/WORKBOOK_SEMANTICS.md) · [SIGNING](docs/SIGNING.md)

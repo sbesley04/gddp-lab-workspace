@@ -31,7 +31,10 @@ Updated 2026-11-19. Everything marked done is in the source, unreleased, and ver
 | G3 Encrypt backups | Done for backups | Optional passphrase (AES-256-GCM, key from scrypt), offered first. No recovery if the passphrase is lost. Project folders are still not encrypted by the app. |
 | G6 Chart export trusts the renderer | Done | The main process rebuilds the analysis log, settings and fingerprint from the selection. Only the drawn image comes from the renderer, and an image whose footer carries a different fingerprint is refused. |
 | Threat model | Done | [THREAT_MODEL.md](THREAT_MODEL.md). |
-| E5 Signing, validation pack (rest of Phase 2) | **Open** | Signing needs credentials. The validation pack is not written. |
+| Validation pack | Done as a summary | [VALIDATION.md](VALIDATION.md): the evidence, how to re-run it, methods against R, requirements against tests, known gaps, and an empty review record. Nobody has signed it. |
+| E4 E2E in CI | Added | The macOS build job runs the UI tests. |
+| E7 Changelog | Done | `CHANGELOG.md`. Licence, citation file and second maintainer are still open (Q5). |
+| E5 Signing (rest of Phase 2) | **Open** | Needs signing credentials. |
 
 Phase 2's first "done when" condition is met and tested: a tampered database fails verification (`tests/integrity.test.ts`, seven kinds of tampering). "MCP.md matches what the code returns" is met for M1 and M2.
 

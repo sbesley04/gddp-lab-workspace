@@ -168,7 +168,8 @@ More of Phase 2 of [STRATEGY.md](STRATEGY.md).
 | Chart export: the main process rebuilds the analysis log, the settings file (`bari-chart/2`) and the fingerprint from the selection and chart settings. Only the drawn image is taken from the window, and one whose footer carries a different fingerprint is refused. | `tests/chartExport.test.ts`: the files equal what the core gives for the selection; a wrong or stale footer writes nothing; a log sent by the caller is ignored; Compare boards (no single selection) save an image only. `e2e/charts.spec.ts` saves SVG and PNG through the UI. |
 | Encrypted backups: optional passphrase, AES-256-GCM with a scrypt-derived key, file extension `.bariproj.enc`. Restore asks for the passphrase before asking where to restore. | `tests/workflow.test.ts`: round trip; no readable project name, identifier or SQLite header in the file; missing and wrong passphrases refused; a changed byte in the header, body or tag refused with nothing restored; the passphrase appears in no audit or export record. `e2e/workflow.spec.ts` backs up with a passphrase through the UI, tries a wrong one, then restores. |
 | Threat model | [THREAT_MODEL.md](THREAT_MODEL.md); a document, not a test |
-| CI builds each branch once (through its pull request) instead of twice | By inspection; first exercised by the pull request that adds it |
+| CI builds each branch once (through its pull request) instead of twice, cancels a run that a newer push replaces, and runs the UI tests on macOS | First exercised by the pull request that adds it |
+| Validation summary and changelog | [VALIDATION.md](VALIDATION.md), `CHANGELOG.md`; documents, not tests |
 
 Not done: project folders are not encrypted by the app. The passphrase has no strength check beyond 8 characters and no recovery. The drawn chart image is not verified beyond its footer. Installers are unsigned. The packaged build was not re-run for this work.
 

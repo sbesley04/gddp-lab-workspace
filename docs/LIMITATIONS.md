@@ -22,10 +22,12 @@
 
 ## Security and privacy
 
+- **Backups** can be encrypted with a passphrase (unreleased); there is no recovery if it is lost. Unencrypted backups are plain ZIP files that hold source identifiers and the pseudonym secret.
 - Project databases and source snapshots are **not encrypted**. They rely on operating-system file permissions and disk encryption (FileVault or BitLocker). Store projects only where study data is permitted.
 - **Pseudonymous export keys are not anonymisation.** Quasi-identifiers (age, sex, race, BMI and similar) need explicit confirmation before export.
 - **No regulatory, IRB or institutional approval** is claimed or implied.
 - The app makes **no network requests**. Updates are manual.
+- [THREAT_MODEL.md](THREAT_MODEL.md) lists what the app defends against and what it leaves to the lab.
 - The optional **MCP server** ([MCP.md](MCP.md)) is read-only and returns aggregate results only, with small-cell suppression. Its results reach whichever AI provider the assistant uses. Counts below the minimum cell size and all minimum and maximum values are withheld, but suppression is not anonymisation: a median can be one participant's value, small counts can sometimes be derived from totals, and overlapping filters could narrow down individuals. It has been tested on synthetic data only; whether a real project may be connected is for the lab's IRB and data use agreements to decide.
 
 ## Platforms
@@ -42,4 +44,4 @@
 - Charts are limited to one or two measures plus the many-measures views (correlation matrix, heatmap, PCA). There are no visit-trajectory charts, violin plots, shape-by or facet-by.
 - Formatting interpretation is tuned to this lab's legend conventions (source font colours, QC fills, border groups). A workbook with a different legend style will import correctly, but its formatting will mostly show as "unresolved" until a curator reviews it.
 - Legacy `.xls` files are not supported; save them as `.xlsx` first.
-- All computation runs in the window's own thread, and large cohorts are untested. A bug while drawing a page now shows a message instead of a blank window (unreleased), but the page's unsaved chart settings may be lost.
+- **Size.** The largest dataset tested is a synthetic one of 2,000 participants, 4,800 rows and 300 columns. Calculations stay under a second there (a correlation matrix of 60 variables takes about 0.8 s), but importing takes about 7 seconds and loading the dataset about 3, and it is loaded again after each curation edit. Drawing at that size is not tested. All computation runs in the window's own thread, so a slow step freezes the interface until it finishes. A bug while drawing a page now shows a message instead of a blank window (unreleased), but the page's unsaved chart settings may be lost.

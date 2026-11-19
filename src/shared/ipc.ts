@@ -148,13 +148,20 @@ export const schemas = {
     format: z.enum(['svg', 'png', 'r']),
     data: z.string().max(40_000_000),
     suggestedName: z.string().max(200),
-    /** Optional sidecar files written next to the chart, and the context recorded in the export record. */
-    sidecars: z.object({ settings: z.string().max(2_000_000), log: z.string().max(2_000_000) }).optional(),
-    context: z.object({ datasetVersionId: z.string().max(100), metadataVersion: z.number().int().min(0), signature: z.string().max(64) }).optional()
+    /** Write the settings and analysis log beside the image. The main process builds both from `context`. */
+    sidecars: z.boolean().optional(),
+    /** Short fingerprint the renderer printed in the image footer; the main process refuses a mismatch. */
+    stamped: z.string().regex(/^[0-9a-f]{8}$/).nullable().optional(),
+    /** What the chart shows. The log, settings and fingerprint are recomputed from it; none is accepted from the renderer. */
+    context: z.object({ spec: selectionSpec, chart: chartConfig, metadataVersion: z.number().int().min(0) }).optional()
   }),
   /** The main process recomputes the analysis from the spec and chart; no result is accepted from the renderer. */
   'analysis:record': z.object({ spec: selectionSpec, chart: chartConfig, metadataVersion: z.number().int().min(0) }),
   'analysis:list': z.object({ datasetVersionId: id.nullable(), limit: z.number().int().min(1).max(500).optional() }),
+  /** A passphrase encrypts the backup. It is used once, in the main process, and never stored or logged. */
+  'backup:create': z.object({ passphrase: z.string().min(8).max(256).nullable() }),
+  /** First call: no token. For an encrypted backup the reply asks for a passphrase and gives a token for the second call. */
+  'backup:restore': z.object({ token: id.optional(), passphrase: z.string().min(1).max(256).optional() }),
   'settings:setAuthor': z.object({ authorLabel: z.string().max(80) }),
   'boards:get': z.object({ id }),
   'boards:save': z.object({ id: id.nullable(), name: z.string().min(1).max(200), layout: boardLayout }),

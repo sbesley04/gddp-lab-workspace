@@ -2,11 +2,17 @@
 name: build
 on:
   # Documentation-only changes do not need a full build (macOS minutes bill at 10x on private repos).
+  # Branches are built through their pull request; building the push as well ran every job twice.
   push:
+    branches: [main]
     paths-ignore: ['**.md', 'docs/**', '.github/workflows/r-reference.yml']
   pull_request:
     paths-ignore: ['**.md', 'docs/**', '.github/workflows/r-reference.yml']
   workflow_dispatch:
+# A newer push to the same branch or pull request replaces a run that is still going.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     strategy:
@@ -26,6 +32,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx electron-vite build
+      # The UI tests drive the development build (a packaged build cannot be driven: its inspect fuse is off).
+      # macOS only: it is the platform they are developed on, and the packaged self-test below covers Windows.
+      - name: End-to-end UI tests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: npx playwright test
+      - name: Keep UI test output when it fails
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: test-results/
       - name: Package (macOS, unsigned)
         if: runner.os == 'macOS'
         run: npx electron-builder --mac --arm64 --publish never

@@ -22,7 +22,6 @@ export function Sidebar() {
   const project = useStore((s) => s.project)!
   const snapshot = useStore((s) => s.snapshot)
   const versionId = useStore((s) => s.versionId)
-  const toast = useStore((s) => s.toast)
 
   const reviewCount = useMemo(() => {
     if (!snapshot) return 0
@@ -32,14 +31,6 @@ export function Sidebar() {
   const closeProject = async () => {
     await call('project:close')
     await useStore.getState().setProject(null)
-  }
-  const backup = async () => {
-    try {
-      const r = await call<{ fileName: string; files: number } | null>('backup:create')
-      if (r) toast('success', `Backup saved: ${r.fileName} (${r.files} files, checksummed).`)
-    } catch (e) {
-      toast('error', errorText(e))
-    }
   }
 
   return (
@@ -73,9 +64,7 @@ export function Sidebar() {
           <div className="sub" title={project.folderName}>{project.folderName}</div>
           {project.versions.length > 0 && <VersionSwitcher />}
           <div className="row" style={{ marginTop: 8, gap: 4 }}>
-            <button className="btn ghost sm" onClick={backup} title="Back up project (consistent, checksummed package)">
-              <Archive size={14} /> Backup
-            </button>
+            <BackupButton />
             <VerifyRecords />
             <span className="spacer" />
             <button className="btn ghost sm icon" onClick={closeProject} title="Close project" aria-label="Close project" data-testid="close-project">
@@ -132,6 +121,61 @@ function VersionSwitcher() {
               </button>
             ))}
           </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+}
+
+/** Backup with an optional passphrase. A backup holds the whole project, so encrypting it is the default choice. */
+function BackupButton() {
+  const toast = useStore((s) => s.toast)
+  const [open, setOpen] = useState(false)
+  const [pass, setPass] = useState('')
+  const [again, setAgain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const problem = pass.length < 8 ? 'Use at least 8 characters.' : pass !== again ? 'The two entries do not match.' : null
+  const save = async (passphrase: string | null) => {
+    setBusy(true)
+    try {
+      const r = await call<{ fileName: string; files: number; encrypted: boolean } | null>('backup:create', { passphrase })
+      if (r) {
+        toast('success', `Backup saved: ${r.fileName} (${r.files} files, checksummed${r.encrypted ? ', encrypted' : ', not encrypted'}).`)
+        setOpen(false)
+      }
+    } catch (e) {
+      toast('error', errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Popover.Root open={open} onOpenChange={(o) => { setOpen(o); setPass(''); setAgain('') }}>
+      <Popover.Trigger asChild>
+        <button className="btn ghost sm" title="Back up project (consistent, checksummed package)" data-testid="backup">
+          <Archive size={14} /> Backup
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content className="popover" side="right" align="end" sideOffset={10} style={{ width: 360 }}>
+          <form className="stack" style={{ gap: 10 }} onSubmit={(e) => { e.preventDefault(); if (!problem) save(pass) }}>
+            <strong>Back up this project</strong>
+            <p className="small muted" style={{ margin: 0 }}>A backup holds everything: the imported data with its participant identifiers, the curation history and the key behind pseudonymous exports. Protect it with a passphrase.</p>
+            <label className="field">
+              Passphrase
+              <input className="input" type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoFocus autoComplete="new-password" aria-label="Backup passphrase" />
+            </label>
+            <label className="field">
+              Repeat passphrase
+              <input className="input" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" aria-label="Repeat backup passphrase" />
+            </label>
+            <p className="small" style={{ margin: 0 }}><strong>There is no recovery.</strong> Without the passphrase the backup cannot be opened, by anyone. It is not stored anywhere.</p>
+            {(pass || again) && problem && <p className="small muted" style={{ margin: 0 }}>{problem}</p>}
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn primary sm" type="submit" disabled={busy || !!problem} data-testid="backup-encrypted">Save encrypted backup</button>
+              <button className="btn ghost sm" type="button" disabled={busy} onClick={() => save(null)} data-testid="backup-plain" title="Writes a plain ZIP that anyone with the file can read">Save without encryption</button>
+            </div>
+          </form>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

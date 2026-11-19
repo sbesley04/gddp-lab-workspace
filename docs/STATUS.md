@@ -11,11 +11,12 @@
 | Unreleased | 2026-11-09 | Square-root and Box-Cox transforms, PCA biplot |
 | Unreleased | 2026-11-19 | Statistical guardrails: independence guard, censoring visibility, analysis register, neutral p-values, R check |
 | Unreleased | 2026-11-19 | Integrity: hash chain over the audit log, revisions and register with a verify command; full curation audit; MCP small-count and extreme-value suppression |
+| Unreleased | 2026-11-19 | Full fingerprints; chart sidecars rebuilt by the main process; encrypted backups; error boundary; threat model |
 
 ## Current test inventory
 
-- `npm test`: 176 Vitest tests in 19 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails and 6 for record integrity).
-- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm test`: 188 Vitest tests in 21 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
+- `npm run e2e`: Playwright, 11 tests. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test.
@@ -82,7 +83,7 @@ From the lab meeting notes (R command history, edit signatures, PCA, covariates,
 | Feature | Verification |
 | --- | --- |
 | Numbered visits sorted numerically on import (Month 2 before Month 6, not text order) | `tests/visitOrder.test.ts` |
-| Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in the export ZIP) | `tests/provenance.test.ts` (deterministic text; every upstream change alters the signature; no participant IDs or file name; QC exclusion counts); SHA-256 against NIST vectors; E2E opens History and checks the export ZIP |
+| Analysis log in R syntax with per-step and chain signatures, since renamed fingerprints (History panel, `analysis_log.R` in the export ZIP) | `tests/provenance.test.ts` (deterministic text; every upstream change alters the signature; no participant IDs or file name; QC exclusion counts); SHA-256 against NIST vectors; E2E opens History and checks the export ZIP |
 | Chart download: size presets, PNG scale, signature footer, `.chart.json` and `.analysis-log.R` sidecars | `tests/chartStamp.test.ts`, `tests/chartExport.test.ts` (other files beside the chart are not overwritten); `e2e/charts.spec.ts` saves SVG and PNG through the UI and checks size, footer, legend, XML well-formedness and sidecars |
 | Fix: chart SVG/PNG exports were malformed XML with the default (system) and serif fonts, so PNG export failed and strict SVG readers rejected the file | `e2e/charts.spec.ts` parses the saved SVG; font-stack test |
 | Covariate tag (append-only, carried over), colour-by with a named legend | `tests/workflow.test.ts` (as-of and carry-over), `tests/transforms.test.ts` (categories), `e2e/charts.spec.ts` |
@@ -155,7 +156,25 @@ The first part of Phase 2 of [STRATEGY.md](STRATEGY.md).
 | Error boundary: a failure while drawing a page shows a message, the error text and **Try again**, and the sidebar stays usable; a second boundary covers the whole window | `e2e/guardrails.spec.ts` makes the Explore page throw while it draws, checks the message, opens another page, removes the cause and retries. The whole-window boundary is not tested. |
 | MCP: every count below the minimum cell size returned as "<n"; minimum and maximum withheld unless `--show-extremes`; guide and docs corrected | `tests/mcp.test.ts` walks every tool result for count fields below 5, checks counts inside warnings, and confirms the plain numbers return with a cell size of 1 |
 
-Not done: the chain has no secret key, so it does not prove who wrote a record, and a consistent rewrite is caught only by an anchor. Backups are still not encrypted. Chart sidecars still come from the renderer. The MCP server has no defence against differencing and passes free text through. The packaged build was not re-run for this work.
+Not done: the chain has no secret key, so it does not prove who wrote a record, and a consistent rewrite is caught only by an anchor. The MCP server has no defence against differencing and passes free text through. The packaged build was not re-run for this work.
+
+## Unreleased: fingerprints, chart export and encrypted backups (2026-11-19)
+
+More of Phase 2 of [STRATEGY.md](STRATEGY.md).
+
+| Feature | Verification |
+| --- | --- |
+| The analysis log's "signature" is now called a fingerprint and recorded in full (64 hex characters) in the log, chart settings, export manifest and export record. The first 8 characters are shown on charts and in History. Every earlier fingerprint changes, because steps now chain on the full value. | `tests/provenance.test.ts` (unchanged properties: deterministic, every upstream change alters it, no participant IDs); `tests/workflow.test.ts` (manifest); E2E |
+| Chart export: the main process rebuilds the analysis log, the settings file (`bari-chart/2`) and the fingerprint from the selection and chart settings. Only the drawn image is taken from the window, and one whose footer carries a different fingerprint is refused. | `tests/chartExport.test.ts`: the files equal what the core gives for the selection; a wrong or stale footer writes nothing; a log sent by the caller is ignored; Compare boards (no single selection) save an image only. `e2e/charts.spec.ts` saves SVG and PNG through the UI. |
+| Encrypted backups: optional passphrase, AES-256-GCM with a scrypt-derived key, file extension `.bariproj.enc`. Restore asks for the passphrase before asking where to restore. | `tests/workflow.test.ts`: round trip; no readable project name, identifier or SQLite header in the file; missing and wrong passphrases refused; a changed byte in the header, body or tag refused with nothing restored; the passphrase appears in no audit or export record. `e2e/workflow.spec.ts` backs up with a passphrase through the UI, tries a wrong one, then restores. |
+| Threat model | [THREAT_MODEL.md](THREAT_MODEL.md); a document, not a test |
+| CI builds each branch once (through its pull request) instead of twice, cancels a run that a newer push replaces, and runs the UI tests on macOS | First exercised by the pull request that adds it. The first CI run of the UI tests found a real fault: see the next row. |
+| Fix: in a small window a popover that opened upwards put its top above the window, so its first buttons could not be reached (seen on **Add variable** in the many-measures views). Popovers are now never taller than the space on the side they open. | `e2e/tour-table.spec.ts` sets the window to its minimum size (1024 × 680), where the fault reproduced, and checks the button is inside the window and can be clicked |
+| Validation summary and changelog | [VALIDATION.md](VALIDATION.md), `CHANGELOG.md`; documents, not tests |
+| Property tests for the selection engine: agreement with an independently written reading of the rules; every row selected or excluded with a reason; AND is intersection and OR is union; keeping missing values never removes a row; a visit restriction only removes other visits; more QC exclusions never add a row; counts, chart data and pairs account for every row once | `tests/selection.property.test.ts`, 150 seeded random datasets and filters per rule. Three deliberate bugs put into the engine (an off-by-one bound, counting rejected flags, an empty group that matches) were each caught, then removed. |
+| Performance budget on a synthetic dataset of 2,000 participants, 4,800 rows and 300 columns (1.4 million cells, 43,000 flags) | `tests/performance.test.ts`. Measured on an Apple Silicon laptop: selection 3 ms, grouped distribution with Box-Cox 77 ms, statistics 71 ms, counts for all 300 variables 0.2 s, correlation matrix of 60 variables 0.8 s, PCA of 12 variables 7 ms; CSV parse 0.2 s, validation 1 s, import commit 7.5 s, loading the dataset from the database 2.9 s, a 50 MB dataset sent to the window, record check 44 ms. Budgets are about ten times these. Drawing and the transfer to the window are not measured. |
+
+Not done: project folders are not encrypted by the app. The passphrase has no strength check beyond 8 characters and no recovery. The drawn chart image is not verified beyond its footer. Installers are unsigned. The packaged build was not re-run for this work.
 
 ## Remaining work
 

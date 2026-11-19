@@ -27,7 +27,16 @@ Updated 2026-11-19. Everything marked done is in the source, unreleased, and ver
 | M2 Small counts not suppressed everywhere | Done | Every count below the minimum cell size is returned as "<n", including counts inside warnings. No complementary suppression: a small count can sometimes be derived from a total. |
 | M3 Differencing, M4 free text | **Open**, now documented | No query budget or overlap check. Header comments, study context, saved-view names and the project name still pass through. |
 | E2 Error boundary | Done | A failure while drawing a page shows a message with **Try again**; the sidebar stays usable. A second boundary covers the whole window. |
-| G2, G3, G6, E5 (rest of Phase 2) | **Open** | Full fingerprints and renaming "signature"; encrypted backups; recomputing chart sidecars in the main process; signing. Then the validation pack and threat model. |
+| G2 Full fingerprints, renamed | Done | The analysis log, chart settings, manifests and export records hold the full 64-character SHA-256 and call it a fingerprint. The first 8 characters are shown on charts and in History. The log says it is not a signature. |
+| G3 Encrypt backups | Done for backups | Optional passphrase (AES-256-GCM, key from scrypt), offered first. No recovery if the passphrase is lost. Project folders are still not encrypted by the app. |
+| G6 Chart export trusts the renderer | Done | The main process rebuilds the analysis log, settings and fingerprint from the selection. Only the drawn image comes from the renderer, and an image whose footer carries a different fingerprint is refused. |
+| Threat model | Done | [THREAT_MODEL.md](THREAT_MODEL.md). |
+| Validation pack | Done as a summary | [VALIDATION.md](VALIDATION.md): the evidence, how to re-run it, methods against R, requirements against tests, known gaps, and an empty review record. Nobody has signed it. |
+| E4 E2E in CI | Added | The macOS build job runs the UI tests. |
+| E7 Changelog | Done | `CHANGELOG.md`. Licence, citation file and second maintainer are still open (Q5). |
+| E3 Performance budget | Done in part | `tests/performance.test.ts` measures a synthetic dataset of 4,800 rows by 300 columns and fails if anything becomes about ten times slower. Calculations are fast at that size. Importing (about 7 s) and loading the dataset (about 3 s, 50 MB sent to the window) are the slow parts. Nothing has been moved to a worker, and drawing is not measured. |
+| Property tests for the selection engine | Done | `tests/selection.property.test.ts`: six rules on 150 seeded random datasets, including agreement with an independently written reading of the rules. Property tests for the importer are not written. |
+| E5 Signing (rest of Phase 2) | **Open** | Needs signing credentials. |
 
 Phase 2's first "done when" condition is met and tested: a tampered database fails verification (`tests/integrity.test.ts`, seven kinds of tampering). "MCP.md matches what the code returns" is met for M1 and M2.
 

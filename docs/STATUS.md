@@ -9,14 +9,16 @@
 | Unreleased | 2026-11-03 | Analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA |
 | Unreleased | 2026-11-05 | Read-only MCP server for AI assistants |
 | Unreleased | 2026-11-09 | Square-root and Box-Cox transforms, PCA biplot |
+| Unreleased | 2026-11-19 | Statistical guardrails: independence guard, censoring visibility, analysis register, neutral p-values, R check |
 
 ## Current test inventory
 
-- `npm test`: 153 Vitest tests in 16 files, all on synthetic data (including 14 for the MCP server).
-- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm test`: 169 Vitest tests in 18 files, all on synthetic data (including 14 for the MCP server and 13 for the statistical guardrails).
+- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails on a two-visit file (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test.
-- R reference values: `tools/stats_reference.R` (tests, CIs, regression) `tools/multivariate_reference.R` (PCA, biplot vectors, correlation matrix) and `tools/transforms_reference.R` (Box-Cox).
+- R reference values: `tools/stats_reference.R` (tests, CIs, regression) `tools/multivariate_reference.R` (PCA, biplot vectors, correlation matrix) and `tools/transforms_reference.R` (Box-Cox). Each file records the R and package versions that produced it (R 4.3.2, jsonlite 2.0.0, car 3.1.3).
 
 ## 0.1.0 (first release, 2026-10-22)
 
@@ -30,7 +32,7 @@ Verified on 2026-10-22 on macOS 26.5 (Apple Silicon), Node 24.14, Electron 44.9.
 | 4 | Filters, missing vs zero, numeric-looking IDs, ambiguous headers, duplicate keys, censored values, invalid log, no matching data | **Pass** | `tests/selection.test.ts`, `tests/importer.test.ts`, `tests/values.test.ts`, `tests/workflow.test.ts` on synthetic fixtures |
 | 5 | Descriptive calculations against independent small fixtures | **Pass** | `tests/stats.test.ts`: hand-computed expected values, explained inline |
 | 6 | Save a view, restart, reproduce against the same dataset version | **Pass** | Unit test (close and reopen the project, with curation made after the save) and E2E (relaunch the app, open as saved, same cohort) |
-| 7 | Export and inspect a context package | **Pass** | Unit and E2E tests unzip the package and check the six files, SHA-256 checksums, pseudonymous keys, absence of source IDs, paths and comment authors, quasi-identifier blocking, and the baseline-only statement |
+| 7 | Export and inspect a context package | **Pass** | Unit and E2E tests unzip the package and check the six files (eight in unreleased builds), SHA-256 checksums, pseudonymous keys, absence of source IDs, paths and comment authors, quasi-identifier blocking, and the baseline-only statement |
 | 8 | Backup and restore without changing observations | **Pass** | Content hash equal after restore; a damaged backup is rejected and leaves nothing behind (unit, E2E, reference) |
 | 9 | Core workflow without internet or API credentials | **Pass, with a caveat** | E2E asserts that no non-local request was attempted during the whole workflow. All requests are blocked by policy, and no credentials exist anywhere. The test machine itself was online. |
 | 10 | Package and smoke-test on Windows and macOS | **macOS: pass. Windows: built, untested at 0.1.0** (since passed in CI; see 0.3.1) | macOS arm64 and x64 DMGs were mounted, the app copied out and `--self-test` run (import, view reproduce, export checksums, backup/restore, UI load). x64 ran under Rosetta. The Windows NSIS installer was cross-built but never run. All builds are unsigned. Signing steps are in [SIGNING.md](SIGNING.md). |
@@ -119,10 +121,27 @@ Fixed during this work: the direct Box-Cox formula loses precision at large |λ|
 
 Not done: label collision handling for arrows that point the same way; inverse-normal transform (judged unsuitable at the review); 3D PCA.
 
+## Unreleased: statistical guardrails (2026-11-19)
+
+Phase 1 of [STRATEGY.md](STRATEGY.md), plus two hygiene items from Phase 0.
+
+| Feature | Verification |
+| --- | --- |
+| Independence guard, shared by the app and the MCP server (`src/core/independence.ts`). When any participant contributes more than one row, the statistics panel computes no test, confidence interval, normality check or fit. It shows plain descriptives and offers each visit as a one-click fix. Fit lines, bands and mean ± CI are not drawn either. | `tests/guardrails.test.ts`: a synthetic two-visit file gives no test, interval or fit from the shared runner (`src/core/analysisRun.ts`), and nothing reaches the register; one visit gives the same numbers as calling the tests directly. `tests/mcp.test.ts` checks the shared warning. `e2e/guardrails.spec.ts` checks the blocked panel, the fix button and the results that follow. |
+| Methods, caveat and subtitle text derived from the analysed rows ("observations at Month 6", "27 observations from 14 participants"), not fixed words | `tests/guardrails.test.ts` (visit scope text); E2E checks the caveat names the visit |
+| Censoring visibility: percent of measured values censored per group and per measure, the direction of the bias, and a mark on means and SDs above 15% (provisional threshold) | `tests/guardrails.test.ts`: counts by direction, the threshold, the note text, and that summaries use no bound; E2E checks the note and the table cell |
+| Analysis register: one append-only row per distinct analysis, recomputed in the main process from the selection and chart settings, with a full SHA-256 fingerprint, its tests and p-values. Listed in History with a running count, and written to the context package as `analysis_register.json` | `tests/guardrails.test.ts`: stored values equal the core functions; duplicates and display changes are not re-recorded; fingerprints change with visits, filter, QC policy, transforms, log axes and metadata version; update and delete are refused; the export lists details only for exported variables and holds no participant ID. E2E checks the counts in the panel and in History. The packaged self-test has a register step (not yet run on a packaged build). |
+| p-values displayed without emphasis below .05 | E2E asserts no accent badge in the panel |
+| R and package versions recorded in each reference file; `npm run reference:check`; CI job `r-reference` with pinned versions | The check reproduces all three files on macOS with R 4.3.2, and fails when a value or a version is changed by hand. `tests/rReference.test.ts` checks that the workflow pins the recorded versions. **The CI job has not run yet.** |
+| A copy of `workspace.sqlite` is kept before a schema migration | `tests/guardrails.test.ts` (schema upgrade) |
+| `.codex/` and `Claude outputs/` git-ignored; stale "no remote" comments removed | By inspection |
+
+Not done: the MCP server warns about repeated visits but does not refuse; analyses run through the MCP server are not in the register; the censoring threshold awaits a statistician (STRATEGY Q4); no censoring-aware estimates; no paired tests. The packaged build and `npm run test:reference` were not re-run for this work.
+
 ## Remaining work
 
 1. Run the NSIS install wizard by hand on Windows 10/11, then import, save, export and reopen through the UI. CI already runs the unit tests and the packaged `--self-test` on Windows.
-2. Build and smoke-test installers that include the unreleased work, then tag a release.
+2. Build and smoke-test installers that include the unreleased work, then tag a release. Push first, so the `r-reference` CI job runs for the first time.
 3. Obtain signing credentials and notarise or sign (see [SIGNING.md](SIGNING.md)).
 4. Curator decisions recorded in the local workbook notes (see [WORKBOOK_SEMANTICS.md](WORKBOOK_SEMANTICS.md)):
    - the sample-warning colour mismatch;

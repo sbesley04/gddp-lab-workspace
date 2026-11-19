@@ -156,7 +156,7 @@ test('import, select, save, export, back up — all offline', async () => {
   await page.screenshot({ path: join(shots, '03-export.png') })
   const files = unzipSync(new Uint8Array(readFileSync(zipPath)))
   const manifest = JSON.parse(strFromU8(files['manifest.json']))
-  expect(Object.keys(files).sort()).toEqual(['analysis_log.R', 'analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
+  expect(Object.keys(files).sort()).toEqual(['analysis_log.R', 'analysis_register.json', 'analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
   for (const f of manifest.files) expect(createHash('sha256').update(files[f.name]).digest('hex')).toBe(f.sha256)
   expect(manifest.selection.rows).toBe(rows)
   expect(JSON.stringify(manifest)).not.toContain(work)

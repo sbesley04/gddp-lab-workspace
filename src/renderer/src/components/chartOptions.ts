@@ -9,6 +9,7 @@ import type { PcaPlot, PcaResult } from '@core/pca'
 import { biplotScale, biplotVectors } from '@core/pca'
 import { FONT_STACKS } from '@core/chartStyle'
 import { describe, linearFit } from '@core/analysis'
+import { fitInputs, overlaysAllowed } from '@core/analysisRun'
 import { formatNumber } from '@core/values'
 import { axisTitle, label } from '../lib/format'
 import { cssVar, jitter } from './EChart'
@@ -187,7 +188,10 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
       tooltip: { formatter: (prm: any) => `<b>${prm.data.pid}</b>${prm.data.cat !== undefined ? `<br/>${prm.data.cat}` : ''}<br/>${label(measure)}: ${fmt(prm.data.value[1])}${prm.data.symbol === 'triangle' ? '<br/>▲ QC flag (included)' : prm.data.symbol === 'diamond' ? '<br/>◇ Unresolved formatting' : ''}` }
     }
   ]
-  if (chart.analysis.requested && chart.analysis.meanCi) {
+  // A confidence interval assumes independent observations: not drawn when a participant contributes several rows.
+  const independent = overlaysAllowed(data.groups.flatMap((g) => g.points))
+  if (chart.analysis.requested && chart.analysis.meanCi && !independent) notices.push('Mean ± 95% CI is not drawn: some participants contribute more than one visit. Restrict the selection to one visit.')
+  if (chart.analysis.requested && chart.analysis.meanCi && independent) {
     const bars = data.groups.map((g, gi) => {
       const d = describe(g.points.map((x) => x.value))
       return d.meanCi ? [gi, d.mean, d.meanCi.lower, d.meanCi.upper] : null
@@ -232,31 +236,7 @@ export function distributionOption(data: DistributionData, measure: VariableInfo
   return { option, notices, minWidth: Math.max(0, data.groups.length * 120 + 110) }
 }
 
-export interface FitInfo {
-  transformX: boolean
-  transformY: boolean
-  excluded: number
-}
-
-/** Values entering the regression: on log axes the fit uses log10 of positive values, as displayed. */
-export function fitInputs(data: ScatterData, chart: FullChart) {
-  const tx = chart.xScale === 'log'
-  const ty = chart.yScale === 'log'
-  const xs: number[] = []
-  const ys: number[] = []
-  const rows: number[] = []
-  let excluded = 0
-  for (const pt of data.points) {
-    if ((tx && pt.x <= 0) || (ty && pt.y <= 0)) {
-      excluded++
-      continue
-    }
-    xs.push(tx ? Math.log10(pt.x) : pt.x)
-    ys.push(ty ? Math.log10(pt.y) : pt.y)
-    rows.push(pt.row)
-  }
-  return { xs, ys, rows, info: { transformX: tx, transformY: ty, excluded } as FitInfo }
-}
+export { fitInputs, type FitInfo } from '@core/analysisRun'
 
 export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInfo, chart: FullChart, ctx: BuildCtx): Built {
   const style = chart.style
@@ -295,7 +275,10 @@ export function scatterOption(data: ScatterData, x: VariableInfo, y: VariableInf
     }
   ]
   const a = chart.analysis
-  if (a.requested && (a.fitLine || a.confidenceBand || a.predictionBand)) {
+  // The fit and its bands assume independent observations: not drawn when a participant contributes several rows.
+  const independent = overlaysAllowed(data.points)
+  if (a.requested && (a.fitLine || a.confidenceBand || a.predictionBand) && !independent) notices.push('Fit line and bands are not drawn: some participants contribute more than one visit. Restrict the selection to one visit.')
+  if (a.requested && (a.fitLine || a.confidenceBand || a.predictionBand) && independent) {
     const fi = fitInputs(data, chart)
     const fit = linearFit(fi.xs, fi.ys)
     if (fit) {

@@ -2,6 +2,7 @@
 # All data are synthetic literals (no RNG). Needs jsonlite and car. Run:
 #   Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json
 suppressPackageStartupMessages({ library(jsonlite); library(car) })
+source("tools/reference_meta.R")  # run from the repository root
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args)) args[1] else "tests/fixtures/transforms_reference.json"
 
@@ -30,5 +31,6 @@ ref <- lapply(samples, function(y) {
     transformed = bcPower(y, opt$maximum)
   )
 })
+ref[["_r"]] <- reference_meta(c("jsonlite", "car"))
 writeLines(toJSON(ref, auto_unbox = TRUE, digits = NA, pretty = TRUE), out)
 cat("wrote", out, "\n")

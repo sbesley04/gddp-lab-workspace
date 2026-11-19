@@ -1,6 +1,7 @@
 # Generates independent reference values for tests/inference.test.ts using base R (and car).
 # All data are synthetic. Run:  Rscript tools/stats_reference.R tests/fixtures/stats_reference.json
 suppressPackageStartupMessages({ library(jsonlite); library(car) })
+source("tools/reference_meta.R")  # run from the repository root
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args)) args[1] else "tests/fixtures/stats_reference.json"
 set.seed(20261023)
@@ -70,5 +71,6 @@ ref <- list(
             conf = unname(pr_c), pred = unname(pr_p), cooks = unname(cooks.distance(fit))),
   holm = list(input = holm_in, output = p.adjust(holm_in, "holm"))
 )
+ref[["_r"]] <- reference_meta(c("jsonlite", "car"))
 writeLines(toJSON(ref, auto_unbox = TRUE, digits = NA, pretty = TRUE), out)
 cat("wrote", out, "\n")

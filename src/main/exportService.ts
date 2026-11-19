@@ -8,6 +8,7 @@ import type { SelectionSpec } from '@core/types'
 import type { Project } from './project'
 import { buildSnapshot } from './snapshot'
 import { getStudyContext } from './curation'
+import { listRegister } from './register'
 import { sha256 } from './importService'
 import { APP_VERSION } from './version'
 
@@ -34,7 +35,10 @@ export function previewContextExport(project: Project, spec: SelectionSpec, opti
     studyContext: getStudyContext(project, spec.datasetVersionId, metadataVersion).text,
     appVersion: APP_VERSION,
     createdAt: new Date().toISOString(),
-    keyFor: keyFunction(project, options.participantKeyMode)
+    keyFor: keyFunction(project, options.participantKeyMode),
+    analysisRegister: listRegister(project, { datasetVersionId: spec.datasetVersionId, limit: 100000 })
+      .entries.reverse()
+      .map((e) => ({ fingerprint: e.fingerprint, at: e.at, appVersion: e.appVersion, record: e.record }))
   })
 }
 

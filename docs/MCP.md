@@ -83,6 +83,8 @@ Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-
 
 Every analysis tool takes the same selection fields: `datasetVersion`, `visits`, `where` (filters), `match`, `qcExclude`, or `savedView`. Every result includes a `selection` block (dataset version, metadata version, visits, filter, QC policy, n) so the analysis can be rebuilt in the app, and a `warnings` list. Warnings cover censoring, repeated visits per participant, covariates recorded at only one visit, complete-case losses and untransformable values.
 
+The repeated-visits check is the app's own independence guard (`src/core/independence.ts`). The app refuses to run tests on a selection in which a participant contributes more than one visit. The server still returns the result with a warning, so the assistant must act on it. Analyses run through the server are not written to the app's analysis register (the server is read-only), so they are missing from its count of tests.
+
 **Resources:** `bari://guide` (how to read the data) and `bari://data-dictionary` (every variable, as CSV).
 
 **Prompt:** `exploratory_analysis`, a step-by-step workflow for a research question.

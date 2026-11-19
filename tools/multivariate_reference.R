@@ -1,6 +1,7 @@
 # Independent reference values for tests/pca.test.ts and tests/matrix.test.ts using base R.
 # All data are synthetic literals (no RNG). Run:  Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json
 suppressPackageStartupMessages(library(jsonlite))
+source("tools/reference_meta.R")  # run from the repository root
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args)) args[1] else "tests/fixtures/multivariate_reference.json"
 X <- matrix(c(
@@ -44,5 +45,6 @@ ref <- list(
   # Correlation biplot vectors: correlation of each variable with each (sign-fixed) component = rotation × sdev
   biplot_cor = lapply(seq_len(ncol(X)), function(i) unname(cor(X, sc)[i, ]))
 )
+ref[["_r"]] <- reference_meta(c("jsonlite"))
 writeLines(toJSON(ref, auto_unbox = TRUE, digits = NA, pretty = TRUE, na = "null"), out)
 cat("wrote", out, "\n")

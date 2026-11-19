@@ -1,15 +1,16 @@
-import { useMemo } from 'react'
-import { Calculator, Copy, FileText, X, AlertTriangle, Info } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Calculator, Copy, FileText, X, AlertTriangle, Info, ShieldAlert, ClipboardList } from 'lucide-react'
 import type { DatasetSnapshot, VariableInfo } from '@core/types'
 import type { DistributionData, ScatterData } from '@core/chartData'
-import {
-  brownForsythe, describe, fmt, fmtCi, formatP, hedgesG, holm, kendall, kruskalWallis, linearFit, mannWhitney, oneWayAnova, pearson, spearman, welchAnova, welchT,
-  type Descriptive
-} from '@core/analysis'
+import { fmt, fmtCi, formatP } from '@core/analysis'
+import { analyseDistribution, analyseScatter, analysisFingerprint } from '@core/analysisRun'
+import { independenceMessage, visitScopeText, visitsOfRows, type RepeatInfo, type VisitCount } from '@core/independence'
+import { CENSORING_BIAS_THRESHOLD, censoringDirection, censoringNote, censoringPercent, type CensoringInfo } from '@core/censoring'
+import { call } from '../api'
 import { useStore } from '../store'
+import { useSpec } from '../lib/selection'
 import { label, qcPolicyText } from '../lib/format'
 import type { FullChart } from './chartOptions'
-import { fitInputs } from './chartOptions'
 import { APP_NAME } from '../lib/version'
 
 interface Common {
@@ -18,7 +19,8 @@ interface Common {
   onChange: (a: Partial<FullChart['analysis']>) => void
 }
 
-const Pv = ({ p }: { p: number }) => <span className={p < 0.05 ? 'badge accent' : 'badge'} style={{ fontVariantNumeric: 'tabular-nums' }}>p {formatP(p)}</span>
+// Every p-value looks the same: no colour or emphasis below .05, so exploratory results are not read as findings.
+const Pv = ({ p }: { p: number }) => <span className="badge" style={{ fontVariantNumeric: 'tabular-nums' }}>p {formatP(p)}</span>
 
 function copy(text: string, what: string) {
   navigator.clipboard
@@ -72,55 +74,110 @@ function Intro({ kind, chart, onChange }: { kind: 'distribution' | 'scatter' } &
   )
 }
 
-const Caveats = ({ extra }: { extra?: string[] }) => (
+const Caveats = ({ extra, scope, blocked }: { extra?: string[]; scope: string; blocked?: boolean }) => (
   <ul className="small muted" style={{ margin: '10px 0 0', paddingLeft: 18 }}>
     {extra?.map((e) => <li key={e}>{e}</li>)}
-    <li>Two-sided tests, 95% confidence. p-values are not adjusted for the number of analyses you run (pairwise comparisons within one analysis are Holm-adjusted).</li>
-    <li>Exploratory results from baseline observations cannot establish causality or treatment effects.</li>
+    {!blocked && <li>Two-sided tests, 95% confidence. p-values are not adjusted for the number of analyses you run (pairwise comparisons within one analysis are Holm-adjusted).</li>}
+    <li>{blocked ? 'Descriptive summaries' : 'Exploratory results'} from {scope} cannot establish causality or treatment effects.</li>
     <li>Missing, censored, non-numeric and QC-excluded observations are excluded; axis bounds affect display only.</li>
   </ul>
 )
 
-// ---------------------------------------------------------------- distribution
-
-interface GroupStats {
-  label: string
-  values: number[]
-  d: Descriptive
+/** Shown instead of tests when a participant contributes more than one observation. The fix is one click. */
+function IndependenceGuard({ info, visits }: { info: RepeatInfo; visits: VisitCount[] }) {
+  return (
+    <div className="callout" style={{ marginBottom: 10 }} data-testid="independence-guard" role="alert">
+      <ShieldAlert size={16} />
+      <div style={{ flex: 1 }}>
+        <p className="small" style={{ margin: 0 }}>
+          <strong>Tests were not run.</strong> {independenceMessage(info)} Repeated visits from one participant are not independent, so no p-value, confidence interval or fit is shown. Restrict the selection to one visit:
+        </p>
+        <div className="row wrap" style={{ marginTop: 8 }}>
+          {visits.map((v) => (
+            <button key={v.id} className="btn sm" data-testid="restrict-visit" onClick={() => useStore.getState().setVisits([v.id])}>
+              Use only {v.name} <span className="muted">({v.rows} row{v.rows === 1 ? '' : 's'})</span>
+            </button>
+          ))}
+        </div>
+        <p className="small muted" style={{ margin: '8px 0 0' }}>Paired tests and change over time are not built yet; plain descriptives are shown below without intervals.</p>
+      </div>
+    </div>
+  )
 }
+
+function CensoringNotes({ notes }: { notes: string[] }) {
+  if (!notes.length) return null
+  return (
+    <div className="callout" style={{ marginTop: 10 }} data-testid="censoring-note">
+      <AlertTriangle size={16} />
+      <div className="small">{notes.map((n) => <p key={n} style={{ margin: 0 }}>{n}</p>)}</div>
+    </div>
+  )
+}
+
+const censoredCell = (c: CensoringInfo) => (c.censored ? `${censoringPercent(c)} (${c.censored} of ${c.numeric + c.censored})` : '0%')
+const biasTitle = (c: CensoringInfo) => `More than ${Math.round(CENSORING_BIAS_THRESHOLD * 100)}% of measured values are censored and left out, so this is biased ${censoringDirection(c)}. Prefer the median and the detection rate.`
+
+interface RegisterNote {
+  recorded: boolean
+  tests: number
+  totals: { analyses: number; tests: number }
+}
+
+/**
+ * Asks the main process to record the analysis on screen. The main process recomputes it from the selection and
+ * chart settings (it never stores numbers sent from here), and keeps one entry per distinct analysis.
+ */
+function useRegister(active: boolean, snapshot: DatasetSnapshot, chart: FullChart): RegisterNote | null {
+  const spec = useSpec()
+  const [note, setNote] = useState<RegisterNote | null>(null)
+  const fingerprint = useMemo(() => (active && spec ? analysisFingerprint(snapshot, spec, chart) : null), [active, snapshot, spec, chart])
+  useEffect(() => {
+    setNote(null)
+    if (!fingerprint || !spec) return
+    let cancelled = false
+    // A short pause, so settings passed through on the way to another analysis are not recorded.
+    const timer = setTimeout(() => {
+      call<RegisterNote>('analysis:record', { spec, chart, metadataVersion: snapshot.metadataVersion })
+        .then((r) => !cancelled && setNote(r))
+        .catch(() => !cancelled && setNote(null))
+    }, 700)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // The fingerprint covers everything that decides the numbers; display settings do not re-record.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fingerprint])
+  return note
+}
+
+function RegisterLine({ note }: { note: RegisterNote | null }) {
+  if (!note) return null
+  return (
+    <p className="small muted row" style={{ margin: '10px 0 0', gap: 6 }} data-testid="register-note">
+      <ClipboardList size={13} />
+      {note.recorded ? 'Recorded in the analysis register' : note.tests ? 'Already in the analysis register' : 'Nothing to record'} · this project has {note.totals.analyses} recorded analys{note.totals.analyses === 1 ? 'is' : 'es'} with {note.totals.tests} p-value{note.totals.tests === 1 ? '' : 's'} in total.
+    </p>
+  )
+}
+
+// ---------------------------------------------------------------- distribution
 
 export function DistributionStats({ data, measure, group, chart, snapshot, onChange }: Common & { data: DistributionData; measure: VariableInfo; group: VariableInfo | null }) {
   const qc = useStore((s) => s.qcExclude)
-  const res = useMemo(() => {
-    if (!chart.analysis.requested) return null
-    const groups: GroupStats[] = data.groups
-      .filter((g) => !g.label.startsWith('('))
-      .map((g) => {
-        const values = [...g.points, ...g.nonPositiveHidden].map((p) => p.value)
-        return { label: g.label, values, d: describe(values) }
-      })
-    const usable = groups.filter((g) => g.values.length > 0)
-    const vals = usable.map((g) => g.values)
-    const two = usable.length === 2
-    const many = usable.length >= 3
-    const pairs: { a: string; b: string; t: ReturnType<typeof welchT>; mw: ReturnType<typeof mannWhitney> }[] = []
-    if (many) for (let i = 0; i < usable.length; i++) for (let j = i + 1; j < usable.length; j++) pairs.push({ a: usable[i].label, b: usable[j].label, t: welchT(usable[i].values, usable[j].values), mw: mannWhitney(usable[i].values, usable[j].values) })
-    const holmT = holm(pairs.map((p) => p.t?.p ?? 1))
-    const holmMw = holm(pairs.map((p) => p.mw?.p ?? 1))
-    return {
-      groups,
-      excludedGroups: data.groups.filter((g) => g.label.startsWith('(')),
-      two: two ? { t: welchT(vals[0], vals[1]), g: hedgesG(vals[0], vals[1]), mw: mannWhitney(vals[0], vals[1]), a: usable[0].label, b: usable[1].label } : null,
-      many: many ? { welch: welchAnova(vals), classic: oneWayAnova(vals), kw: kruskalWallis(vals), bf: brownForsythe(vals), pairs, holmT, holmMw } : null
-    }
-  }, [chart.analysis.requested, data])
+  const res = useMemo(() => (chart.analysis.requested ? analyseDistribution(data) : null), [chart.analysis.requested, data])
+  const note = useRegister(!!res && !res.blocked, snapshot, chart)
   if (!res) return <Intro kind="distribution" chart={chart} onChange={onChange} />
   const name = label(measure)
+  const visits = visitsOfRows(snapshot, res.groups.flatMap((g) => g.rows))
+  const scope = visitScopeText(visits)
+  const censNotes = res.groups.map((g) => censoringNote(g.censoring, group ? `${name}, ${g.label}` : name)).filter((x): x is string => !!x)
   const tsv = () => {
-    const rows = [['Group', 'n', 'Mean', 'SD', 'SE', '95% CI mean (lower)', '95% CI mean (upper)', 'Median', 'Q1', 'Q3', '95% CI median (lower)', '95% CI median (upper)', 'Geometric mean', 'CV %', 'Skewness', 'Excess kurtosis', 'Shapiro–Wilk W', 'Shapiro–Wilk p']]
+    const rows = [['Group', 'n', 'Mean', 'SD', 'SE', '95% CI mean (lower)', '95% CI mean (upper)', 'Median', 'Q1', 'Q3', '95% CI median (lower)', '95% CI median (upper)', 'Geometric mean', 'CV %', 'Skewness', 'Excess kurtosis', 'Shapiro–Wilk W', 'Shapiro–Wilk p', 'Censored (left out)', 'Measured (numeric + censored)']]
     for (const g of res.groups) {
       const d = g.d
-      rows.push([g.label, String(d.n), ...[d.mean, d.sd, d.se, d.meanCi?.lower, d.meanCi?.upper, d.median, d.q1, d.q3, d.medianCi?.lower, d.medianCi?.upper, d.geoMean, d.cv, d.skewness, d.kurtosis, d.shapiro?.w, d.shapiro?.p].map((v) => (v === null || v === undefined ? '' : String(v)))])
+      rows.push([g.label, String(d.n), ...[d.mean, d.sd, d.se, d.meanCi?.lower, d.meanCi?.upper, d.median, d.q1, d.q3, d.medianCi?.lower, d.medianCi?.upper, d.geoMean, d.cv, d.skewness, d.kurtosis, d.shapiro?.w, d.shapiro?.p].map((v) => (v === null || v === undefined ? '' : String(v))), String(g.censoring.censored), String(g.censoring.numeric + g.censoring.censored)])
     }
     if (res.two?.t) rows.push([], ["Welch's t", 'difference', String(res.two.t.diff), 'CI', String(res.two.t.ci.lower), String(res.two.t.ci.upper), 't', String(res.two.t.t), 'df', String(res.two.t.df), 'p', String(res.two.t.p)])
     if (res.two?.mw) rows.push(['Mann–Whitney', 'W', String(res.two.mw.w), 'p', String(res.two.mw.p), 'rank-biserial r', String(res.two.mw.rankBiserial), 'Hodges–Lehmann', String(res.two.mw.hodgesLehmann)])
@@ -139,7 +196,9 @@ export function DistributionStats({ data, measure, group, chart, snapshot, onCha
     'Continuous variables are summarised as mean (SD) and median [IQR]; 95% confidence intervals use the t distribution for means, the log-scale t interval for geometric means, and the distribution-free order-statistic method for medians. Quartiles use Hyndman–Fan type 7 interpolation. Normality was assessed with the Shapiro–Wilk test. ' +
     (res.two ? "Two-group differences were assessed with Welch's t-test (mean difference with 95% CI; effect size Hedges' g with 95% CI) and the Wilcoxon–Mann–Whitney test (exact for n < 50 per group without ties, otherwise normal approximation with continuity correction; effect size rank-biserial correlation; Hodges–Lehmann location shift). " : '') +
     (res.many ? "Differences among groups were assessed with Welch's heteroscedastic one-way ANOVA, classic one-way ANOVA (η²) and the Kruskal–Wallis test (ε²); homogeneity of variance with the Brown–Forsythe test. Pairwise comparisons used Welch's t and Mann–Whitney tests with Holm adjustment. " : '') +
-    `All tests were two-sided. Missing, censored, non-numeric and QC-excluded observations were excluded (QC policy: ${qcPolicyText(qc)}); n is reported per group. Results are exploratory and unadjusted for the number of analyses performed.`
+    `All tests were two-sided. The analysis used ${scope}; each participant contributed one observation. Missing, censored, non-numeric and QC-excluded observations were excluded (QC policy: ${qcPolicyText(qc)}); n is reported per group. ` +
+    (censNotes.length ? `${censNotes.join(' ')} ` : '') +
+    'Results are exploratory and unadjusted for the number of analyses performed.'
   const apa = () =>
     res.groups.map((g) => `${g.label}: M = ${fmt(g.d.mean)}, SD = ${fmt(g.d.sd)}, 95% CI ${fmtCi(g.d.meanCi)}, Mdn = ${fmt(g.d.median)} [IQR ${fmt(g.d.q1)}–${fmt(g.d.q3)}], n = ${g.d.n}`).join('; ') +
     (res.two?.t ? `. Welch's t(${fmt(res.two.t.df, 1)}) = ${fmt(res.two.t.t)}, p ${formatP(res.two.t.p)}, mean difference ${fmt(res.two.t.diff)}, 95% CI ${fmtCi(res.two.t.ci)}${res.two.g ? `, Hedges' g = ${fmt(res.two.g.g)}, 95% CI ${fmtCi(res.two.g.ci)}` : ''}` : '') +
@@ -155,31 +214,34 @@ export function DistributionStats({ data, measure, group, chart, snapshot, onCha
       actions={
         <>
           <button className="btn sm" onClick={() => copy(tsv(), 'Results table')}><Copy size={13} /> Table (TSV)</button>
-          <button className="btn sm" onClick={() => copy(apa(), 'Results summary')}><Copy size={13} /> APA summary</button>
-          <button className="btn sm" onClick={() => copy(methods(), 'Methods text')}><FileText size={13} /> Methods text</button>
+          {!res.blocked && <button className="btn sm" onClick={() => copy(apa(), 'Results summary')}><Copy size={13} /> APA summary</button>}
+          {!res.blocked && <button className="btn sm" onClick={() => copy(methods(), 'Methods text')}><FileText size={13} /> Methods text</button>}
         </>
       }
     >
-      <label className="check small" style={{ marginBottom: 8 }}><input type="checkbox" checked={chart.analysis.meanCi} onChange={(e) => onChange({ meanCi: e.target.checked })} /> Show mean ± 95% CI on chart</label>
+      {res.blocked
+        ? <IndependenceGuard info={res.independence} visits={visits} />
+        : <label className="check small" style={{ marginBottom: 8 }}><input type="checkbox" checked={chart.analysis.meanCi} onChange={(e) => onChange({ meanCi: e.target.checked })} /> Show mean ± 95% CI on chart</label>}
       <div className="table-wrap">
         <table className="data">
           <thead>
-            <tr><th>Group</th><th>n</th><th>Mean (SD)</th><th>95% CI mean</th><th>Median [IQR]</th><th>95% CI median</th><th>Geo. mean [95% CI]</th><th>CV %</th><th>Skew</th><th>Kurtosis</th><th>Shapiro–Wilk</th></tr>
+            <tr><th>Group</th><th>n</th><th title="Share of measured values that are censored (e.g. “<0.5”) and left out of every statistic in this row">Censored</th><th>Mean (SD)</th>{!res.blocked && <th>95% CI mean</th>}<th>Median [IQR]</th>{!res.blocked && <th>95% CI median</th>}<th>{res.blocked ? 'Geo. mean' : 'Geo. mean [95% CI]'}</th><th>CV %</th><th>Skew</th><th>Kurtosis</th>{!res.blocked && <th>Shapiro–Wilk</th>}</tr>
           </thead>
           <tbody>
             {res.groups.map((g) => (
               <tr key={g.label}>
                 <td><strong>{g.label}</strong></td>
                 <td className="num">{g.d.n}</td>
-                <td className="num">{fmt(g.d.mean)} ({fmt(g.d.sd)})</td>
-                <td className="num">{fmtCi(g.d.meanCi)}</td>
+                <td className="num" data-testid="censored-cell">{censoredCell(g.censoring)}</td>
+                <td className="num" title={g.censoring.biased ? biasTitle(g.censoring) : undefined}>{fmt(g.d.mean)} ({fmt(g.d.sd)}){g.censoring.biased && <span className="muted" data-testid="biased-mark"> † biased</span>}</td>
+                {!res.blocked && <td className="num">{fmtCi(g.d.meanCi)}</td>}
                 <td className="num">{fmt(g.d.median)} [{fmt(g.d.q1)}, {fmt(g.d.q3)}]</td>
-                <td className="num" title={g.d.medianCi ? `Achieved confidence ${(g.d.medianCi.achievedLevel * 100).toFixed(1)}%` : 'Needs n ≥ 6'}>{fmtCi(g.d.medianCi)}</td>
-                <td className="num">{g.d.geoMean !== null ? `${fmt(g.d.geoMean)} ${fmtCi(g.d.geoMeanCi)}` : <span className="muted" title="Needs all values > 0">—</span>}</td>
+                {!res.blocked && <td className="num" title={g.d.medianCi ? `Achieved confidence ${(g.d.medianCi.achievedLevel * 100).toFixed(1)}%` : 'Needs n ≥ 6'}>{fmtCi(g.d.medianCi)}</td>}
+                <td className="num">{g.d.geoMean !== null ? `${fmt(g.d.geoMean)}${res.blocked ? '' : ` ${fmtCi(g.d.geoMeanCi)}`}` : <span className="muted" title="Needs all values > 0">—</span>}</td>
                 <td className="num">{fmt(g.d.cv, 1)}</td>
                 <td className="num">{fmt(g.d.skewness)}</td>
                 <td className="num">{fmt(g.d.kurtosis)}</td>
-                <td className="num">{g.d.shapiro ? <>W = {fmt(g.d.shapiro.w, 3)} <Pv p={g.d.shapiro.p} /></> : '—'}</td>
+                {!res.blocked && <td className="num">{g.d.shapiro ? <>W = {fmt(g.d.shapiro.w, 3)} <Pv p={g.d.shapiro.p} /></> : '—'}</td>}
               </tr>
             ))}
           </tbody>
@@ -229,9 +291,11 @@ export function DistributionStats({ data, measure, group, chart, snapshot, onCha
           </div>
         </>
       )}
-      {res.groups.length === 1 && <p className="small muted">Choose “Group by” to compare groups.</p>}
+      {res.groups.length === 1 && !res.blocked && <p className="small muted">Choose “Group by” to compare groups.</p>}
+      <CensoringNotes notes={censNotes} />
       {small.length > 0 && <div className="callout" style={{ marginTop: 10 }}><AlertTriangle size={16} /><p className="small">{small.map((g) => g.label).join(', ')}: n &lt; 3, so several statistics are unavailable or unreliable.</p></div>}
-      <Caveats extra={res.excludedGroups.length ? [`Rows with a missing or QC-excluded grouping value are left out of comparisons (${res.excludedGroups.map((g) => `${g.label}: ${g.summary.n}`).join(', ')}).`] : undefined} />
+      <Caveats scope={scope} blocked={res.blocked} extra={res.excludedGroups.length ? [`Rows with a missing or QC-excluded grouping value are left out of comparisons (${res.excludedGroups.map((g) => `${g.label}: ${g.n}`).join(', ')}).`] : undefined} />
+      <RegisterLine note={note} />
     </Shell>
   )
 }
@@ -240,20 +304,23 @@ export function DistributionStats({ data, measure, group, chart, snapshot, onCha
 
 export function ScatterStats({ data, x, y, chart, snapshot, onChange, onHighlight }: Common & { data: ScatterData; x: VariableInfo; y: VariableInfo; onHighlight: (rows: number[]) => void }) {
   const qc = useStore((s) => s.qcExclude)
-  const res = useMemo(() => {
-    if (!chart.analysis.requested) return null
-    const fi = fitInputs(data, chart)
-    const raw = { xs: data.points.map((p) => p.x), ys: data.points.map((p) => p.y) }
-    return {
-      fi,
-      pearson: pearson(fi.xs, fi.ys),
-      spearman: spearman(raw.xs, raw.ys),
-      kendall: kendall(raw.xs, raw.ys),
-      fit: linearFit(fi.xs, fi.ys)
-    }
-  }, [chart.analysis.requested, data, chart])
+  const res = useMemo(() => (chart.analysis.requested ? analyseScatter(data, chart) : null), [chart.analysis.requested, data, chart])
+  const note = useRegister(!!res && !res.blocked, snapshot, chart)
   if (!res) return <Intro kind="scatter" chart={chart} onChange={onChange} />
   const { fit, fi } = res
+  const visits = visitsOfRows(snapshot, data.points.map((p) => p.row))
+  const scope = visitScopeText(visits)
+  const censNotes = [censoringNote(data.censoring.x, label(x)), censoringNote(data.censoring.y, label(y))].filter((n): n is string => !!n)
+  const close = () => onChange({ requested: false })
+  if (res.blocked)
+    return (
+      <Shell title={`Statistics · ${label(y)} vs ${label(x)}`} onClose={close}>
+        <IndependenceGuard info={res.independence} visits={visits} />
+        <span className="badge outline">{res.pairs} complete pairs from {res.independence.participants} participants</span>
+        <CensoringNotes notes={censNotes} />
+        <Caveats scope={scope} blocked />
+      </Shell>
+    )
   const scaleNote = fi.info.transformX || fi.info.transformY ? `Pearson r and the linear fit use log10(${[fi.info.transformX ? label(x) : null, fi.info.transformY ? label(y) : null].filter(Boolean).join(') and log10(')}), matching the log axes${fi.info.excluded ? `; ${fi.info.excluded} non-positive pair(s) excluded` : ''}. Rank correlations are scale-invariant.` : null
   const pid = (i: number) => snapshot.rows[fi.rows[i]]?.participantId
   const tsv = () => {
@@ -272,7 +339,9 @@ export function ScatterStats({ data, x, y, chart, snapshot, onChange, onHighligh
     `Exploratory associations between ${label(x)} and ${label(y)} were examined in ${provenance(snapshot)}. ` +
     "Pearson's r (t test; 95% CI by Fisher's z transformation), Spearman's ρ (t approximation; 95% CI by Fisher's z with the Bonett–Wright standard error) and Kendall's τ-b (tie-corrected normal approximation) were calculated. " +
     `A simple ordinary least-squares regression of ${label(y)} on ${label(x)} was fitted${scaleNote ? ' on the log10 scale' : ''}; 95% confidence intervals for coefficients and for the mean response use the t distribution. Residual normality was assessed with the Shapiro–Wilk test and influence with Cook's distance (threshold 4/n). ` +
-    `All tests were two-sided. Only participants with numeric values for both measures were analysed (n = ${fi.xs.length}); missing, censored, non-numeric and QC-excluded observations were excluded (QC policy: ${qcPolicyText(qc)}). Results are exploratory and unadjusted for multiple analyses.`
+    `All tests were two-sided. The analysis used ${scope}; each participant contributed one observation, and only observations with numeric values for both measures were analysed (n = ${fi.xs.length}). Missing, censored, non-numeric and QC-excluded observations were excluded (QC policy: ${qcPolicyText(qc)}). ` +
+    (censNotes.length ? `${censNotes.join(' ')} ` : '') +
+    'Results are exploratory and unadjusted for multiple analyses.'
   const apa = () =>
     [
       res.pearson && `Pearson r(${res.pearson.df}) = ${fmt(res.pearson.estimate)}, 95% CI ${fmtCi(res.pearson.ci)}, p ${formatP(res.pearson.p)}`,
@@ -284,7 +353,7 @@ export function ScatterStats({ data, x, y, chart, snapshot, onChange, onHighligh
   return (
     <Shell
       title={`Statistics · ${label(y)} vs ${label(x)}`}
-      onClose={() => onChange({ requested: false })}
+      onClose={close}
       actions={
         <>
           <button className="btn sm" onClick={() => copy(tsv(), 'Results table')}><Copy size={13} /> Table (TSV)</button>
@@ -350,7 +419,9 @@ export function ScatterStats({ data, x, y, chart, snapshot, onChange, onHighligh
           <button className="btn sm" onClick={() => onHighlight(fit.influential.map((f) => fi.rows[f.index]))}>Highlight</button>
         </div>
       )}
-      <Caveats />
+      <CensoringNotes notes={censNotes} />
+      <Caveats scope={scope} />
+      <RegisterLine note={note} />
     </Shell>
   )
 }

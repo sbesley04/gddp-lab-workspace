@@ -14,6 +14,7 @@ import * as views from './views'
 import * as boards from './boards'
 import { listExports, previewContextExport, writeChartFiles, writeContextExport } from './exportService'
 import { createBackup, restoreBackup } from './backup'
+import { listRegister, recordAnalysis } from './register'
 import { APP_VERSION } from './version'
 import { runSelfTest, abortSelfTest } from './selfTest'
 
@@ -237,6 +238,8 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
     if (r.canceled || !r.filePath) return null
     return writeChartFiles(current, p, r.filePath, author())
   },
+  'analysis:record': (p) => recordAnalysis(requireProject(), { ...p, author: author() }),
+  'analysis:list': (p) => listRegister(requireProject(), { datasetVersionId: p.datasetVersionId, limit: p.limit }),
   'backup:create': async () => {
     const project = requireProject()
     const stamp = new Date().toISOString().slice(0, 10)

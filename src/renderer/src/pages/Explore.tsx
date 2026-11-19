@@ -129,12 +129,19 @@ function NoMeasure({ two }: { two?: boolean }) {
 function contextLine(sel: ReturnType<typeof useSelection>, qc: string[]) {
   const s = sel!
   const f = describeFilter(s.ctx, (useStore.getState().filter))
-  return `n = ${s.participantIds.length} participants · ${f === 'All rows' ? 'no cohort filter' : f} · QC: ${qcPolicyText(qc as any)}`
+  // Rows and participants differ as soon as a participant has more than one visit in the selection: say both.
+  const n = s.rows.length === s.participantIds.length ? `n = ${s.participantIds.length} participants` : `n = ${s.rows.length} observations from ${s.participantIds.length} participants`
+  return `${n} · ${f === 'All rows' ? 'no cohort filter' : f} · QC: ${qcPolicyText(qc as any)}`
 }
 
 export function useFullChart(): FullChart {
   const chart = useStore((s) => s.chart)
   return useMemo(() => normalizeChart(chart), [chart])
+}
+
+interface RegisterList {
+  totals: { analyses: number; tests: number }
+  entries: { id: number; fingerprint: string; kind: string; title: string; rows: number; tests: number; metadataVersion: number; author: string | null; at: string }[]
 }
 
 interface ScaleState {
@@ -193,6 +200,10 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
       toast('error', errorText(e))
     }
   }
+  const [register, setRegister] = useState<RegisterList | null>(null)
+  const loadRegister = () => {
+    call<RegisterList>('analysis:list', { datasetVersionId: null, limit: 50 }).then(setRegister).catch(() => setRegister(null))
+  }
   const copyLog = async () => {
     if (!prov) return
     try {
@@ -227,7 +238,7 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
       >
         <Calculator size={14} /> Analyze
       </button>}
-      <Popover.Root>
+      <Popover.Root onOpenChange={(open) => { if (open) loadRegister() }}>
         <Popover.Trigger asChild>
           <button className="btn sm" aria-label="Analysis history" data-testid="history" title="Every step behind this chart, in R syntax, with signatures"><ScrollText size={14} /> History</button>
         </Popover.Trigger>
@@ -254,6 +265,24 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
                 </div>
               </div>
             )}
+            <div className="stack" style={{ gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--hairline-strong)" }} data-testid="analysis-register">
+              <div className="row">
+                <strong style={{ flex: 1 }}>Analysis register</strong>
+                {register && <span className="badge outline" data-testid="register-totals">{register.totals.analyses} analys{register.totals.analyses === 1 ? 'is' : 'es'} · {register.totals.tests} p-value{register.totals.tests === 1 ? '' : 's'}</span>}
+              </div>
+              <div className="muted" style={{ fontSize: 12 }}>Every distinct analysis computed in the statistics panel of this project, recorded by the app and never edited. p-values are not adjusted for this count. Analyses blocked by the independence guard are not recorded.</div>
+              {register && register.entries.length === 0 && <div className="muted small">No analysis has been computed yet.</div>}
+              {register && register.entries.length > 0 && (
+                <ol style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
+                  {register.entries.map((e) => (
+                    <li key={e.id} className="small">
+                      <div className="row"><span style={{ flex: 1 }}>{e.title}</span><span className="kbd" title={`Fingerprint ${e.fingerprint}`}>{e.fingerprint.slice(0, 12)}</span></div>
+                      <div className="muted" style={{ fontSize: 11 }}>{e.at.slice(0, 16).replace('T', ' ')} · {e.kind === 'scatter' ? 'two measures' : 'distribution'} · {e.rows} observation{e.rows === 1 ? '' : 's'} · {e.tests} p-value{e.tests === 1 ? '' : 's'} · metadata rev {e.metadataVersion}{e.author ? ` · ${e.author}` : ''}</div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
@@ -415,7 +444,7 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
             scales={{ x: { value: chart.xScale, disabled: data.logValidX ? null : 'No positive values' }, y: { value: chart.yScale, disabled: data.logValidY ? null : 'No positive values' } }}
           />
           {data.points.length === 0 && data.hidden.length === 0 ? (
-            <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No complete pairs</h3><p>No selected participant has numeric values for both measures.</p></div>
+            <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No complete pairs</h3><p>No selected row has numeric values for both measures.</p></div>
           ) : (
             <EChart
               ref={ref}

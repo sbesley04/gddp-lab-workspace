@@ -8,6 +8,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 
 - **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
 - **Source (`main`), unreleased:** analysis log with signatures, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, plus the read-only MCP server described in [docs/MCP.md](docs/MCP.md). These are not in the 0.3.1 installers; build from source to use them.
+- **Source (branch `mcp-server`), unreleased:** statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values) and the R reference check. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
 
 ## What works
 
@@ -22,12 +23,14 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 | Distribution (box + all points; histogram unreleased) and two-measure scatter; linked table; forced axis bounds; chart style editor with presets | Working |
 | Colour-by a categorical variable; display transforms (log2, log10, square root, Box-Cox, centre, z-score, rank) that never change stored data or exports | Working (unreleased) |
 | On-demand statistics: CIs, normality, Welch t / Mann–Whitney / ANOVA / Kruskal–Wallis with effect sizes and Holm-adjusted pairwise tests, Pearson / Spearman / Kendall, linear fit with confidence and prediction bands; copyable tables, APA summaries and methods text | Working, validated against R 4.3 |
+| Statistical guardrails: no test, interval or fit when a participant contributes more than one visit (with a one-click fix); percent censored beside every summary; p-values shown without emphasis | Working (unreleased) |
+| Analysis register: every distinct analysis computed, with its p-values, recorded append-only by the main process; shown in History and exported | Working (unreleased) |
 | Many measures: correlation matrix (no p-values), participant × measure heatmap, and exploratory PCA with a gap suggestion for wide panels and an optional biplot (loading vectors) | Working (unreleased), validated against R |
 | Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in exports) | Working (unreleased) |
 | Chart download: SVG/PNG, journal and slide size presets, signature footer, `.chart.json` and `.analysis-log.R` sidecars | Working (unreleased) |
 | Saved views pinned to dataset and metadata versions and reproduced after restart; Compare whiteboard of views and notes, exportable as SVG/PNG | Working |
 | First-run tour, ⌘K search and ⌘1–⌘6 shortcuts; wide tables virtualised in both directions | Working |
-| Research-context ZIP (pseudonymous keys, checksums, preview); `analysis_log.R` is the seventh file in unreleased builds | Working |
+| Research-context ZIP (pseudonymous keys, checksums, preview); `analysis_log.R` and `analysis_register.json` are the seventh and eighth files in unreleased builds | Working |
 | Backup and verified restore | Working |
 | MCP server for AI assistants (read-only, aggregate results, small-cell suppression, access log) | Working (unreleased), tested on synthetic data only |
 | macOS installers (arm64 and x64 DMG/ZIP, unsigned) | Built and smoke-tested with `--self-test` (x64 under Rosetta) |
@@ -57,9 +60,10 @@ npm run dev
 | Command | Purpose |
 | --- | --- |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest unit and integration tests (153, synthetic data only) |
+| `npm test` | Vitest unit and integration tests (169, synthetic data only) |
 | `npm run e2e` | Builds, then runs the Playwright UI tests |
 | `npm run test:reference` | Opt-in checks against a local real workbook (counts only) |
+| `npm run reference:check` | Regenerates the R reference values and compares them with the committed files (needs R) |
 | `npm run build:mcp` | Builds the MCP server to `out/mcp/server.js` |
 | `npm run dist:mac` / `npm run dist:win` | Unsigned installers in `release/` |
 

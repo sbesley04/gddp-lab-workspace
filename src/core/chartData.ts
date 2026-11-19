@@ -4,6 +4,7 @@ import { getObservation, isUsable, pairedObservations } from './selection'
 import { summarize, type Summary } from './stats'
 import type { CellValue } from './types'
 import { buildTransform, transformParams, type TransformId } from './transforms'
+import { censoringOf, type CensoringInfo } from './censoring'
 
 export interface PlotPoint {
   row: number
@@ -20,6 +21,8 @@ export interface DistributionGroup {
   points: PlotPoint[]
   summary: Summary
   nonPositiveHidden: PlotPoint[] // shown in a notice when a log axis is used
+  /** Share of this group's measured values that are censored (left out of every numeric statistic). */
+  censoring: CensoringInfo
 }
 
 export interface DistributionData {
@@ -137,7 +140,7 @@ export function distributionData(sel: SelectionResult, variable: number, groupVa
     const shown = scale === 'log' ? pts.filter((p) => p.value > 0) : pts
     const hidden = scale === 'log' ? pts.filter((p) => p.value <= 0) : []
     if (pts.some((p) => p.value > 0)) anyPositive = true
-    groups.push({ label, points: shown, summary, nonPositiveHidden: hidden })
+    groups.push({ label, points: shown, summary, nonPositiveHidden: hidden, censoring: censoringOf(usable.map((o) => o.value)) })
   }
   const logValid = anyPositive
   return { groups, totals, transformDropped, transformNotes: [transformNote(sel, variable, tf)].filter((x): x is string => !!x), categories: orderedCategories(cats), logValid, logReason: logValid ? null : 'A log axis needs at least one positive value.' }
@@ -157,6 +160,17 @@ export interface ScatterData {
   /** Box-Cox λ for either axis, as sentences for the chart notices. */
   transformNotes: string[]
   categories: string[]
+  /** Share of each measure's usable values in the selection that are censored. */
+  censoring: { x: CensoringInfo; y: CensoringInfo }
+}
+
+function censoringFor(sel: SelectionResult, variable: number): CensoringInfo {
+  const values: CellValue[] = []
+  for (const row of sel.rows) {
+    const o = getObservation(sel.ctx, row, variable)
+    if (isUsable(o)) values.push(o.value)
+  }
+  return censoringOf(values)
 }
 
 export function scatterData(
@@ -196,7 +210,8 @@ export function scatterData(
     logValidY: pr.pairs.some((p) => p.y > 0),
     transformDropped,
     transformNotes: [transformNote(sel, xVar, tx), transformNote(sel, yVar, ty)].filter((x): x is string => !!x),
-    categories: []
+    categories: [],
+    censoring: { x: censoringFor(sel, xVar), y: censoringFor(sel, yVar) }
   }
   for (const p of pr.pairs) {
     const badX = xScale === 'log' && p.x <= 0

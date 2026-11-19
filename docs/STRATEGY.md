@@ -4,6 +4,25 @@ Reviewed 2026-11-17 on branch `mcp-server` at `2f09d2e`. This document records w
 
 **Verdict.** The engineering base is strong, but the app is not yet fit for institutional use. The gaps are statistical guardrails, tamper-evidence, MCP privacy and release discipline. The roadmap puts new features ahead of them.
 
+## Progress
+
+Updated 2026-11-19. Everything marked done is in the source, unreleased, and verified as [STATUS.md](STATUS.md) describes.
+
+| Item | State | Notes |
+| --- | --- | --- |
+| Phase 0: ignore `.codex/` and `Claude outputs/`; fix the stale CI and doc comments (E6, E9 in part) | Done | `CLAUDE.md` and `AGENTS.md` are still kept in sync by hand. |
+| Phase 0: settle the MCP connection (Q1) | **Open** | Needs the developer. The server was still connected to an assistant session on 2026-11-19; it was not called. |
+| Phase 0: push and merge branches, tag a release (E5, E6 in part) | **Open** | Needs a decision on what the release contains. |
+| S1 Independence guard | Done for the statistics panel | `src/core/independence.ts`, used by the app and the MCP server. The app computes no test, interval or fit when a participant contributes more than one row, and offers each visit as a one-click fix. The MCP server still warns instead of refusing (Q6). The many-measures views (correlation matrix, heatmap, PCA) have no guard yet. |
+| S2 Methods and caveat text | Done | Visit and participant wording is derived from the analysed rows. |
+| S3 Censoring visibility | Done in part | Percent censored is shown per variable and group, with the direction of the bias. Means and SDs are marked above a threshold of 15%, which is **provisional** until Q4 is answered. Censoring-aware estimates remain Phase 3. |
+| S4 Analysis register | Done | Append-only table; the main process recomputes each analysis. Shown in History and written to the context package. Analyses run through the MCP server or in R are not recorded. |
+| S5 Neutral p-values | Done | No accent below .05. |
+| S7 R in CI | Done locally; CI job not yet run | Each reference file records its R and package versions. `npm run reference:check` regenerates and compares them; the `r-reference` CI job does the same with pinned versions, and has not run yet because nothing has been pushed. |
+| G4 Copy the database before migrating | Done | Brought forward from Phase 2, because the register adds a migration. |
+
+Phase 1's first "done when" condition is met and tested: a multi-visit fixture cannot produce a test (`tests/guardrails.test.ts`, `e2e/guardrails.spec.ts`). The second is met locally and awaits its first CI run.
+
 ## What was checked
 
 | Area | How |
@@ -145,5 +164,7 @@ The simple tests already in `src/core/analysis.ts` stay as they are.
 | Q1 | Does the project folder the MCP server points at hold real study data? | Developer |
 | Q2 | May aggregate results reach an AI provider (IRB/DUA)? | PI |
 | Q3 | R as engine of record, or in-app methods, for Phase 3? | PI and statistician |
-| Q4 | What censoring threshold should mark mean-based statistics as biased? | Statistician |
+| Q4 | What censoring threshold should mark mean-based statistics as biased? The app uses a provisional 15% (`CENSORING_BIAS_THRESHOLD` in `src/core/censoring.ts`) until this is answered. | Statistician |
 | Q5 | Which licence, and who is the second maintainer? | PI |
+| Q6 | Should the MCP server refuse tests on repeated visits, as the app now does, instead of warning? | PI and statistician |
+| Q7 | Should the register count assumption checks (Shapiro–Wilk, Brown–Forsythe) with the other p-values, as it does now? | Statistician |

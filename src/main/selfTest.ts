@@ -11,6 +11,7 @@ import { buildSnapshot } from './snapshot'
 import { saveView, getView } from './views'
 import { writeContextExport } from './exportService'
 import { createBackup, restoreBackup } from './backup'
+import { recordAnalysis } from './register'
 import { computeSelection } from '@core/selection'
 import { pcaPlot } from '@core/pca'
 import { correlationFromSelection } from '@core/matrix'
@@ -70,6 +71,13 @@ export async function runSelfTest(outDir: string | undefined, demoPath: string, 
     const plot = pcaPlot(sel, numeric, null)
     const corr = correlationFromSelection(sel, numeric, 'spearman')
     check('PCA and correlation matrix compute', !!plot.result && corr.r.every((row) => row.every((r) => r === null || Math.abs(r) <= 1)), plot.result ? `${plot.result.n} complete rows, ${numeric.length} variables` : plot.error ?? '')
+    const tnf = snap.variables.find((v) => v.header === 'TNF')
+    if (tnf) {
+      const scatter = { type: 'scatter' as const, measureKey: il6.key, compareKey: tnf.key, groupKey: null, xScale: 'linear' as const, yScale: 'linear' as const, tableColumns: [] }
+      const first = recordAnalysis(p, { spec, chart: scatter, metadataVersion: v2.metadataVersion, author: null })
+      const again = recordAnalysis(p, { spec, chart: scatter, metadataVersion: v2.metadataVersion, author: null })
+      check('analysis register records each analysis once', first.recorded && !again.recorded && again.totals.analyses === 1 && again.totals.tests === first.tests, `${first.tests} p-values`)
+    }
     const backupPath = join(work, 'backup.zip')
     await createBackup(p, backupPath, null)
     p.close()

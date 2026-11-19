@@ -52,7 +52,8 @@ describe('buildTransform', () => {
 
 const RB = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'transforms_reference.json'), 'utf8')) as Record<string, { y: number[]; lambda: number; loglik: number; lambda_car: number; transformed: number[] }>
 describe('Box-Cox matches R', () => {
-  for (const [name, ref] of Object.entries(RB)) {
+  // Keys starting with "_" are metadata (the R and package versions that produced the file), not samples.
+  for (const [name, ref] of Object.entries(RB).filter(([k]) => !k.startsWith('_'))) {
     it(`${name}: λ by maximum likelihood, log-likelihood and transformed values`, () => {
       const lambda = boxcoxLambda(ref.y)!
       // The likelihood is flat at its maximum, so λ agrees to about 1e-7 while the log-likelihood agrees far closer.

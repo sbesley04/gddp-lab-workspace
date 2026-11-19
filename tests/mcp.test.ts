@@ -197,7 +197,7 @@ describe('MCP server', () => {
     expect(female.change.meanChange).toBeCloseTo(2.1, 1)
     const pooled = await call('summarize', { variable: 'Marker', groupBy: 'Sex' })
     expect(pooled.json.warnings.join(' ')).toMatch(/groupFrom/)
-    expect(pooled.json.warnings.join(' ')).toMatch(/several visits/)
+    expect(pooled.json.warnings.join(' ')).toMatch(/contribute more than one visit/)
     const carried = await call('summarize', { variable: 'Marker', groupBy: 'Sex', groupFrom: 'participant', visits: ['Month 6'] })
     expect(carried.json.groups.map((g: { group: string }) => g.group)).toEqual(['Female', 'Male'])
     const badVisit = await call('summarize', { variable: 'Marker', visits: ['Month 12'] })

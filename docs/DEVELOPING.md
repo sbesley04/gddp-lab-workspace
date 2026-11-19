@@ -21,10 +21,11 @@ Why the XLSX reader is written in-house: SheetJS Community Edition does not read
 
 ```
 src/core/       pure TS: types, value classification, stats and inference, selection engine, chart data,
-                transforms, PCA and correlation matrix, analysis log (provenance), CSV, context export
+                transforms, PCA and correlation matrix, analysis log (provenance), CSV, context export,
+                independence guard, censoring counts, analysis runner (what the statistics panel computes)
 src/importer/   OOXML reader, CSV reader, legend decoder, import model + validation
 src/main/       Electron main: security, IPC, SQLite (migrations), projects, import, snapshot, curation,
-                saved views, export, backup/restore, --self-test
+                saved views, analysis register, export, backup/restore, --self-test
 src/preload/    sandboxed preload exposing window.bari.invoke (allow-listed channels only)
 src/shared/     IPC channel list and zod schemas
 src/renderer/   React UI (design tokens in styles.css)
@@ -32,7 +33,8 @@ src/mcp/        read-only MCP server for AI assistants (see MCP.md); built separ
 tests/          Vitest unit + integration; tests/reference = opt-in real-workbook check
 e2e/            Playwright Electron tests (UI workflow, chart downloads, tour and wide table, screenshots)
 tools/          make_fixtures.py (synthetic fixtures via openpyxl); stats_reference.R and
-                multivariate_reference.R and transforms_reference.R (R reference values for the tests); dev only
+                multivariate_reference.R and transforms_reference.R (R reference values for the tests);
+                check_reference.mjs (regenerates and compares them); dev only
 build/          icon, entitlements
 ```
 
@@ -44,6 +46,10 @@ build/          icon, entitlements
 - Curation is an append-only `revision` table, and the "metadata version" is its maximum id. Snapshots can be rebuilt as of any revision (`buildSnapshot(project, versionId, asOf)`).
 - A long-form `observation` view sits over the preserved wide `cell` table.
 - Placeholders exist for specimen, batch, replicate, detection limit, units and exposure (`observation_context`). They are intentionally empty.
+- `analysis_register` is append-only (triggers), one row per distinct analysis, keyed by a full SHA-256 fingerprint of the dataset version, metadata version, selection and analysis inputs.
+- Before migrating an existing project, `Db.migrate` copies the database to `workspace.sqlite.before-schema-<n>.bak` in the project folder.
+
+**Statistics panel.** `src/core/analysisRun.ts` holds what the panel computes (`analyseDistribution`, `analyseScatter`). The renderer calls it for display. The main process calls the same code from `src/main/register.ts` to write the analysis register, so it never stores numbers sent by the renderer. The independence guard is inside these functions: when a participant contributes more than one row they return descriptives only. Add a new test to the panel by adding it there and to `distributionTests` / `scatterTests`, so the register counts it.
 
 ## Commands
 
@@ -51,9 +57,10 @@ build/          icon, entitlements
 | --- | --- |
 | `npm run dev` | Run with hot reload |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest (153 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server |
+| `npm test` | Vitest (169 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server, statistical guardrails and the analysis register |
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted), chart SVG/PNG downloads with sidecars, PCA and many-measures views, the tour and wide table, and screenshots of every screen in light and dark mode |
+| `npm run reference:check` | Runs the three R scripts into a temporary folder and compares the output with `tests/fixtures/*_reference.json`: same structure, same R and package versions (`_r`), numbers within 1e-9 relative (1e-6 for Box-Cox λ). Needs R with jsonlite and car. CI runs it in the `r-reference` job with the versions the files record. |
 | `npm run build:mcp` | Builds the MCP server into `out/mcp/server.js` (one file, plain Node 22.13+). See [MCP.md](MCP.md). |
 | `npm run fixtures` | Regenerates the synthetic fixtures (needs Python 3 and openpyxl) |
 | `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
@@ -68,7 +75,7 @@ build/          icon, entitlements
 "release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test /tmp
 ```
 
-It writes `/tmp/bari-self-test.json` and exits with 0 on success. On Windows, run `"BARI-CNS Research Workspace.exe" --self-test C:\some\folder`. CI (`.github/workflows/build.yml`) runs this on both platforms once the repository has a GitHub remote.
+It writes `/tmp/bari-self-test.json` and exits with 0 on success. On Windows, run `"BARI-CNS Research Workspace.exe" --self-test C:\some\folder`. CI (`.github/workflows/build.yml`) runs this on both platforms.
 
 Playwright cannot drive a packaged build, because the `EnableNodeCliInspectArguments` fuse is disabled for security. That is why the packaged smoke test uses `--self-test`. It includes loading the real renderer in a hidden window through the real IPC bridge.
 
@@ -89,6 +96,8 @@ Notes about a real study workbook (collaborator names, file names, participant r
 ## Testing notes
 
 - **Expected statistics are independent.** `tests/stats.test.ts` uses hand-computed values. `tests/inference.test.ts` compares every distribution, test, CI and regression output with base R / car (`t.test`, `wilcox.test`, `oneway.test`, `kruskal.test`, `leveneTest`, `cor.test`, `lm`, `predict`, `shapiro.test`, `p.adjust`) to 1e-8 relative or better (Shapiro–Wilk: 1e-6, matching R's single-precision coefficients).
+- **R versions are pinned.** Each reference file records the R and package versions that produced it under `_r` (currently R 4.3.2, jsonlite 2.0.0, car 3.1.3). To move to newer versions, regenerate the three files, commit them, and change the versions in `.github/workflows/build.yml`; `tests/rReference.test.ts` fails if the two disagree. Run the R scripts from the repository root.
+- **Guardrails** (`tests/guardrails.test.ts`, `e2e/guardrails.spec.ts`) use a synthetic two-visit CSV built in the test: the independence guard, censoring counts, the register (recomputation, de-duplication, fingerprints, append-only triggers, export) and the pre-migration copy.
 - **Multivariate results** (`tests/pca.test.ts`, `tests/matrix.test.ts`) match R `prcomp(scale. = TRUE)` and `cor(use = "pairwise.complete.obs")` to about 1e-8, with ties and missing values. Histogram counts match R `hist(right = FALSE)`.
 - **Analysis log** (`tests/provenance.test.ts`): the text is deterministic, every upstream change alters the chain signature, and no participant ID or file name is written. SHA-256 is checked against NIST vectors.
 - **Statistics code:** `src/core/distributions.ts` (t, F, χ², normal, binomial via incomplete beta and gamma) and `src/core/analysis.ts`. Statistics are never computed automatically; the UI calls them only after **Compute**.

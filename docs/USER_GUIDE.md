@@ -58,6 +58,7 @@ Importing the same file again is recognised by its checksum, and the app offers 
   - Over a wide panel, complete cases can be few. When dropping the variables with gaps in more than 10% of rows would keep more participants, the view offers to do that and says how many rows it would regain; you still press Compute.
   - You get a scores plot (choose the components for each axis), variance explained per component and a loadings table. Component signs are arbitrary; each is set so its largest loading is positive. Results match R `prcomp(scale. = TRUE)`.
   - **Loading vectors (biplot)** draws each variable as an arrow: its correlation with the two components shown (loading × component SD, at most 1). The 10 longest are drawn, all stretched by one factor to fit the scores, and the note under the chart gives that factor. The setting is saved with the view.
+- **History** also shows the **analysis register** (see Statistics below): how many analyses and p-values this project has computed, and the most recent ones.
 - **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a signature, and the chain signature changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
 - **Download** saves the chart as SVG or PNG.
   - **Size:** as on screen, journal single column (600 × 420), double column (1200 × 700) or slide (1600 × 900). PNG can be 1×, 2× or 4×.
@@ -68,7 +69,13 @@ Importing the same file again is recognised by its checksum, and the app offers 
 
 ## Statistics (Analyze)
 
-**Analyze** opens the statistics panel next to the chart. Nothing is calculated until you press **Compute statistics**. Close the panel to discard the results.
+**Analyze** opens the statistics panel next to the chart. Nothing is calculated until you press **Compute statistics**. Close the panel to hide the results.
+
+**One observation per participant.** Each row is one participant at one visit, and every test here assumes the rows are independent. If your selection holds more than one visit for any participant, the panel runs no test, confidence interval, normality check or fit. It says how many observations come from how many participants, shows plain descriptives, and offers a button for each visit (**Use only Baseline**). Pick one and the tests run. Fit lines, bands and mean ± CI are not drawn on the chart either until you do. Paired tests and change over time are not built yet.
+
+**Censored values.** The summary table has a **Censored** column: the share of measured values recorded as "<x" or ">x". These are never replaced by a number, so they are left out of every statistic, which biases the mean (upward for values below a detection limit). A note says which way. Above 15% the mean and SD are marked **† biased**; prefer the median and the share detected. The 15% line is provisional.
+
+**Analysis register.** Each distinct analysis you compute is recorded once in the project, with its tests and p-values. The app recomputes it itself; nothing can edit or delete an entry. Changing colours, axis bounds or overlays does not make a new entry, but changing the measure, grouping, visits, filter, QC policy or a transform does. A line under the results gives the running total, **History** lists the entries, and the export package includes them. Use the total when you report how many tests were run. Blocked analyses are not recorded.
 
 **Distribution charts**, per group:
 - n, mean (SD) with a t-based 95% CI;
@@ -93,7 +100,7 @@ When grouped by a categorical variable:
 - **APA summary** is a results sentence.
 - **Methods text** is a paragraph naming every method, the software version, the dataset version and checksum, the metadata revision and the QC policy.
 
-All tests are two-sided at 95%. p-values are shown APA-style ("p = .032", "p < .001"). Results are exploratory: they are not adjusted for how many analyses you run, and with baseline-only data they cannot show causality or treatment effects.
+All tests are two-sided at 95%. p-values are shown APA-style ("p = .032", "p < .001"), all in the same plain style: nothing is highlighted below .05. Results are exploratory: they are not adjusted for how many analyses you run, and they cannot show causality or treatment effects. The caveats and the methods text name the visit the observations came from.
 
 The table, chart, summary and export all use the same selection engine, so their counts always agree.
 
@@ -150,6 +157,7 @@ The ZIP contains:
 - `study_context.md` (which states "baseline observations only" when that applies)
 - `analysis_request.md`
 - `analysis_log.R`, the steps behind the selection in R syntax, with its chain signature (also recorded in the manifest)
+- `analysis_register.json`, the analyses already computed in the app on this dataset version. The totals cover all of them. Tests and p-values are listed only for analyses whose variables are all in this export, and group summaries are left out.
 - `manifest.json`, with checksums, selection rules, versions and the software version
 
 **Copy summary** gives you a short text to paste into a chat. To use Claude or another assistant, attach the ZIP yourself: the app sends nothing. Alternatively, an assistant can query aggregate results through the MCP server (see below).

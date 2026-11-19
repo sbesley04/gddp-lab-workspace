@@ -24,6 +24,7 @@ import {
   type Interval
 } from '@core/analysis'
 import { correlationFromSelection } from '@core/matrix'
+import { independenceMessage, repeatInfo } from '@core/independence'
 import { gapSuggestion, pcaPlot } from '@core/pca'
 import { buildTransform, TRANSFORM_FN, transformParams, type TransformId } from '@core/transforms'
 import { getStudyContext } from '../main/curation'
@@ -208,13 +209,10 @@ function selectionInfo(ws: Workspace, r: Resolved) {
   }
 }
 
-/** Warns when a participant contributes several rows (visits), because the tests assume independent observations. */
+/** The app's independence guard (src/core/independence.ts): warns when a participant contributes several rows (visits). */
 function repeatedWarning(r: Resolved, rows: number[], warnings: string[]) {
-  const n = participantsOfRows(r.snap, rows)
-  if (rows.length > n)
-    warnings.push(
-      `${rows.length} observations come from ${n} participants: some participants contribute several visits. Tests assume independent observations, so restrict "visits" to one visit, or use change_between_visits for within-participant change.`
-    )
+  const msg = independenceMessage(repeatInfo(r.snap, rows))
+  if (msg) warnings.push(`${msg} Restrict "visits" to one visit, or use change_between_visits for within-participant change. The app refuses to run these tests on such a selection.`)
 }
 
 /** States a parameter the transform estimated from the selection (Box-Cox λ), so the analysis can be reproduced. */

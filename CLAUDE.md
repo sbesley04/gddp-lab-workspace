@@ -21,17 +21,19 @@ Users are lab researchers, not developers. The tool is for **exploration**: no c
 
 ```
 src/core/       Pure TS (no Node/Electron/DOM). Types, value classification, selection engine, stats & inference,
-                chart data, transforms, PCA, correlation matrix, analysis log (provenance), CSV, context export.
+                chart data, transforms, PCA, correlation matrix, analysis log (provenance), CSV, context export,
+                independence guard, censoring counts, analysis runner (what the statistics panel computes).
 src/importer/   In-house OOXML reader (ooxml.ts), CSV reader, legend decoder, import model + validation (model.ts).
 src/main/       Electron main: IPC handlers + security (index.ts), SQLite (db/), project folders & lock, import,
-                snapshot building, curation, saved views, boards, export, backup/restore, --self-test.
+                snapshot building, curation, saved views, boards, analysis register, export, backup/restore, --self-test.
 src/preload/    Sandboxed CJS preload exposing window.bari.invoke for allow-listed channels only.
 src/shared/     channels.ts (IPC allow-list) and ipc.ts (zod schemas per channel).
 src/renderer/   React 19 UI. store.ts (Zustand), api.ts (call()), pages/, components/, styles.css (design tokens).
 src/mcp/        Read-only stdio MCP server, built separately (vite.mcp.config.ts → out/mcp/server.js).
 tests/          Vitest (synthetic data); tests/reference = opt-in real-workbook check.
 e2e/            Playwright driving the dev Electron build.
-tools/          make_fixtures.py (openpyxl), stats_reference.R, multivariate_reference.R, transforms_reference.R.
+tools/          make_fixtures.py (openpyxl), stats_reference.R, multivariate_reference.R, transforms_reference.R,
+                check_reference.mjs (regenerates the R references and compares them with the committed files).
 ```
 
 Path aliases: `@core/*`, `@shared/*`, `@importer/*` (tsconfig + electron.vite.config + vite.mcp.config all define them).
@@ -51,13 +53,19 @@ Path aliases: `@core/*`, `@shared/*`, `@importer/*` (tsconfig + electron.vite.co
 - **Formatting interpretation**: legend-driven, with statuses `legend_exact | legend_tentative | needs_review | unresolved | curator_confirmed | curator_rejected`. It is tuned to this lab's legend conventions; other workbooks import fine but show mostly "unresolved".
 - **Analysis log** (`src/core/provenance.ts`): deterministic R-syntax text with chained 8-hex SHA-256 step signatures. It is a readable record, not a guaranteed-runnable script. It must never contain participant IDs or the source file name (file is identified by SHA-256). Any upstream change must alter the chain signature — `tests/provenance.test.ts` enforces this.
 - **Display transforms & covariates** (`src/core/transforms.ts`): log2/log10/sqrt/Box-Cox/centre/z-score/rank and colour-by change *drawing and that chart's summaries only*; stored data and exports are untouched. Point shapes are reserved for QC flags (hence no shape-by). Box-Cox estimates λ from the selection (`boxcoxLambda`, numerically stable likelihood); anything estimated from the data must be stated on the chart and written into the analysis log.
+- **Statistics panel = `src/core/analysisRun.ts`** (`analyseDistribution`, `analyseScatter`). The renderer calls it for display and the main process calls the same code for the register; don't compute tests inline in a component. New tests must also be added to `distributionTests` / `scatterTests` so the register counts them.
+- **Independence guard** (`src/core/independence.ts`, shared with the MCP server): each row is one participant at one visit. When any participant contributes more than one analysed row, the runner returns descriptives only (no test, CI, Shapiro–Wilk or fit), chart overlays are not drawn, and the panel offers each visit as a one-click fix. Don't add an override. The MCP server only warns. PCA, correlation matrix and heatmap are not guarded yet.
+- **Censoring visibility** (`src/core/censoring.ts`): percent censored per group/measure is shown beside summaries; means and SDs are marked biased above `CENSORING_BIAS_THRESHOLD` (15%, **provisional** until a statistician sets it; STRATEGY Q4). Nothing is ever substituted.
+- **Analysis register** (`src/main/register.ts`, table `analysis_register`): one append-only row per distinct analysis, keyed by a full SHA-256 fingerprint of dataset version, metadata version, selection and analysis inputs (not display settings). The main process recomputes the analysis from the spec; it never stores renderer numbers. Listed in History, exported as `analysis_register.json` (details only for analyses whose variables are all exported; no group summaries). Blocked analyses and MCP analyses are not recorded.
+- **p-values are displayed neutrally**: no colour or emphasis below .05.
 - **Saved views** store a `SavedViewSpec` (`schema: 1`). Old specs must keep loading — `normalizeChart` (`src/core/chartStyle.ts`) fills defaults for fields added later. When you add a `ChartConfig` field, make it optional and default it in `normalizeChart`.
 
 ## Database (`src/main/db/migrations.ts`)
 
 - `node:sqlite` (built into Node/Electron — no native modules). Thin wrapper in `src/main/db/db.ts`.
 - **Never edit a shipped migration; append a new one** to `MIGRATIONS`.
-- Triggers make `cell`, `variable`, `dataset_version`, `revision`, `audit_log` immutable, and `saved_view.spec_json` immutable ("save a new view"). Curation therefore goes through `revision` rows (`src/main/curation.ts`), not updates. `compare_board` layouts are the editable exception.
+- `Db.migrate` copies the database to `workspace.sqlite.before-schema-<n>.bak` before migrating an existing project. A new migration also means the read-only MCP reader refuses the project until the app has opened it once.
+- Triggers make `cell`, `variable`, `dataset_version`, `revision`, `audit_log`, `analysis_register` immutable, and `saved_view.spec_json` immutable ("save a new view"). Curation therefore goes through `revision` rows (`src/main/curation.ts`), not updates. `compare_board` layouts are the editable exception.
 - Wide `cell` table is the preserved source; `observation` is a long-form view over it. `observation_context` and `visit.actual_date` are deliberately empty placeholders (never infer dates).
 - Project folder: `<Name>.bariproj/` with `project.json`, `workspace.sqlite`, `sources/` (read-only checksummed snapshot of the imported file) and a `.lock` (single writer). Sync/network folders trigger a warning (`syncFolderWarning`).
 
@@ -86,13 +94,14 @@ npm run dev            # electron-vite with hot reload
 npm run typecheck
 npm test               # Vitest, synthetic data, no Electron needed
 npm run e2e            # builds, then Playwright against the built app
+npm run reference:check  # Rscript the three references into a temp folder and compare with the committed files
 npm run build:mcp      # out/mcp/server.js
 npm run fixtures       # regenerate synthetic fixtures (python3 + openpyxl)
 npm run dist:mac       # unsigned DMG/ZIP arm64+x64 in release/
 ```
 
 - Before finishing a change: `npm run typecheck && npm test`; run `npm run e2e` for UI changes.
-- R references: `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` (needs jsonlite, car); `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json`; `Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json` (needs car).
+- R references: `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` (needs jsonlite, car); `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json`; `Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json` (needs car). Run them from the repository root. Each file records its R and package versions under `_r`; CI job `r-reference` installs those versions and runs `tools/check_reference.mjs`. If you regenerate with other versions, update the pins in `.github/workflows/build.yml` (`tests/rReference.test.ts` checks they match).
 - Packaged builds can't be driven by Playwright (inspect fuse disabled). Use `--self-test <dir>` instead; it writes `bari-self-test.json` and exits 0 on success. CI (`.github/workflows/build.yml`) does this on macOS and Windows; docs-only changes skip CI.
 - `BARI_USER_DATA` (test-only) points the app at an isolated settings folder.
 
@@ -109,11 +118,13 @@ Renderer: `sandbox`, `contextIsolation`, no `nodeIntegration`, custom `app://` p
 - Numbered visits sort numerically (Month 2 before Month 6) — `src/core/visitOrder.ts`.
 - ECharts uses the SVG renderer; chart SVG export must stay well-formed XML with every font choice (`e2e/charts.spec.ts` parses it).
 - `src/core/assistant.ts` is an interface for a *future* bring-your-own-key AI connector. Nothing implements it; don't wire it up without the contract it documents (keychain storage, payload preview, user-initiated send).
+- The context package has eight files; tests and E2E assert the exact list, so update both when adding one.
 - Not built yet, by design: repeated-measures models, covariate adjustment, paired tests, PERMANOVA, visit trajectories, violin plots, facet-by, p-value ranking across many measures. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/LIMITATIONS.md](docs/LIMITATIONS.md) before adding anything in this space.
 
 ## Release and docs state
 
-- Installers are **0.3.1** (2026-10-26). Everything since (analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA, MCP server) is unreleased. Check `git log main..HEAD` to see what is on your branch versus `main`.
+- Installers are **0.3.1** (2026-10-26). Everything since (analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA, MCP server, statistical guardrails and analysis register) is unreleased.
+- [docs/STRATEGY.md](docs/STRATEGY.md) sets the order of work; its **Progress** table says what is done. Phase 1 (statistical guardrails) is done apart from the open questions; Phase 0 still needs the MCP connection settled, a push and a release. Update that table when you finish a strategy item. Check `git log main..HEAD` to see what is on your branch versus `main`.
 - [docs/STATUS.md](docs/STATUS.md) records how each feature was verified; update it (and the README "What works" table, test counts in README/DEVELOPING/STATUS) when you add a feature or tests.
 - Docs style: plain, short sentences, British spelling (colour, visualise, normalise), tables for feature/verification lists, no marketing language, honest about what is untested.
 - Commit messages: short imperative summary, optionally prefixed by area (`Docs:`, `CI:`, `Fix …`).

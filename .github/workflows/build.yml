@@ -1,4 +1,4 @@
-# Builds and smoke-tests unsigned installers on macOS and Windows. Not yet run: this repository has no remote.
+# Builds and smoke-tests unsigned installers on macOS and Windows, and checks the R reference values (job r-reference).
 name: build
 on:
   # Documentation-only changes do not need a full build (macOS minutes bill at 10x on private repos).
@@ -8,6 +8,27 @@ on:
     paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
 jobs:
+  # Statistics are validated against R. This job installs the R and package versions recorded in the reference files
+  # ("_r" in tests/fixtures/*_reference.json), regenerates them and fails if R no longer agrees with what is committed.
+  r-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.2'
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          # Keep in step with "_r" in the reference files; the check below fails if they differ.
+          packages: |
+            jsonlite@2.0.0
+            car@3.1-3
+      - run: node tools/check_reference.mjs
   build:
     strategy:
       fail-fast: false

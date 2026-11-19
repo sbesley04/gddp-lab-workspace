@@ -215,7 +215,12 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       raw.push({
         kind: 'statistics',
         title: 'Statistics panel opened (results are computed only when Compute is pressed)',
-        code: ['# exploratory; not adjusted for the number of analyses run', ...(on.length ? [`# overlays: ${on.join(', ')}`] : [])]
+        code: [
+          '# exploratory; not adjusted for the number of analyses run',
+          '# each distinct analysis computed is recorded in the project analysis register, with its tests and p-values',
+          '# no test, interval or fit is computed when a participant contributes more than one observation (visit)',
+          ...(on.length ? [`# overlays: ${on.join(', ')}`] : [])
+        ]
       })
     }
   }

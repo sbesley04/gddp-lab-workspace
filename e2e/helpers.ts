@@ -16,6 +16,9 @@ export async function launch(userData: string, colorScheme: 'light' | 'dark' = '
   const app = await electron.launch({ executablePath, args, env: { ...process.env, BARI_USER_DATA: userData }, colorScheme })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
+  // CI's screen is small, so the window opens at its minimum size there. BARI_E2E_SMALL=1 does the same on a large
+  // screen, to reproduce a failure that only CI shows.
+  if (process.env.BARI_E2E_SMALL) await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1024, 680))
   // Most tests skip the first-run tour; tour.spec.ts exercises it.
   if (!opts.tour) await page.evaluate(() => localStorage.setItem('bari.tour.v1', 'done'))
   return { app, page }

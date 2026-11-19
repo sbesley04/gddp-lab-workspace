@@ -121,10 +121,22 @@ test('import, select, save, export, back up — all offline', async () => {
   const head = page.locator('.board-card-head').first()
   const cardTitle = await head.locator('.t').innerText()
   const card = page.getByTestId('board-card').filter({ has: page.locator('.t', { hasText: cardTitle }) })
-  const box = (await head.boundingBox())!
+  // In a small window (CI runs at the minimum size) the board is still moving as its charts load. Bring the card
+  // header to the middle of the window, wait until it has stopped moving and is the element under the pointer,
+  // and only then drag it.
+  await head.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  let box = (await head.boundingBox())!
+  await expect
+    .poll(async () => {
+      const now = (await head.boundingBox())!
+      const still = Math.abs(now.x - box.x) < 0.5 && Math.abs(now.y - box.y) < 0.5
+      box = now
+      return still && (await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.board-card-head'), [now.x + 60, now.y + now.height / 2]))
+    }, { intervals: [300] })
+    .toBe(true)
   await page.mouse.move(box.x + 60, box.y + box.height / 2)
   await page.mouse.down()
-  await page.mouse.move(box.x + 60, box.y + 260, { steps: 8 })
+  await page.mouse.move(box.x + 60, box.y + 120, { steps: 8 })
   await page.mouse.up()
   await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 5000 })
   const movedTop = await card.evaluate((el) => (el as HTMLElement).style.top)

@@ -22,7 +22,7 @@ import { correlationFromSelection, heatmapData } from '@core/matrix'
 import { gapSuggestion, pcaPlot } from '@core/pca'
 import type { SelectionResult } from '@core/selection'
 import { AxisBoundsEditor, StyleEditor } from '../components/ChartControls'
-import { DistributionStats, ScatterStats } from '../components/StatsPanel'
+import { DistributionStats, PooledVisitsNotice, ScatterStats } from '../components/StatsPanel'
 import { FilterBar, MeasurePicker, QcPolicyPicker, TransformSelect, VisitPicker, VariableList } from '../components/Pickers'
 import { DataTable } from '../components/DataTable'
 import * as Popover from '@radix-ui/react-popover'
@@ -106,6 +106,7 @@ export function Explore() {
             <button aria-pressed={chart.type === 'pca'} onClick={() => setChart({ type: 'pca' })} data-testid="type-pca"><Orbit size={14} /> PCA</button>
           </div>
         )}
+        {multi && <PooledVisitsNotice snapshot={snapshot} rows={sel.rows} />}
         {chart.type === 'pca' && <PcaView />}
         {chart.type === 'correlation' && <CorrelationView />}
         {chart.type === 'heatmap' && <HeatmapView />}
@@ -611,7 +612,7 @@ function HeatmapView() {
         icon={<Rows3 size={16} />}
         title="Heatmap"
         prefix="heat"
-        description="One row per selected participant, one column per variable. Each variable is shown as a z-score over its usable values in the selection, so variables in different units share one colour scale; grey means no usable value. Rows follow the Colour by variable, then participant ID."
+        description="One row per selected observation (a participant at a visit), one column per variable. Each variable is shown as a z-score over its usable values in the selection, so variables in different units share one colour scale; grey means no usable value. Rows follow the Colour by variable, then participant ID."
       />
       {built && h && (
         <div data-testid="heat-result">

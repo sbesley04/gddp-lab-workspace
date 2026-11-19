@@ -4,7 +4,7 @@ import type { DatasetSnapshot, VariableInfo } from '@core/types'
 import type { DistributionData, ScatterData } from '@core/chartData'
 import { fmt, fmtCi, formatP } from '@core/analysis'
 import { analyseDistribution, analyseScatter, analysisFingerprint } from '@core/analysisRun'
-import { independenceMessage, visitScopeText, visitsOfRows, type RepeatInfo, type VisitCount } from '@core/independence'
+import { independenceMessage, repeatInfo, visitScopeText, visitsOfRows, type RepeatInfo, type VisitCount } from '@core/independence'
 import { CENSORING_BIAS_THRESHOLD, censoringDirection, censoringNote, censoringPercent, type CensoringInfo } from '@core/censoring'
 import { call } from '../api'
 import { useStore } from '../store'
@@ -100,6 +100,35 @@ function IndependenceGuard({ info, visits }: { info: RepeatInfo; visits: VisitCo
           ))}
         </div>
         <p className="small muted" style={{ margin: '8px 0 0' }}>Paired tests and change over time are not built yet; plain descriptives are shown below without intervals.</p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * For the descriptive many-measures views (correlation matrix, heatmap, PCA): they compute no test, so repeated visits
+ * do not block them, but the reader must know that rows from one participant were pooled.
+ */
+export function PooledVisitsNotice({ snapshot, rows }: { snapshot: DatasetSnapshot; rows: number[] }) {
+  const info = useMemo(() => repeatInfo(snapshot, rows), [snapshot, rows])
+  const visits = useMemo(() => visitsOfRows(snapshot, rows), [snapshot, rows])
+  if (!info.repeated) return null
+  return (
+    <div className="paper card">
+      <div className="callout" data-testid="pooled-visits" role="status">
+        <ShieldAlert size={16} />
+        <div style={{ flex: 1 }}>
+          <p className="small" style={{ margin: 0 }}>
+            {info.rows} rows come from {info.participants} participants: {info.repeatedParticipants} participant(s) appear at more than one visit. This view treats every row as a separate observation, so correlations and components mix differences between participants with change within them. Restrict the selection to one visit to describe participants:
+          </p>
+          <div className="row wrap" style={{ marginTop: 8 }}>
+            {visits.map((v) => (
+              <button key={v.id} className="btn sm" data-testid="restrict-visit" onClick={() => useStore.getState().setVisits([v.id])}>
+                Use only {v.name} <span className="muted">({v.rows} row{v.rows === 1 ? '' : 's'})</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

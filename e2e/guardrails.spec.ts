@@ -93,6 +93,14 @@ test('repeated visits block tests until one visit is chosen; analyses are regist
   expect(list.entries).toHaveLength(2)
   expect(JSON.stringify(list)).not.toMatch(/DEMO-\d\d/)
 
+  // The descriptive many-measures views are not blocked, but say when visits are pooled.
+  await page.getByTestId('visit-picker').click()
+  await page.getByRole('button', { name: 'All visits', exact: true }).click()
+  await page.getByTestId('type-many').click()
+  await expect(page.getByTestId('pooled-visits')).toContainText('27 rows come from 14 participants')
+  await page.getByTestId('pooled-visits').getByTestId('restrict-visit').last().click()
+  await expect(page.getByTestId('pooled-visits')).toHaveCount(0)
+
   expect((await invoke(page, 'app:networkLog')).blocked).toEqual([])
   await app.close()
 })

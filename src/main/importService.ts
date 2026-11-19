@@ -140,6 +140,7 @@ export function commitImport(project: Project, src: ParsedSource, model: ImportM
 
   try {
     return db.transaction(() => {
+      const revisionsBefore = project.maxRowId('revision')
       let sf = db.get<{ id: number }>('SELECT id FROM source_file WHERE sha256 = ?', src.sha256)
       if (!sf) {
         const r = db.run('INSERT INTO source_file(sha256, original_name, size, kind, stored_name, added_at) VALUES (?,?,?,?,?,?)', src.sha256, src.fileName, src.size, src.kind, storedName, now)
@@ -218,6 +219,8 @@ export function commitImport(project: Project, src: ParsedSource, model: ImportM
       if (opts.carryOverFrom) carryOver(project, opts.carryOverFrom, id, versionNumber, now, opts.authorLabel)
       const check = datasetContentHash(project, id)
       if (check !== contentHash) throw new Error('Stored observations do not match the parsed source (content hash mismatch); import rolled back.')
+      // Header-derived and carried-over revisions written above enter the integrity chain with the import.
+      project.chain('revision', revisionsBefore)
       project.audit('dataset.import', { datasetVersionId: id, versionNumber, sha256: src.sha256, sheet: model.sheetName, rows: model.rows.length, columns: model.columns.length }, opts.authorLabel)
       return { datasetVersionId: id, versionNumber }
     })

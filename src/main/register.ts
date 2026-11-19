@@ -72,6 +72,7 @@ export function recordAnalysis(project: Project, input: { spec: SelectionSpec; c
       fingerprint, snapshot.datasetVersionId, snapshot.metadataVersion, record.kind, record.title, record.analysed.rows, record.analysed.participants, record.tests.length,
       JSON.stringify(record), APP_VERSION, input.author, new Date().toISOString()
     )
+    project.chain('analysis_register', Number(r.lastInsertRowid) - 1)
     project.audit('analysis.compute', { register: Number(r.lastInsertRowid), fingerprint, kind: record.kind, tests: record.tests.length }, input.author)
     return true
   })

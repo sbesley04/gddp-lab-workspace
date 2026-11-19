@@ -58,6 +58,7 @@ Importing the same file again is recognised by its checksum, and the app offers 
   - Over a wide panel, complete cases can be few. When dropping the variables with gaps in more than 10% of rows would keep more participants, the view offers to do that and says how many rows it would regain; you still press Compute.
   - You get a scores plot (choose the components for each axis), variance explained per component and a loadings table. Component signs are arbitrary; each is set so its largest loading is positive. Results match R `prcomp(scale. = TRUE)`.
   - **Loading vectors (biplot)** draws each variable as an arrow: its correlation with the two components shown (loading × component SD, at most 1). The 10 longest are drawn, all stretched by one factor to fit the scores, and the note under the chart gives that factor. The setting is saved with the view.
+- **Many measures** (correlation matrix, heatmap, PCA) compute no tests, so they are not blocked when a participant appears at more than one visit. A notice says how many rows come from how many participants, and offers each visit as a one-click fix.
 - **History** also shows the **analysis register** (see Statistics below): how many analyses and p-values this project has computed, and the most recent ones.
 - **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a signature, and the chain signature changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
 - **Download** saves the chart as SVG or PNG.
@@ -167,7 +168,18 @@ Pseudonymisation is **not** anonymisation. The full workbook, unselected columns
 ## Backup and restore
 
 - **Backup** (sidebar) writes a `*.bariproj.zip`: a consistent database copy, source snapshots, and a manifest with SHA-256 checksums.
-- **Restore a backup** (start screen) verifies the checksums, the database integrity and the observation hashes before it opens the restored copy in a new folder.
+- **Restore a backup** (start screen) verifies the checksums, the database integrity, the observation hashes and the record check below before it opens the restored copy in a new folder.
+
+## Checking that records were not altered
+
+The audit log, the curation history and the analysis register can only be added to. As well as blocking edits, the app links every entry to the one before it with a checksum.
+
+- **Verify** (sidebar) recomputes all of it. It reports any entry that was changed, removed or added outside the app, and any missing safeguard in the database.
+- Every backup and export package records the state of the records at that moment. Verify checks that each of those states is still present, so keep a backup somewhere other than the project folder: it is what proves later that the history was not rewritten.
+- To check a project without opening it, run the app with `--verify-project <folder.bariproj>`. It prints a report and exits with 0 (verified), 1 (problems found) or 2 (the project could not be read).
+- Entries written by an earlier version of the app are marked as "written before this check existed". They are protected from then on.
+
+This detects tampering; it does not prevent it, and it does not prove who made an entry (author labels are free text).
 
 ## Connecting an AI assistant (MCP)
 

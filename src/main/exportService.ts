@@ -11,6 +11,7 @@ import { getStudyContext } from './curation'
 import { listRegister } from './register'
 import { sha256 } from './importService'
 import { APP_VERSION } from './version'
+import { chainHead } from './integrity'
 
 export function projectPseudonym(secretHex: string, participantId: string): string {
   return 'P-' + createHmac('sha256', Buffer.from(secretHex, 'hex')).update(participantId).digest('hex').slice(0, 10).toUpperCase()
@@ -62,7 +63,8 @@ export function writeContextExport(project: Project, spec: SelectionSpec, option
     listing.push({ name, sha256: sha256(u8), bytes: u8.byteLength })
   }
   const exportId = randomUUID()
-  const manifest = { ...preview.manifestBase, exportId, files: listing }
+  // The chain head at export time: comparing it with the project later shows whether earlier records were rewritten.
+  const manifest = { ...preview.manifestBase, exportId, integrity: { head: chainHead(project.db) }, files: listing }
   encoded['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2))
   const zip = zipSync(encoded, { level: 6 })
   const tmp = `${destPath}.partial`

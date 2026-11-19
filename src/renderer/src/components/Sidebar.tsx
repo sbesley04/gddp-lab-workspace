@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
-import { BarChart3, BookmarkCheck, ClipboardList, Home, Search, HelpCircle, LogOut, PackageOpen, ShieldCheck, Upload, Archive, UserRound, ChevronsUpDown, Check } from 'lucide-react'
+import { BarChart3, BookmarkCheck, ClipboardList, Home, Search, HelpCircle, LogOut, PackageOpen, ShieldCheck, Upload, Archive, UserRound, ChevronsUpDown, Check, FileCheck2, AlertTriangle } from 'lucide-react'
 import { call } from '../api'
 import { useStore, errorText, type Page } from '../store'
 import { shortDate } from '../lib/format'
@@ -76,8 +76,10 @@ export function Sidebar() {
             <button className="btn ghost sm" onClick={backup} title="Back up project (consistent, checksummed package)">
               <Archive size={14} /> Backup
             </button>
-            <button className="btn ghost sm" onClick={closeProject} title="Close project">
-              <LogOut size={14} /> Close
+            <VerifyRecords />
+            <span className="spacer" />
+            <button className="btn ghost sm icon" onClick={closeProject} title="Close project" aria-label="Close project" data-testid="close-project">
+              <LogOut size={14} />
             </button>
           </div>
         </div>
@@ -129,6 +131,67 @@ function VersionSwitcher() {
                 {v.id === versionId && <Check size={15} />}
               </button>
             ))}
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+}
+
+interface IntegrityReport {
+  ok: boolean
+  entries: number
+  legacyEntries: number
+  head: { seq: number; chainHash: string } | null
+  anchorsChecked: number
+  problemCount: number
+  problems: { kind: string; detail: string }[]
+}
+
+/** Recomputes the hash chain over the audit log, curation revisions and analysis register, and shows the result. */
+function VerifyRecords() {
+  const [report, setReport] = useState<IntegrityReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const run = () => {
+    setReport(null)
+    setError(null)
+    call<IntegrityReport>('integrity:verify').then(setReport).catch((e) => setError(errorText(e)))
+  }
+  return (
+    <Popover.Root onOpenChange={(open) => { if (open) run() }}>
+      <Popover.Trigger asChild>
+        <button className="btn ghost sm" title="Check that the audit log, curation history and analysis register have not been altered" data-testid="verify-records">
+          <FileCheck2 size={14} /> Verify
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content className="popover" side="right" align="end" sideOffset={10} style={{ width: 380, maxHeight: 460, overflow: 'auto' }}>
+          <div className="stack" style={{ gap: 10 }} data-testid="verify-result">
+            <strong>Record check</strong>
+            {!report && !error && <div className="muted small">Checking…</div>}
+            {error && <div className="callout danger"><AlertTriangle size={16} /><p className="small">{error}</p></div>}
+            {report?.ok && (
+              <div className="callout info">
+                <Check size={16} />
+                <p className="small" style={{ margin: 0 }}>
+                  <strong>Records verified.</strong> All {report.entries} entries of the audit log, curation history and analysis register match what was recorded when they were written{report.anchorsChecked ? `, and the ${report.anchorsChecked} state${report.anchorsChecked === 1 ? '' : 's'} recorded in backups and exports ${report.anchorsChecked === 1 ? 'is' : 'are'} still present` : ''}.
+                </p>
+              </div>
+            )}
+            {report && !report.ok && (
+              <div className="callout danger" role="alert">
+                <AlertTriangle size={16} />
+                <div className="small">
+                  <p style={{ margin: 0 }}><strong>{report.problemCount} problem{report.problemCount === 1 ? '' : 's'} found.</strong> Records in this project were changed, removed or added outside the app. Do not rely on its history; compare it with a backup.</p>
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                    {report.problems.slice(0, 6).map((p, i) => <li key={i}>{p.detail}</li>)}
+                    {report.problemCount > 6 && <li>… and {report.problemCount - 6} more.</li>}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {report && report.legacyEntries > 0 && <div className="muted small">{report.legacyEntries} of the entries were written before this check existed. They are protected from now on; a change made before then cannot be detected.</div>}
+            {report?.head && <div className="muted small">Current state: entry {report.head.seq}, <span className="kbd" title={report.head.chainHash}>{report.head.chainHash.slice(0, 16)}</span>. Each backup and export records this value, so a copy kept elsewhere can prove later that the history was not rewritten.</div>}
           </div>
         </Popover.Content>
       </Popover.Portal>

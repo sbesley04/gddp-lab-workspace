@@ -13,13 +13,21 @@ Updated 2026-11-19. Everything marked done is in the source, unreleased, and ver
 | Phase 0: ignore `.codex/` and `Claude outputs/`; fix the stale CI and doc comments (E6, E9 in part) | Done | `CLAUDE.md` and `AGENTS.md` are still kept in sync by hand. |
 | Phase 0: settle the MCP connection (Q1) | **Open** | Needs the developer. The server was still connected to an assistant session on 2026-11-19; it was not called. |
 | Phase 0: push and merge branches, tag a release (E5, E6 in part) | **Open** | Needs a decision on what the release contains. |
-| S1 Independence guard | Done for the statistics panel | `src/core/independence.ts`, used by the app and the MCP server. The app computes no test, interval or fit when a participant contributes more than one row, and offers each visit as a one-click fix. The MCP server still warns instead of refusing (Q6). The many-measures views (correlation matrix, heatmap, PCA) have no guard yet. |
+| S1 Independence guard | Done | `src/core/independence.ts`, used by the app and the MCP server. The app computes no test, interval or fit when a participant contributes more than one row, and offers each visit as a one-click fix. The descriptive many-measures views (correlation matrix, heatmap, PCA) are not blocked but say when visits are pooled. The MCP server still warns instead of refusing (Q6). |
 | S2 Methods and caveat text | Done | Visit and participant wording is derived from the analysed rows. |
 | S3 Censoring visibility | Done in part | Percent censored is shown per variable and group, with the direction of the bias. Means and SDs are marked above a threshold of 15%, which is **provisional** until Q4 is answered. Censoring-aware estimates remain Phase 3. |
 | S4 Analysis register | Done | Append-only table; the main process recomputes each analysis. Shown in History and written to the context package. Analyses run through the MCP server or in R are not recorded. |
 | S5 Neutral p-values | Done | No accent below .05. |
 | S7 R in CI | Done locally; CI job not yet run | Each reference file records its R and package versions. `npm run reference:check` regenerates and compares them; the `r-reference` CI job does the same with pinned versions, and has not run yet because nothing has been pushed. |
 | G4 Copy the database before migrating | Done | Brought forward from Phase 2, because the register adds a migration. |
+| G1 Hash chain with a verify command | Done | `src/main/integrity.ts`. Every audit, revision and register row is chained as the app writes it. **Verify** in the sidebar, `--verify-project <folder>` on the command line, and a check on restore. Backups and exports record the chain head as an anchor. The chain has no secret key: a full, consistent rewrite is caught only by an anchor, and only reliably by one kept outside the project folder. Rows written before the chain existed are marked as entered after the fact. |
+| G5 Audit every curation action | Done | Quasi-identifier flags, segment names and study context now write audit entries. |
+| M1 MCP docs overstate the guarantee | Done | Minimum and maximum are withheld for every variable unless the server is started with `--show-extremes`. The guide and [MCP.md](MCP.md) say that a median or quartile can be one participant's value. |
+| M2 Small counts not suppressed everywhere | Done | Every count below the minimum cell size is returned as "<n", including counts inside warnings. No complementary suppression: a small count can sometimes be derived from a total. |
+| M3 Differencing, M4 free text | **Open**, now documented | No query budget or overlap check. Header comments, study context, saved-view names and the project name still pass through. |
+| G2, G3, G6, E5 (rest of Phase 2) | **Open** | Full fingerprints and renaming "signature"; encrypted backups; recomputing chart sidecars in the main process; signing. Then the validation pack and threat model. |
+
+Phase 2's first "done when" condition is met and tested: a tampered database fails verification (`tests/integrity.test.ts`, seven kinds of tampering). "MCP.md matches what the code returns" is met for M1 and M2.
 
 Phase 1's first "done when" condition is met and tested: a multi-visit fixture cannot produce a test (`tests/guardrails.test.ts`, `e2e/guardrails.spec.ts`). The second is met locally and awaits its first CI run.
 

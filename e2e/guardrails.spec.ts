@@ -101,6 +101,15 @@ test('repeated visits block tests until one visit is chosen; analyses are regist
   await page.getByTestId('pooled-visits').getByTestId('restrict-visit').last().click()
   await expect(page.getByTestId('pooled-visits')).toHaveCount(0)
 
+  // The audit log, curation history and analysis register verify against their hash chain.
+  await page.getByTestId('verify-records').click()
+  await expect(page.getByTestId('verify-result')).toContainText('Records verified')
+  await page.screenshot({ path: join(shots, 'guard-03-verify.png') })
+  await page.keyboard.press('Escape')
+  const report = await invoke(page, 'integrity:verify')
+  expect(report.ok).toBe(true)
+  expect(report.tables.analysis_register).toEqual({ rows: 2, chained: 2 })
+
   expect((await invoke(page, 'app:networkLog')).blocked).toEqual([])
   await app.close()
 })

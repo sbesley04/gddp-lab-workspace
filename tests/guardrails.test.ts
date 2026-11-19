@@ -275,7 +275,7 @@ describe('schema upgrade', () => {
       p.close()
       // Put the project back to the previous schema, as an older app version would have left it.
       const raw = new DatabaseSync(join(folder, 'workspace.sqlite'))
-      raw.exec('DROP TABLE analysis_register')
+      raw.exec("DROP TABLE integrity_chain; DELETE FROM meta WHERE key = 'integrity_chain_started'")
       raw.prepare('DELETE FROM schema_migrations WHERE version = ?').run(MIGRATIONS.length)
       raw.close()
       const copy = join(folder, `workspace.sqlite.before-schema-${MIGRATIONS.length}.bak`)

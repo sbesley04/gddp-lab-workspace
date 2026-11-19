@@ -10,11 +10,12 @@
 | Unreleased | 2026-11-05 | Read-only MCP server for AI assistants |
 | Unreleased | 2026-11-09 | Square-root and Box-Cox transforms, PCA biplot |
 | Unreleased | 2026-11-19 | Statistical guardrails: independence guard, censoring visibility, analysis register, neutral p-values, R check |
+| Unreleased | 2026-11-19 | Integrity: hash chain over the audit log, revisions and register with a verify command; full curation audit; MCP small-count and extreme-value suppression |
 
 ## Current test inventory
 
-- `npm test`: 169 Vitest tests in 18 files, all on synthetic data (including 14 for the MCP server and 13 for the statistical guardrails).
-- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails on a two-visit file (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm test`: 176 Vitest tests in 19 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails and 6 for record integrity).
+- `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails and the record check on a two-visit file (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test.
@@ -137,6 +138,23 @@ Phase 1 of [STRATEGY.md](STRATEGY.md), plus two hygiene items from Phase 0.
 | `.codex/` and `Claude outputs/` git-ignored; stale "no remote" comments removed | By inspection |
 
 Not done: the MCP server warns about repeated visits but does not refuse; analyses run through the MCP server are not in the register; the censoring threshold awaits a statistician (STRATEGY Q4); no censoring-aware estimates; no paired tests. The packaged build and `npm run test:reference` were not re-run for this work.
+
+## Unreleased: integrity and MCP privacy (2026-11-19)
+
+The first part of Phase 2 of [STRATEGY.md](STRATEGY.md).
+
+| Feature | Verification |
+| --- | --- |
+| Hash chain over the audit log, curation revisions and analysis register (`src/main/integrity.ts`, table `integrity_chain`). Each row is entered as the app writes it, in the same transaction, with a SHA-256 of its content and a SHA-256 linking it to the entry before. | `tests/integrity.test.ts`: every row of the three tables is chained; a rolled-back transaction leaves no entry; the chain table is itself append-only |
+| Verification: **Verify** in the sidebar, `--verify-project <folder>` on the command line (read-only, exit code 0, 1 or 2), and on restore. It reports rows changed, removed or added outside the app, broken chain links and missing immutability triggers. | `tests/integrity.test.ts` edits the database with a plain SQLite connection in seven ways (edited audit row, edited revision, deleted row, edited register result, row added outside the app, chain entry removed, row and its hash both edited). Each fails verification with the expected problem kinds, and still fails after the app writes again. E2E opens the sidebar check. `--verify-project` was run by hand on the development build: exit 0 on a clean synthetic project, 1 after a trigger was dropped with another tool, 2 for a folder that is not a project. It has not been run on a packaged build. |
+| Anchors: each backup and context-export manifest records the chain head. Verification checks every anchor recorded in the project, and any passed to it. | `tests/integrity.test.ts`: a chain rebuilt from scratch after an edit is caught by the recorded anchors, and by a manifest kept outside the project when those are removed too |
+| Restore checks the records against the head the backup recorded, and reports damage without refusing | `tests/integrity.test.ts` |
+| Projects from earlier versions: existing rows are chained on first open and marked as entered after the fact | `tests/integrity.test.ts`; `tests/guardrails.test.ts` (schema upgrade) |
+| Audit entries for quasi-identifier flags, segment names and study context (the text itself is not copied into the audit detail) | `tests/integrity.test.ts` (audit trail) |
+| Notice on the correlation matrix, heatmap and PCA when a participant appears at more than one visit, with the one-visit fix | E2E |
+| MCP: every count below the minimum cell size returned as "<n"; minimum and maximum withheld unless `--show-extremes`; guide and docs corrected | `tests/mcp.test.ts` walks every tool result for count fields below 5, checks counts inside warnings, and confirms the plain numbers return with a cell size of 1 |
+
+Not done: the chain has no secret key, so it does not prove who wrote a record, and a consistent rewrite is caught only by an anchor. Backups are still not encrypted. Chart sidecars still come from the renderer. The MCP server has no defence against differencing and passes free text through. The packaged build was not re-run for this work.
 
 ## Remaining work
 

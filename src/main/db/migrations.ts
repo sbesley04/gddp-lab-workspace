@@ -238,5 +238,21 @@ CREATE TABLE analysis_register (
 CREATE INDEX analysis_register_version ON analysis_register(dataset_version_id);
 CREATE TRIGGER analysis_register_immutable BEFORE UPDATE ON analysis_register BEGIN SELECT RAISE(ABORT, 'the analysis register is append-only'); END;
 CREATE TRIGGER analysis_register_nodelete BEFORE DELETE ON analysis_register BEGIN SELECT RAISE(ABORT, 'the analysis register is append-only'); END;
+`,
+  /* 4: hash chain over the append-only records (audit log, revisions, analysis register); see src/main/integrity.ts */ `
+CREATE TABLE integrity_chain (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT NOT NULL,
+  row_id INTEGER NOT NULL,
+  -- SHA-256 of the row's content, and SHA-256 linking this entry to the one before it.
+  row_hash TEXT NOT NULL,
+  chain_hash TEXT NOT NULL,
+  -- 1 for rows that existed before the chain was started (entered after the fact).
+  legacy INTEGER NOT NULL DEFAULT 0,
+  sealed_at TEXT NOT NULL,
+  UNIQUE (table_name, row_id)
+);
+CREATE TRIGGER integrity_chain_immutable BEFORE UPDATE ON integrity_chain BEGIN SELECT RAISE(ABORT, 'the integrity chain is append-only'); END;
+CREATE TRIGGER integrity_chain_nodelete BEFORE DELETE ON integrity_chain BEGIN SELECT RAISE(ABORT, 'the integrity chain is append-only'); END;
 `
 ]

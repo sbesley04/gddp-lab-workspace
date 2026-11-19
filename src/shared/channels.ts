@@ -8,7 +8,7 @@ export const CHANNELS = [
   'curation:setStudyContext', 'curation:getStudyContext', 'curation:history',
   'views:list', 'views:save', 'views:get', 'views:delete',
   'export:preview', 'export:write', 'export:chart', 'export:list',
-  'analysis:record', 'analysis:list',
+  'analysis:record', 'analysis:list', 'integrity:verify',
   'backup:create', 'backup:restore',
   'settings:setAuthor',
   'boards:list', 'boards:get', 'boards:save', 'boards:delete'

@@ -187,7 +187,7 @@ test('import, select, save, export, back up — all offline', async () => {
   await mockDialogs(app, { save: [backupPath], open: [[backupPath], [work]] })
   await page.getByRole('button', { name: 'Backup' }).click()
   await expect(page.getByText(/Backup saved/)).toBeVisible()
-  await page.getByRole('button', { name: 'Close' }).click()
+  await page.getByTestId('close-project').click()
   await page.getByText('Restore a backup').click()
   await expect(page.getByText(/Backup restored and verified/)).toBeVisible()
   await expect(page.getByText('Outstanding metadata tasks')).toBeVisible()

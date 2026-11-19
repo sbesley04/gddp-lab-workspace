@@ -11,6 +11,7 @@ import { MIGRATIONS } from './db/migrations'
 import { Db } from './db/db'
 import { datasetContentHash, sha256 } from './importService'
 import { APP_VERSION } from './version'
+import { chainHead, verifyIntegrity, type ChainHead } from './integrity'
 
 export const BACKUP_SCHEMA = 'bari-cns-backup/1'
 
@@ -22,6 +23,8 @@ export interface BackupManifest {
   project: { id: string; name: string }
   files: { path: string; sha256: string; bytes: number }[]
   datasets: { id: string; versionNumber: number; contentHash: string }[]
+  /** Head of the integrity chain when the backup was made: an anchor for later verification (absent in older backups). */
+  integrity?: { head: ChainHead | null }
 }
 
 export async function createBackup(project: Project, destPath: string, author: string | null): Promise<BackupManifest> {
@@ -42,7 +45,8 @@ export async function createBackup(project: Project, destPath: string, author: s
       databaseSchemaVersion: MIGRATIONS.length,
       project: { id: project.info.id, name: project.info.name },
       files: Object.entries(entries).map(([path, u8]) => ({ path, sha256: sha256(u8), bytes: u8.byteLength })),
-      datasets
+      datasets,
+      integrity: { head: chainHead(project.db) }
     }
     entries['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2))
     const zip = zipSync(entries, { level: 6 })
@@ -60,7 +64,8 @@ export async function createBackup(project: Project, destPath: string, author: s
 export interface RestoreResult {
   dir: string
   manifest: BackupManifest
-  verified: { files: number; datasets: number; integrity: string }
+  /** `integrity` is SQLite's own check; `records` is the hash chain over the audit log, revisions and analysis register. */
+  verified: { files: number; datasets: number; integrity: string; records: { ok: boolean; entries: number; problems: number } }
 }
 
 export function restoreBackup(zipPath: string, parentDir: string, folderName?: string): RestoreResult {
@@ -97,16 +102,22 @@ export function restoreBackup(zipPath: string, parentDir: string, folderName?: s
     db.close()
     if (integrity !== 'ok') throw new Error(`Restored database failed its integrity check (${integrity}).`)
     const p = ProjectClass.open(dir)
+    let records = { ok: true, entries: 0, problems: 0 }
     try {
       for (const d of manifest.datasets) {
         const h = datasetContentHash(p, d.id)
         if (h !== d.contentHash) throw new Error(`Observations for dataset v${d.versionNumber} do not match the backup manifest.`)
       }
-      p.audit('project.restore', { from: basename(zipPath), datasets: manifest.datasets.length }, null)
+      // The records are checked against the chain head the backup itself recorded. A problem is reported, not fatal:
+      // a backup of a project with a damaged record is still the best copy of its data.
+      const head = manifest.integrity?.head
+      const report = verifyIntegrity(p.db, head ? [{ ...head, source: `the manifest of ${basename(zipPath)}` }] : [])
+      records = { ok: report.ok, entries: report.entries, problems: report.problemCount }
+      p.audit('project.restore', { from: basename(zipPath), datasets: manifest.datasets.length, recordsOk: report.ok }, null)
     } finally {
       p.close()
     }
-    return { dir, manifest, verified: { files: manifest.files.length, datasets: manifest.datasets.length, integrity } }
+    return { dir, manifest, verified: { files: manifest.files.length, datasets: manifest.datasets.length, integrity, records } }
   } catch (e) {
     removeTree(dir)
     throw e

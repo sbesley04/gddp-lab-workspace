@@ -9,7 +9,9 @@ function insert(project: Project, datasetVersionId: string, kind: string, target
     'INSERT INTO revision(dataset_version_id, kind, target, field, value_json, status, author_label, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
     datasetVersionId, kind, target, field, JSON.stringify(value ?? null), status, author, reason, new Date().toISOString()
   )
-  return Number(r.lastInsertRowid)
+  const id = Number(r.lastInsertRowid)
+  project.chain('revision', id - 1)
+  return id
 }
 
 function ensureVersion(project: Project, id: string) {

@@ -47,6 +47,7 @@ build/          icon, entitlements
 - A long-form `observation` view sits over the preserved wide `cell` table.
 - Placeholders exist for specimen, batch, replicate, detection limit, units and exposure (`observation_context`). They are intentionally empty.
 - `analysis_register` is append-only (triggers), one row per distinct analysis, keyed by a full SHA-256 fingerprint of the dataset version, metadata version, selection and analysis inputs.
+- `integrity_chain` holds one entry per row of `audit_log`, `revision` and `analysis_register`: a SHA-256 of the row and a SHA-256 linking it to the previous entry (`src/main/integrity.ts`). `Project.audit` chains its own row; anything else that inserts into `revision` or `analysis_register` must call `project.chain(table, idBeforeInsert)` in the same transaction. A row that is not chained is reported by `verifyIntegrity` as written outside the app, so a forgotten call shows up as a failing test. A new append-only table needs an entry in `CHAINED_TABLES`.
 - Before migrating an existing project, `Db.migrate` copies the database to `workspace.sqlite.before-schema-<n>.bak` in the project folder.
 
 **Statistics panel.** `src/core/analysisRun.ts` holds what the panel computes (`analyseDistribution`, `analyseScatter`). The renderer calls it for display. The main process calls the same code from `src/main/register.ts` to write the analysis register, so it never stores numbers sent by the renderer. The independence guard is inside these functions: when a participant contributes more than one row they return descriptives only. Add a new test to the panel by adding it there and to `distributionTests` / `scatterTests`, so the register counts it.
@@ -57,10 +58,10 @@ build/          icon, entitlements
 | --- | --- |
 | `npm run dev` | Run with hot reload |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest (169 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server, statistical guardrails and the analysis register |
+| `npm test` | Vitest (176 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server, statistical guardrails, the analysis register and record integrity |
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted), chart SVG/PNG downloads with sidecars, PCA and many-measures views, the tour and wide table, and screenshots of every screen in light and dark mode |
-| `npm run reference:check` | Runs the three R scripts into a temporary folder and compares the output with `tests/fixtures/*_reference.json`: same structure, same R and package versions (`_r`), numbers within 1e-9 relative (1e-6 for Box-Cox λ). Needs R with jsonlite and car. CI runs it in its own workflow, `.github/workflows/r-reference.yml`, whenever `tools/` or a reference file changes. |
+| `npm run reference:check` | Runs the three R scripts into a temporary folder and compares the output with `tests/fixtures/*_reference.json`: same structure, same R and package versions (`_r`), numbers within 1e-9 relative (1e-6 for Box-Cox λ and 2e-5 for values transformed with it, which differ in the last digits between macOS and Linux). Needs R with jsonlite and car. CI runs it in its own workflow, `.github/workflows/r-reference.yml`, whenever `tools/` or a reference file changes. |
 | `npm run build:mcp` | Builds the MCP server into `out/mcp/server.js` (one file, plain Node 22.13+). See [MCP.md](MCP.md). |
 | `npm run fixtures` | Regenerates the synthetic fixtures (needs Python 3 and openpyxl) |
 | `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
@@ -68,6 +69,12 @@ build/          icon, entitlements
 | `Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json` | Regenerates the Box-Cox reference values for `tests/transforms.test.ts` (needs jsonlite and car) |
 | `npm run dist:mac` | Unsigned DMG and ZIP for arm64 and x64 in `release/` |
 | `npm run dist:win` | Unsigned NSIS x64 installer, which cross-builds from macOS |
+
+**Check a project's records from the command line** (read-only; exit code 0 verified, 1 problems, 2 unreadable):
+
+```bash
+"release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --verify-project "/path/to/My Study.bariproj"
+```
 
 **Smoke-test a packaged build:**
 
@@ -98,6 +105,7 @@ Notes about a real study workbook (collaborator names, file names, participant r
 - **Expected statistics are independent.** `tests/stats.test.ts` uses hand-computed values. `tests/inference.test.ts` compares every distribution, test, CI and regression output with base R / car (`t.test`, `wilcox.test`, `oneway.test`, `kruskal.test`, `leveneTest`, `cor.test`, `lm`, `predict`, `shapiro.test`, `p.adjust`) to 1e-8 relative or better (Shapiro–Wilk: 1e-6, matching R's single-precision coefficients).
 - **R versions are pinned.** Each reference file records the R and package versions that produced it under `_r` (currently R 4.3.2, jsonlite 2.0.0, car 3.1.3). The `r-reference` workflow installs that R version and takes packages from a dated Posit Package Manager snapshot (`R_SNAPSHOT`), because the latest CRAN dependencies of car no longer install on R 4.3. To move to newer versions, regenerate the three files, commit them, and change the R version and snapshot date in the workflow; the check fails if the installed versions differ from `_r`. Run the R scripts from the repository root.
 - **Guardrails** (`tests/guardrails.test.ts`, `e2e/guardrails.spec.ts`) use a synthetic two-visit CSV built in the test: the independence guard, censoring counts, the register (recomputation, de-duplication, fingerprints, append-only triggers, export) and the pre-migration copy.
+- **Record integrity** (`tests/integrity.test.ts`) tampers with a project through a plain `node:sqlite` connection, the way an outside tool would, and checks that verification names what was done.
 - **Multivariate results** (`tests/pca.test.ts`, `tests/matrix.test.ts`) match R `prcomp(scale. = TRUE)` and `cor(use = "pairwise.complete.obs")` to about 1e-8, with ties and missing values. Histogram counts match R `hist(right = FALSE)`.
 - **Analysis log** (`tests/provenance.test.ts`): the text is deterministic, every upstream change alters the chain signature, and no participant ID or file name is written. SHA-256 is checked against NIST vectors.
 - **Statistics code:** `src/core/distributions.ts` (t, F, χ², normal, binomial via incomplete beta and gamma) and `src/core/analysis.ts`. Statistics are never computed automatically; the UI calls them only after **Compute**.

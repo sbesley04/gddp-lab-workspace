@@ -15,6 +15,7 @@ import * as boards from './boards'
 import { listExports, previewContextExport, writeChartFiles, writeContextExport } from './exportService'
 import { createBackup, restoreBackup } from './backup'
 import { listRegister, recordAnalysis } from './register'
+import { verifyIntegrity } from './integrity'
 import { APP_VERSION } from './version'
 import { runSelfTest, abortSelfTest } from './selfTest'
 
@@ -240,6 +241,12 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   },
   'analysis:record': (p) => recordAnalysis(requireProject(), { ...p, author: author() }),
   'analysis:list': (p) => listRegister(requireProject(), { datasetVersionId: p.datasetVersionId, limit: p.limit }),
+  'integrity:verify': () => {
+    const project = requireProject()
+    const report = verifyIntegrity(project.db)
+    project.audit('integrity.verify', { ok: report.ok, entries: report.entries, problems: report.problemCount }, author())
+    return report
+  },
   'backup:create': async () => {
     const project = requireProject()
     const stamp = new Date().toISOString().slice(0, 10)
@@ -402,7 +409,7 @@ if (process.env.BARI_USER_DATA) {
   app.whenReady().then(() => powerSaveBlocker.start('prevent-app-suspension'))
 }
 app.enableSandbox()
-if (!app.requestSingleInstanceLock() && !process.argv.includes('--self-test')) app.quit()
+if (!app.requestSingleInstanceLock() && !process.argv.includes('--self-test') && !process.argv.includes('--verify-project')) app.quit()
 
 app.on('second-instance', () => {
   if (mainWindow) {
@@ -414,6 +421,26 @@ app.on('second-instance', () => {
 app.whenReady().then(async () => {
   settings = loadSettings()
   installSecurity()
+  // `--verify-project <folder.bariproj>`: check the record chain of a project without opening a window. Read-only;
+  // prints the report as JSON and exits 0 when the records verify, 1 when they do not, 2 when the project cannot be read.
+  const vp = process.argv.indexOf('--verify-project')
+  if (vp !== -1) {
+    let code = 2
+    try {
+      const p = Project.openReadOnly(process.argv[vp + 1] ?? '')
+      try {
+        const report = verifyIntegrity(p.db)
+        process.stdout.write(JSON.stringify(report, null, 2) + '\n')
+        code = report.ok ? 0 : 1
+      } finally {
+        p.close()
+      }
+    } catch (e) {
+      process.stdout.write(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }, null, 2) + '\n')
+    }
+    app.exit(code)
+    return
+  }
   const st = process.argv.indexOf('--self-test')
   if (st !== -1) {
     // The self-test uses a hidden window; keep macOS App Nap from suspending it.
@@ -438,7 +465,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.argv.includes('--self-test')) return // the self-test exits explicitly with its result code
+  if (process.argv.includes('--self-test') || process.argv.includes('--verify-project')) return // these exit explicitly with their result code
   current?.close()
   current = null
   app.quit()

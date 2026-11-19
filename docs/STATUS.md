@@ -15,7 +15,7 @@
 
 ## Current test inventory
 
-- `npm test`: 179 Vitest tests in 19 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails and 6 for record integrity).
+- `npm test`: 188 Vitest tests in 21 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
 - `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
@@ -170,6 +170,8 @@ More of Phase 2 of [STRATEGY.md](STRATEGY.md).
 | Threat model | [THREAT_MODEL.md](THREAT_MODEL.md); a document, not a test |
 | CI builds each branch once (through its pull request) instead of twice, cancels a run that a newer push replaces, and runs the UI tests on macOS | First exercised by the pull request that adds it |
 | Validation summary and changelog | [VALIDATION.md](VALIDATION.md), `CHANGELOG.md`; documents, not tests |
+| Property tests for the selection engine: agreement with an independently written reading of the rules; every row selected or excluded with a reason; AND is intersection and OR is union; keeping missing values never removes a row; a visit restriction only removes other visits; more QC exclusions never add a row; counts, chart data and pairs account for every row once | `tests/selection.property.test.ts`, 150 seeded random datasets and filters per rule. Three deliberate bugs put into the engine (an off-by-one bound, counting rejected flags, an empty group that matches) were each caught, then removed. |
+| Performance budget on a synthetic dataset of 2,000 participants, 4,800 rows and 300 columns (1.4 million cells, 43,000 flags) | `tests/performance.test.ts`. Measured on an Apple Silicon laptop: selection 3 ms, grouped distribution with Box-Cox 77 ms, statistics 71 ms, counts for all 300 variables 0.2 s, correlation matrix of 60 variables 0.8 s, PCA of 12 variables 7 ms; CSV parse 0.2 s, validation 1 s, import commit 7.5 s, loading the dataset from the database 2.9 s, a 50 MB dataset sent to the window, record check 44 ms. Budgets are about ten times these. Drawing and the transfer to the window are not measured. |
 
 Not done: project folders are not encrypted by the app. The passphrase has no strength check beyond 8 characters and no recovery. The drawn chart image is not verified beyond its footer. Installers are unsigned. The packaged build was not re-run for this work.
 

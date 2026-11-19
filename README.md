@@ -60,7 +60,7 @@ npm run dev
 | Command | Purpose |
 | --- | --- |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest unit and integration tests (179, synthetic data only) |
+| `npm test` | Vitest unit and integration tests (188, synthetic data only; about 15 seconds) |
 | `npm run e2e` | Builds, then runs the Playwright UI tests |
 | `npm run test:reference` | Opt-in checks against a local real workbook (counts only) |
 | `npm run reference:check` | Regenerates the R reference values and compares them with the committed files (needs R) |

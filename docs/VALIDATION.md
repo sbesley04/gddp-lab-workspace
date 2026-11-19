@@ -20,7 +20,7 @@ All of this uses synthetic data only and needs no study file.
 | --- | --- | --- |
 | 1 | `npm install` | Completes |
 | 2 | `npm run typecheck` | No output |
-| 3 | `npm test` | 179 tests pass |
+| 3 | `npm test` | 188 tests pass |
 | 4 | `npm run e2e` | 10 tests pass |
 | 5 | `npm run reference:check` (needs R 4.3.2 with jsonlite 2.0.0 and car 3.1.3) | "R reproduces all three reference files." |
 | 6 | Packaged app with `--self-test <folder>` | Exit code 0 and `bari-self-test.json` with every step `ok` |
@@ -57,7 +57,8 @@ Not validated because not built: paired tests, repeated-measures models, covaria
 | Requirement | Test |
 | --- | --- |
 | Missing is never zero; censored is never its bound | `tests/values.test.ts`, `tests/selection.test.ts`, `tests/guardrails.test.ts` (summaries use no bound) |
-| Table, charts, summaries and exports include the same rows | `tests/workflow.test.ts`, `e2e/workflow.spec.ts` |
+| Table, charts, summaries and exports include the same rows | `tests/workflow.test.ts`, `tests/selection.property.test.ts`, `e2e/workflow.spec.ts` |
+| The selection engine follows its documented rules for any filter, visit choice and QC policy | `tests/selection.property.test.ts` (150 random datasets per rule, checked against an independent implementation) |
 | Imports are immutable; a failed import leaves nothing behind | `tests/workflow.test.ts` |
 | Curation is append-only and reproducible as of any revision | `tests/workflow.test.ts` |
 | A saved view reproduces after restart, and after later curation | `tests/workflow.test.ts`, `e2e/workflow.spec.ts` |
@@ -76,7 +77,7 @@ Not validated because not built: paired tests, repeated-measures models, covaria
 
 - The packaged build and `npm run test:reference` (the real-workbook check, counts only) were last run before the 2026-11-19 work.
 - The Windows install wizard has not been run by hand.
-- Large cohorts are untested; all computation runs in the window's own thread.
+- The largest dataset tested is synthetic: 4,800 rows by 300 columns (`tests/performance.test.ts`). Calculations are fast at that size; importing takes about 7 seconds and loading about 3. Drawing at that size is not tested, and all computation runs in the window's own thread.
 - The whole-window error boundary, and `--verify-project` on a packaged build, are untested.
 - No accessibility audit.
 - The censoring threshold (15%) is provisional and has not been set with a statistician.

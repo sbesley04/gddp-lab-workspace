@@ -7,8 +7,9 @@ export function serverInstructions(policy: PrivacyPolicy): string {
 biomarker, neuropsychological, CSF and clinical measures imported from a curated workbook.
 
 Start with get_study_overview, then search_variables to find variable keys. Read the bari://guide resource before
-interpreting results. Results are aggregate only (privacy mode "${policy.mode}"): participant identifiers and individual
-values are never returned, and groups with fewer than ${policy.minCellSize} participants are suppressed.
+interpreting results. Results are aggregate only (privacy mode "${policy.mode}"): participant identifiers and row-level
+values are never returned, every count below ${policy.minCellSize} is shown as "<${policy.minCellSize}", and groups that small are suppressed.
+A median or quartile can still equal one participant's value, so treat every result as study data.
 
 Key rules:
 - Missing is never zero. Censored values such as "<0.5" are below a detection limit; they are reported as counts and
@@ -85,11 +86,13 @@ same variable appears in several sources; those names become aliases.
   analysis can be reproduced in the app.
 
 ## Privacy
-Mode: **${policy.mode}**. Participant identifiers, row numbers and individual values are never returned. Groups and
-selections with fewer than ${policy.minCellSize} participants are suppressed ("<${policy.minCellSize}"). Extremes
-(min/max) are withheld for variables a curator marked as quasi-identifiers. Comment text is returned only for column
-headers; cell comments are only counted. Do not try to work around suppression, for example by combining overlapping
-filters.
+Mode: **${policy.mode}**. Participant identifiers and row numbers are never returned, and no tool lists values row by
+row. Results are aggregates, but an aggregate is not always anonymous: a median or quartile can equal one participant's
+value. Every count below ${policy.minCellSize} (participants, rows, observations, pairs, flags) is returned as
+"<${policy.minCellSize}", and groups and selections that small are suppressed. Minimum and maximum are
+${policy.showExtremes ? 'returned, except for variables a curator marked as quasi-identifiers' : 'withheld for every variable, because they are individual values'}.
+Comment text is returned only for column headers; cell comments are only counted. Do not try to work around
+suppression, for example by combining overlapping filters or subtracting one count from another.
 `
 }
 

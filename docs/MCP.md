@@ -10,14 +10,17 @@ What the server returns, and what it never returns:
 
 | Returned | Never returned |
 | --- | --- |
-| Counts, descriptive statistics, test results, correlations, PCA variance and loadings | Participant identifiers, row numbers, individual values, PCA scores |
+| Counts, descriptive statistics, test results, correlations, PCA variance and loadings | Participant identifiers, row numbers, row-by-row values, minimum and maximum (by default), PCA scores |
 | Variable metadata, aliases, source attribution, comments on column headers | Text of comments on individual cells (counted only); comment and curator authors |
 | Short text codes in numeric columns (e.g. `QNS`) and censored values (e.g. `<0.5`) | Free-text cell values (counted only) |
 | The imported file's SHA-256 checksum | The imported file's name |
 
-- **Small-cell suppression:** selections and groups with fewer than 5 participants are suppressed (`"<5"`). Change the threshold with `--min-cell-size`.
-- **Quasi-identifiers:** minimum and maximum are withheld for variables marked as quasi-identifiers (age, BMI and similar).
-- These rules reduce risk but are **not anonymisation**. Someone determined could combine overlapping filters to narrow down individuals. Treat the conversation as containing study data.
+- **Small-cell suppression:** selections and groups with fewer than 5 participants are suppressed. Every other count below 5 is returned as `"<5"`, whatever it counts: participants, rows, observations, complete pairs, exclusion reasons, not-analysed values, censored values, text codes, flags, and the counts quoted inside warnings. Zero is shown as zero. Change the threshold with `--min-cell-size`.
+- **Extremes:** minimum and maximum are individual values, so they are withheld for every variable. Start the server with `--show-extremes` to return them; they stay withheld for variables marked as quasi-identifiers (age, BMI and similar).
+- **An aggregate is not always anonymous.** A median or quartile can equal one participant's value, and a mean over five people says a lot about each of them. The server does not hide these.
+- **No protection against differencing.** Suppressed counts are not protected by suppressing others, so a small count can sometimes be worked out from a total and its other parts. Sliding a range filter over groups of five or more can also isolate individuals. There is no query budget and no overlap check.
+- **Free text passes through:** comments on column headers, the curator's study context, saved-view names and descriptions, and the project name are returned as written. Keep identifying details out of them.
+- These rules reduce risk but are **not anonymisation**. Treat the conversation as containing study data.
 - **Read-only:** the server opens the database read-only, never takes the project lock and cannot change anything. It works while the app has the project open, and it picks up curation changes made in the app on the next call.
 - **Access log:** every call is appended to `mcp-access.jsonl` in the project folder: tool name, arguments, success and result size, never results. Turn it off with `--no-access-log`.
 
@@ -58,7 +61,9 @@ claude mcp add bari-cns -- node /path/to/BARILabData/out/mcp/server.js --project
 npx @modelcontextprotocol/inspector node out/mcp/server.js --project "/path/to/My Study.bariproj"
 ```
 
-Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-cell-size <n>` (default 5), `--no-access-log`.
+Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-cell-size <n>` (default 5), `--show-extremes` (return minimum and maximum for variables that are not quasi-identifiers), `--no-access-log`.
+
+After an app update that changes the project database, the server refuses the project until the app has opened it once.
 
 ## What the assistant gets
 

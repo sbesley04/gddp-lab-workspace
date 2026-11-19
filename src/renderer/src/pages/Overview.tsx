@@ -159,7 +159,7 @@ function OverviewBody() {
                 <tbody>
                   {areas.map(([a, s]) => (
                     <tr key={a} style={{ cursor: 'pointer' }} onClick={() => { sessionStorage.setItem('bari.focusArea', a); setPage('measurements') }}>
-                      <td><strong>{a}</strong></td>
+                      <td><button className="btn ghost sm" style={{ fontWeight: 650, padding: '0 6px' }} title={`Show the ${a} measures`}>{a}</button></td>
                       <td className="num">{s.n}</td>
                       <td style={{ minWidth: 140 }}><Bar part={s.obs} total={s.cells} /> <span className="small muted num">{Math.round((100 * s.obs) / Math.max(1, s.cells))}%</span></td>
                       <td className="num">{s.unit}/{s.n}</td>

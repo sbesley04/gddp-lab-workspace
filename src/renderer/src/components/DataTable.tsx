@@ -21,7 +21,10 @@ interface Props {
   testId?: string
 }
 
-/** Observation table bound to the shared selection. Click a value to inspect its source cell. */
+/**
+ * Observation table bound to the shared selection. Click a value to inspect its source cell, or use the keyboard:
+ * the table body is one Tab stop, the arrow keys move between values, and Enter or Space opens the inspector.
+ */
 export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props) {
   const snapshot = sel.ctx.snapshot
   const highlight = useStore((s) => s.highlight)
@@ -31,6 +34,14 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
   const openParticipant = useStore((s) => s.openParticipant)
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
   const [q, setQ] = useState('')
+  // The value that takes focus when the table is tabbed into: a position in the sorted rows and the columns.
+  const [active, setActiveState] = useState({ ri: 0, ci: 0 })
+  // Also kept in a ref: with a held-down arrow key the next key press arrives before focus has moved to the new cell.
+  const activeRef = useRef(active)
+  const setActive = (a: { ri: number; ci: number }) => {
+    activeRef.current = a
+    setActiveState(a)
+  }
   const hl = useMemo(() => new Set(highlight), [highlight])
   const annotated = useMemo(() => new Set(snapshot.annotations.filter((a) => a.row !== null && a.variable !== null).map((a) => `${a.row}:${a.variable}`)), [snapshot])
 
@@ -69,6 +80,36 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
   const padRight = wide && colItems.length ? colVirt.getTotalSize() - colItems[colItems.length - 1].end : 0
   const spacer = (w: number, k: string, as: 'th' | 'td') => (w > 0 ? (as === 'th' ? <th key={k} style={{ width: w, padding: 0 }} aria-hidden /> : <td key={k} style={{ width: w, padding: 0 }} aria-hidden />) : null)
 
+  const activeRi = Math.min(active.ri, Math.max(0, ordered.length - 1))
+  const activeCi = Math.min(active.ci, Math.max(0, columns.length - 1))
+  const moveTo = (ri: number, ci: number) => {
+    const next = { ri: Math.max(0, Math.min(ordered.length - 1, ri)), ci: Math.max(0, Math.min(columns.length - 1, ci)) }
+    setActive(next)
+    // Rows and (in wide tables) columns outside the view are not in the page until scrolled to.
+    virt.scrollToIndex(next.ri)
+    if (wide) colVirt.scrollToIndex(next.ci)
+    const focus = (tries: number) => {
+      const cell = scroller.current?.querySelector<HTMLElement>(`[data-cell="${next.ri}:${next.ci}"]`)
+      if (cell) cell.focus()
+      else if (tries > 0) requestAnimationFrame(() => focus(tries - 1))
+    }
+    requestAnimationFrame(() => focus(5))
+  }
+  const onCellKey = (e: React.KeyboardEvent, open: () => void) => {
+    const { ri, ci } = activeRef.current
+    const step: Record<string, [number, number]> = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1], PageDown: [10, 0], PageUp: [-10, 0] }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      open()
+    } else if (e.key === 'Home' || e.key === 'End') {
+      e.preventDefault()
+      moveTo(ri, e.key === 'Home' ? 0 : columns.length - 1)
+    } else if (step[e.key]) {
+      e.preventDefault()
+      moveTo(ri + step[e.key][0], ci + step[e.key][1])
+    }
+  }
+
   const header = (key: string, text: string, title?: string, sticky = false) => (
     <th key={key} className={sticky ? 'sticky' : ''} title={title} style={wide ? { width: sticky ? PID_W : COL_W, overflow: 'hidden', textOverflow: 'ellipsis' } : undefined} aria-sort={sort?.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
       <button className="sort" onClick={() => setSort(sort?.key === key ? (sort.dir === 1 ? { key, dir: -1 } : null) : { key, dir: 1 })}>
@@ -83,7 +124,7 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
       <div className="row">
         <Search size={14} className="muted" />
         <input className="input" style={{ width: 220, height: 30 }} placeholder="Find participant…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find participant" />
-        <span className="muted small">{ordered.length} row(s){wide ? ` · ${columns.length} columns (scroll sideways)` : ''} · missing values sort last · click a value to inspect its source</span>
+        <span className="muted small">{ordered.length} row(s){wide ? ` · ${columns.length} columns (scroll sideways)` : ''} · missing values sort last · click a value to inspect its source, or move with the arrow keys and press Enter</span>
       </div>
       <div className="table-wrap" ref={scroller} style={{ maxHeight }} data-testid={testId}>
         <table className="data" style={wide ? { tableLayout: 'fixed', width: colVirt.getTotalSize() } : undefined} aria-colcount={columns.length + 2}>
@@ -110,7 +151,8 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
                   </td>
                   <td className={`muted ${wide ? 'sticky sticky2' : ''}`}>{visitName(row.visitId)}</td>
                   {spacer(padLeft, '__l', 'td')}
-                  {shown.map((c) => {
+                  {shown.map((c, k) => {
+                    const ci = wide ? colItems[k].index : k
                     const o = getObservation(sel.ctx, r, c.index)
                     const excluded = o.qcExcludedBy.length > 0
                     const qc = o.flags.some((f) => f.category && f.category !== 'unresolved_highlight')
@@ -121,7 +163,13 @@ export function DataTable({ sel, columns, rows, maxHeight = 420, testId }: Props
                         key={c.key}
                         className={`cell num ${o.value.k === 'missing' ? 'missing' : ''} ${excluded ? 'excluded' : ''}`}
                         style={sel_ ? { outline: '2px solid var(--accent)', outlineOffset: -2 } : undefined}
-                        onClick={() => inspect({ row: r, variable: c.index })}
+                        onClick={() => { setActive({ ri: it.index, ci }); inspect({ row: r, variable: c.index }) }}
+                        // One Tab stop for the whole table body (roving tabindex); arrow keys move it.
+                        tabIndex={it.index === activeRi && ci === activeCi ? 0 : -1}
+                        data-cell={`${it.index}:${ci}`}
+                        onFocus={() => setActive({ ri: it.index, ci })}
+                        onKeyDown={(e) => onCellKey(e, () => inspect({ row: r, variable: c.index }))}
+                        aria-label={`${label(c)}, ${row.participantId}: ${o.value.k === 'missing' ? 'missing' : displayValue(o.value)}${excluded ? ', excluded by QC policy' : ''}. Press Enter to inspect its source.`}
                         title={excluded ? `Excluded by QC policy: ${o.qcExcludedBy.join(', ')}` : o.value.k === 'censored' ? 'Censored value; bound not substituted' : undefined}
                       >
                         {o.value.k === 'missing' ? '—' : displayValue(o.value)}

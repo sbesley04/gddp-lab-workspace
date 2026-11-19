@@ -130,6 +130,7 @@ export const schemas = {
   'data:snapshot': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
   'data:formatGroups': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
   'data:importReport': z.object({ datasetVersionId: id }),
+  'data:compareVersions': z.object({ fromVersionId: id, toVersionId: id }),
   'curation:editMeta': z.object({ datasetVersionId: id, varKey: id, field: z.enum(META_FIELDS), value: z.string().max(5000).nullable(), status: z.enum(['unknown', 'tentative', 'confirmed']), reason }),
   'curation:setQuasi': z.object({ datasetVersionId: id, varKey: id, value: z.boolean(), reason }),
   'curation:setCovariate': z.object({ datasetVersionId: id, varKey: id, value: z.boolean(), reason }),

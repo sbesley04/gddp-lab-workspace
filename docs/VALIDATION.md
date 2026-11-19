@@ -20,8 +20,8 @@ All of this uses synthetic data only and needs no study file.
 | --- | --- | --- |
 | 1 | `npm install` | Completes |
 | 2 | `npm run typecheck` | No output |
-| 3 | `npm test` | 188 tests pass |
-| 4 | `npm run e2e` | 11 tests pass |
+| 3 | `npm test` | 193 tests pass |
+| 4 | `npm run e2e` | 14 tests pass |
 | 5 | `npm run reference:check` (needs R 4.3.2 with jsonlite 2.0.0 and car 3.1.3) | "R reproduces all three reference files." |
 | 6 | Packaged app with `--self-test <folder>` | Exit code 0 and `bari-self-test.json` with every step `ok` |
 
@@ -71,6 +71,8 @@ Not validated because not built: paired tests, repeated-measures models, covaria
 | An encrypted backup opens only with its passphrase; a changed byte is refused | `tests/workflow.test.ts`, `e2e/workflow.spec.ts` |
 | Backup and restore do not change observations | `tests/workflow.test.ts`, the packaged self-test |
 | The MCP server returns no identifier, no count below the cell size, and no extremes | `tests/mcp.test.ts` |
+| Two imports are compared by participant, visit and header, with missing never equal to zero | `tests/versionDiff.test.ts`, `e2e/versions.spec.ts` |
+| Every control has a name and is reachable with the keyboard | `e2e/accessibility.spec.ts` |
 | No network request is attempted | `e2e/workflow.spec.ts`, `e2e/guardrails.spec.ts` |
 
 ## Known gaps in the evidence
@@ -79,7 +81,7 @@ Not validated because not built: paired tests, repeated-measures models, covaria
 - The Windows install wizard has not been run by hand.
 - The largest dataset tested is synthetic: 4,800 rows by 300 columns (`tests/performance.test.ts`). Calculations are fast at that size; importing takes about 7 seconds and loading about 3. Drawing at that size is not tested, and all computation runs in the window's own thread.
 - The whole-window error boundary, and `--verify-project` on a packaged build, are untested.
-- No accessibility audit.
+- Accessibility is checked automatically for names, keyboard reach and focus only. Colour contrast and screen-reader use are not checked.
 - The censoring threshold (15%) is provisional and has not been set with a statistician.
 - No second person has reviewed the statistical code.
 

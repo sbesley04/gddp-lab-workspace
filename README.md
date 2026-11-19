@@ -7,7 +7,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 ## Versions
 
 - **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
-- **Source (`main`), unreleased:** analysis log with fingerprints, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server described in [docs/MCP.md](docs/MCP.md), statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, stricter MCP suppression, and encrypted backups. None of this is in the 0.3.1 installers; build from source to use it. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
+- **Source (`main`), unreleased:** analysis log with fingerprints, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server described in [docs/MCP.md](docs/MCP.md), statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, stricter MCP suppression, encrypted backups, and a comparison of dataset versions. None of this is in the 0.3.1 installers; build from source to use it. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
 
 ## What works
 
@@ -18,6 +18,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 | Numbered visits sorted numerically on import (Month 2 before Month 6) | Working (unreleased) |
 | Source/QC preservation: theme colours and tints, rich-text headers turned into aliases, threaded comments, legend decoding with exact / needs-review / unresolved statuses, curator decisions | Working |
 | Measurement catalog with append-only metadata revisions, quasi-identifier flags and covariate tags | Working |
+| Comparison of two imports of the workbook: rows, participants, measures, changed values and QC flags (nothing is merged) | Working (unreleased) |
 | AND/OR cohort filters with explicit missing handling; QC inclusion policy with impact counts | Working |
 | Distribution (box + all points; histogram unreleased) and two-measure scatter; linked table; forced axis bounds; chart style editor with presets | Working |
 | Colour-by a categorical variable; display transforms (log2, log10, square root, Box-Cox, centre, z-score, rank) that never change stored data or exports | Working (unreleased) |
@@ -29,7 +30,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 | Analysis log in R syntax with per-step and chain fingerprints (History panel, `analysis_log.R` in exports) | Working (unreleased) |
 | Chart download: SVG/PNG, journal and slide size presets, fingerprint footer, `.chart.json` and `.analysis-log.R` sidecars written by the main process | Working (unreleased) |
 | Saved views pinned to dataset and metadata versions and reproduced after restart; Compare whiteboard of views and notes, exportable as SVG/PNG | Working |
-| First-run tour, ⌘K search and ⌘1–⌘6 shortcuts; wide tables virtualised in both directions | Working |
+| First-run tour, ⌘K search and ⌘1–⌘6 shortcuts; wide tables virtualised in both directions; table values reachable with the arrow keys (unreleased) | Working |
 | Research-context ZIP (pseudonymous keys, checksums, preview); `analysis_log.R` and `analysis_register.json` are the seventh and eighth files in unreleased builds | Working |
 | Backup and verified restore; optional passphrase encryption (unreleased) | Working |
 | MCP server for AI assistants (read-only, aggregate results, every small count suppressed, extremes withheld, access log) | Working (unreleased), tested on synthetic data only |
@@ -60,7 +61,7 @@ npm run dev
 | Command | Purpose |
 | --- | --- |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest unit and integration tests (188, synthetic data only; about 15 seconds) |
+| `npm test` | Vitest unit and integration tests (193, synthetic data only; about 15 seconds) |
 | `npm run e2e` | Builds, then runs the Playwright UI tests |
 | `npm run test:reference` | Opt-in checks against a local real workbook (counts only) |
 | `npm run reference:check` | Regenerates the R reference values and compares them with the committed files (needs R) |

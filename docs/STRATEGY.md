@@ -36,6 +36,9 @@ Updated 2026-11-19. Everything marked done is in the source, unreleased, and ver
 | E7 Changelog | Done | `CHANGELOG.md`. Licence, citation file and second maintainer are still open (Q5). |
 | E3 Performance budget | Done in part | `tests/performance.test.ts` measures a synthetic dataset of 4,800 rows by 300 columns and fails if anything becomes about ten times slower. Calculations are fast at that size. Importing (about 7 s) and loading the dataset (about 3 s, 50 MB sent to the window) are the slow parts. Nothing has been moved to a worker, and drawing is not measured. |
 | Property tests for the selection engine | Done | `tests/selection.property.test.ts`: six rules on 150 seeded random datasets, including agreement with an independently written reading of the rules. Property tests for the importer are not written. |
+| Phase 4: dataset-version comparison | Done | **Data quality → Version changes** lists what differs between two imports: rows, participants, measures, changed values and QC flags. Nothing is merged. The rest of Phase 4 (legend profiles, REDCap file import, units and ontology identifiers) is open. |
+| E10 Accessibility | Done in part | An automated check on every page: each control has a name and is reachable with the keyboard, focus is visible, and the main flow works without a mouse. It found and fixed table values and clickable rows that the keyboard could not reach. Colour contrast, reading order and real screen-reader use are not checked. |
+| M4 Free text through MCP | Option added | `--withhold-free-text` withholds the project name, study context, header comments and saved-view names. Off by default. |
 | E5 Signing (rest of Phase 2) | **Open** | Needs signing credentials. |
 
 Phase 2's first "done when" condition is met and tested: a tampered database fails verification (`tests/integrity.test.ts`, seven kinds of tampering). "MCP.md matches what the code returns" is met for M1 and M2.

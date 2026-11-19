@@ -19,7 +19,7 @@ What the server returns, and what it never returns:
 - **Extremes:** minimum and maximum are individual values, so they are withheld for every variable. Start the server with `--show-extremes` to return them; they stay withheld for variables marked as quasi-identifiers (age, BMI and similar).
 - **An aggregate is not always anonymous.** A median or quartile can equal one participant's value, and a mean over five people says a lot about each of them. The server does not hide these.
 - **No protection against differencing.** Suppressed counts are not protected by suppressing others, so a small count can sometimes be worked out from a total and its other parts. Sliding a range filter over groups of five or more can also isolate individuals. There is no query budget and no overlap check.
-- **Free text passes through:** comments on column headers, the curator's study context, saved-view names and descriptions, and the project name are returned as written. Keep identifying details out of them.
+- **Free text passes through by default:** comments on column headers, the curator's study context, saved-view names and descriptions, and the project name are returned as written, because that text is how a workbook explains itself. Keep identifying details out of them, or start the server with `--withhold-free-text` to withhold all of it (header comments are then only counted, and saved views are referred to by id).
 - These rules reduce risk but are **not anonymisation**. Treat the conversation as containing study data.
 - **Read-only:** the server opens the database read-only, never takes the project lock and cannot change anything. It works while the app has the project open, and it picks up curation changes made in the app on the next call.
 - **Access log:** every call is appended to `mcp-access.jsonl` in the project folder: tool name, arguments, success and result size, never results. Turn it off with `--no-access-log`.
@@ -61,7 +61,7 @@ claude mcp add bari-cns -- node /path/to/BARILabData/out/mcp/server.js --project
 npx @modelcontextprotocol/inspector node out/mcp/server.js --project "/path/to/My Study.bariproj"
 ```
 
-Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-cell-size <n>` (default 5), `--show-extremes` (return minimum and maximum for variables that are not quasi-identifiers), `--no-access-log`.
+Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-cell-size <n>` (default 5), `--show-extremes` (return minimum and maximum for variables that are not quasi-identifiers), `--withhold-free-text`, `--no-access-log`.
 
 After an app update that changes the project database, the server refuses the project until the app has opened it once.
 

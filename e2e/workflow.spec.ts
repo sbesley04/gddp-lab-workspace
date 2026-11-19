@@ -131,8 +131,11 @@ test('import, select, save, export, back up — all offline', async () => {
       const now = (await head.boundingBox())!
       const still = Math.abs(now.x - box.x) < 0.5 && Math.abs(now.y - box.y) < 0.5
       box = now
-      return still && (await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.board-card-head'), [now.x + 60, now.y + now.height / 2]))
-    }, { intervals: [300] })
+      const hit = still && (await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.board-card-head'), [now.x + 60, now.y + now.height / 2]))
+      // On a slow runner the layout can shift the header out of the middle again; bring it back and look once more.
+      if (!hit) await head.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+      return hit
+    }, { intervals: [300], timeout: 15000 })
     .toBe(true)
   await page.mouse.move(box.x + 60, box.y + box.height / 2)
   await page.mouse.down()

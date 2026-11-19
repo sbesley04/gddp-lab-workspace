@@ -266,7 +266,7 @@ ${options.analysisQuestion.trim() || '_No question entered._'}
     qcPolicy: { exclude: spec.qc.exclude, description: qcText },
     variables: vars.map((v) => v.key),
     transformations: [] as string[],
-    analysisLog: { file: 'analysis_log.R', signature: provenance.signature },
+    analysisLog: { file: 'analysis_log.R', fingerprint: provenance.fingerprint },
     analysisRegister: { file: 'analysis_register.json', analyses: register.totals.analyses, pValues: register.totals.pValues, listed: register.listed.analyses },
     participantKeys: {
       mode: options.participantKeyMode,

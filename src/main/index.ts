@@ -13,7 +13,7 @@ import * as curation from './curation'
 import * as views from './views'
 import * as boards from './boards'
 import { listExports, previewContextExport, writeChartFiles, writeContextExport } from './exportService'
-import { createBackup, restoreBackup } from './backup'
+import { BackupPassphraseError, createBackup, readBackupBytes, restoreBackup } from './backup'
 import { listRegister, recordAnalysis } from './register'
 import { verifyIntegrity } from './integrity'
 import { APP_VERSION } from './version'
@@ -46,6 +46,8 @@ let settings: Settings
 // ---------- state ----------
 let current: Project | null = null
 const pendingImports = new Map<string, ParsedSource>()
+/** Encrypted backups waiting for a passphrase: opaque token to file path, so the renderer never handles the path. */
+const pendingRestores = new Map<string, string>()
 const blockedRequests: { url: string; at: string }[] = []
 let mainWindow: BrowserWindow | null = null
 
@@ -247,20 +249,42 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
     project.audit('integrity.verify', { ok: report.ok, entries: report.entries, problems: report.problemCount }, author())
     return report
   },
-  'backup:create': async () => {
+  'backup:create': async (p) => {
     const project = requireProject()
     const stamp = new Date().toISOString().slice(0, 10)
-    const r = await dialog.showSaveDialog(mainWindow!, { title: 'Save project backup', defaultPath: `${project.info.name}-backup-${stamp}.bariproj.zip`, filters: [{ name: 'Project backup', extensions: ['zip'] }] })
+    // An encrypted backup is not a ZIP any more, so it gets its own extension.
+    const ext = p.passphrase ? 'bariproj.enc' : 'bariproj.zip'
+    const r = await dialog.showSaveDialog(mainWindow!, { title: p.passphrase ? 'Save encrypted project backup' : 'Save project backup', defaultPath: `${project.info.name}-backup-${stamp}.${ext}`, filters: [{ name: p.passphrase ? 'Encrypted project backup' : 'Project backup', extensions: [p.passphrase ? 'enc' : 'zip'] }] })
     if (r.canceled || !r.filePath) return null
-    const m = await createBackup(project, r.filePath, author())
-    return { fileName: basename(r.filePath), files: m.files.length, datasets: m.datasets.length }
+    const m = await createBackup(project, r.filePath, author(), { passphrase: p.passphrase })
+    return { fileName: basename(r.filePath), files: m.files.length, datasets: m.datasets.length, encrypted: !!p.passphrase }
   },
-  'backup:restore': async () => {
-    const f = await dialog.showOpenDialog(mainWindow!, { title: 'Choose a project backup', properties: ['openFile'], filters: [{ name: 'Project backup', extensions: ['zip'] }] })
-    if (f.canceled || !f.filePaths[0]) return null
+  'backup:restore': async (p) => {
+    let file: string
+    if (p.token) {
+      const known = pendingRestores.get(p.token)
+      if (!known) throw new Error('This restore expired. Choose the backup file again.')
+      file = known
+    } else {
+      const f = await dialog.showOpenDialog(mainWindow!, { title: 'Choose a project backup', properties: ['openFile'], filters: [{ name: 'Project backup', extensions: ['zip', 'enc'] }] })
+      if (f.canceled || !f.filePaths[0]) return null
+      file = f.filePaths[0]
+    }
+    // Check the passphrase before asking where to restore, so a wrong one costs nothing.
+    try {
+      readBackupBytes(file, p.passphrase)
+    } catch (e) {
+      if (e instanceof BackupPassphraseError) {
+        const token = p.token ?? randomUUID()
+        pendingRestores.set(token, file)
+        return { needsPassphrase: true, token, fileName: basename(file), wrong: e.reason === 'wrong' }
+      }
+      throw e
+    }
     const parent = await pickDirectory('Choose where to restore the project folder')
     if (!parent) return null
-    const res = restoreBackup(f.filePaths[0], parent)
+    const res = restoreBackup(file, parent, undefined, p.passphrase)
+    if (p.token) pendingRestores.delete(p.token)
     const state = openProjectAt(res.dir)
     return { verified: res.verified, project: state }
   }

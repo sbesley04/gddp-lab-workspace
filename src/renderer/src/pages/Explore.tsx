@@ -14,6 +14,7 @@ import { call } from '../api'
 import { useStore, errorText } from '../store'
 import { useSelection, useVar, useSpec } from '../lib/selection'
 import { useProvenance } from '../lib/provenance'
+import { shortFingerprint } from '@core/provenance'
 import { APP_VERSION } from '../lib/version'
 import { label, plural, qcPolicyText, STATUS_TEXT, INTERP_TEXT } from '../lib/format'
 import { EChart, type EChartHandle } from '../components/EChart'
@@ -163,7 +164,10 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
   const [pxScale, setPxScale] = useState(2)
   const [stamp, setStamp] = useState(true)
   const [sidecars, setSidecars] = useState(true)
-  const stampText = prov ? `analysis ${prov.signature} · dataset v${snapshot.versionNumber} rev ${snapshot.metadataVersion} · app ${APP_VERSION}` : ''
+  const short = prov ? shortFingerprint(prov.fingerprint) : ''
+  const stampText = prov ? `analysis ${short} · dataset v${snapshot.versionNumber} rev ${snapshot.metadataVersion} · app ${APP_VERSION}` : ''
+  // The main process rebuilds the analysis log, the settings file and the fingerprint from this; only the image is sent.
+  const context = () => ({ spec: spec!, chart: useStore.getState().chart, metadataVersion: snapshot.metadataVersion })
   const save = async (format: 'svg' | 'png') => {
     if (!prov || !spec) return
     try {
@@ -179,23 +183,16 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
         h = r.height
       }
       const data = format === 'svg' ? svg : await chartRef.current!.pngFromSvg(svg, w, h, pxScale)
-      const settings = JSON.stringify({ schema: 'bari-chart/1', createdAt: new Date().toISOString(), app: APP_VERSION, signature: prov.signature, selection: spec, chart, steps: prov.steps.map((s) => ({ n: s.n, signature: s.signature, title: s.title })) }, null, 2)
-      const r = await call<{ fileName: string; files: string[] } | null>('export:chart', {
-        format,
-        data,
-        suggestedName: name,
-        sidecars: sidecars ? { settings, log: prov.text } : undefined,
-        context: { datasetVersionId: snapshot.datasetVersionId, metadataVersion: snapshot.metadataVersion, signature: prov.signature }
-      })
+      const r = await call<{ fileName: string; files: string[] } | null>('export:chart', { format, data, suggestedName: name, sidecars, stamped: stamp ? short : null, context: context() })
       if (r) toast('success', r.files.length > 1 ? `Saved ${r.files.join(', ')}` : `Chart saved as ${r.fileName}`)
     } catch (e) {
       toast('error', errorText(e))
     }
   }
   const saveLog = async () => {
-    if (!prov) return
+    if (!prov || !spec) return
     try {
-      const r = await call<{ fileName: string } | null>('export:chart', { format: 'r', data: prov.text, suggestedName: `${name} analysis log` })
+      const r = await call<{ fileName: string } | null>('export:chart', { format: 'r', data: '', suggestedName: `${name} analysis log`, context: context() })
       if (r) toast('success', `Analysis log saved as ${r.fileName}`)
     } catch (e) {
       toast('error', errorText(e))
@@ -241,7 +238,7 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
       </button>}
       <Popover.Root onOpenChange={(open) => { if (open) loadRegister() }}>
         <Popover.Trigger asChild>
-          <button className="btn sm" aria-label="Analysis history" data-testid="history" title="Every step behind this chart, in R syntax, with signatures"><ScrollText size={14} /> History</button>
+          <button className="btn sm" aria-label="Analysis history" data-testid="history" title="Every step behind this chart, in R syntax, with fingerprints"><ScrollText size={14} /> History</button>
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="popover" align="end" sideOffset={8} style={{ width: 460, maxHeight: 520, overflow: 'auto' }}>
@@ -249,13 +246,13 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
               <div className="stack" style={{ gap: 10 }}>
                 <div className="row">
                   <strong style={{ flex: 1 }}>Analysis log</strong>
-                  <span className="kbd" title="Changes whenever any step, the data version, metadata or app version changes" data-testid="chain-signature">{prov.signature}</span>
+                  <span className="kbd" title={`Fingerprint ${prov.fingerprint}. It changes whenever any step, the data version, metadata or app version changes. It identifies the inputs; it is not a signature.`} data-testid="chain-fingerprint">{short}</span>
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>A readable record of what the app did, in R syntax. It is not guaranteed to run as a script. Participant identifiers are never written.</div>
                 <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 8 }}>
                   {prov.steps.map((st) => (
                     <li key={st.n}>
-                      <div className="row"><span style={{ flex: 1 }}>{st.title}</span><span className="kbd">{st.signature}</span></div>
+                      <div className="row"><span style={{ flex: 1 }}>{st.title}</span><span className="kbd" title={st.fingerprint}>{shortFingerprint(st.fingerprint)}</span></div>
                       <pre style={{ margin: '4px 0 0', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{st.code.join('\n')}</pre>
                     </li>
                   ))}
@@ -306,7 +303,7 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
                   <option value={1}>1×</option><option value={2}>2×</option><option value={4}>4× (print)</option>
                 </select>
               </label>
-              <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={stamp} onChange={(e) => setStamp(e.target.checked)} /> Add analysis signature footer</label>
+              <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={stamp} onChange={(e) => setStamp(e.target.checked)} /> Add analysis fingerprint footer</label>
               <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={sidecars} onChange={(e) => setSidecars(e.target.checked)} /> Also save settings (.chart.json) and log (.analysis-log.R)</label>
               <div className="list">
                 <Popover.Close asChild>

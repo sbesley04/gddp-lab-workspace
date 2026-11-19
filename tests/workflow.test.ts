@@ -11,7 +11,7 @@ import { buildSnapshot, listVersions } from '../src/main/snapshot'
 import { decideFormat, editVariableMeta, setCellExclusion, setCovariate } from '../src/main/curation'
 import { getView, saveView } from '../src/main/views'
 import { previewContextExport, writeContextExport } from '../src/main/exportService'
-import { createBackup, restoreBackup } from '../src/main/backup'
+import { BackupPassphraseError, createBackup, isEncryptedBackup, restoreBackup } from '../src/main/backup'
 import { computeSelection, countsFor, observationsFor, isUsable } from '@core/selection'
 import { distributionData, scatterData } from '@core/chartData'
 import { summarize } from '@core/stats'
@@ -243,7 +243,8 @@ describe('context export', () => {
     expect(strFromU8(files['quality_flags.csv'])).toMatch(/excluded by policy/)
     expect(manifest.metadataVersion).toBe(snap.metadataVersion)
     expect(res.files).toHaveLength(7)
-    expect(strFromU8(files['analysis_log.R'])).toContain(`chain signature: ${manifest.analysisLog.signature}`)
+    expect(strFromU8(files['analysis_log.R'])).toContain(`chain fingerprint: ${manifest.analysisLog.fingerprint}`)
+    expect(manifest.analysisLog.fingerprint).toMatch(/^[0-9a-f]{64}$/)
   })
 })
 
@@ -273,4 +274,49 @@ describe('backup and restore', () => {
     expect(() => restoreBackup(dest, root, 'Damaged')).toThrow(/Checksum mismatch/)
     expect(existsSync(join(root, 'Damaged.bariproj'))).toBe(false)
   })
+  it('encrypts a backup with a passphrase and restores it only with that passphrase', async () => {
+    const dest = join(root, 'backup.bariproj.enc')
+    const passphrase = 'synthetic passphrase é'
+    await expect(createBackup(project, join(root, 'short.enc'), null, { passphrase: 'short' })).rejects.toThrow(/at least 8 characters/)
+    expect(existsSync(join(root, 'short.enc'))).toBe(false)
+    await createBackup(project, dest, 'Test RA', { passphrase })
+    const bytes = readFileSync(dest)
+    expect(isEncryptedBackup(bytes)).toBe(true)
+    expect(() => unzipSync(new Uint8Array(bytes))).toThrow()
+    // Nothing readable: not the project name, a participant identifier, a header or the SQLite file header.
+    for (const clear of ['Synthetic Test', 'DEMO-', 'Subject_ID', 'SQLite format 3', 'manifest.json']) expect(bytes.includes(Buffer.from(clear)), clear).toBe(false)
+    // Two backups of the same project differ throughout (fresh salt and nonce).
+    const dest2 = join(root, 'backup-again.bariproj.enc')
+    await createBackup(project, dest2, null, { passphrase })
+    expect(readFileSync(dest2).subarray(8, 36).equals(bytes.subarray(8, 36))).toBe(false)
+
+    const err = (fn: () => unknown) => { try { fn() } catch (e) { return e } return null }
+    expect(err(() => restoreBackup(dest, root, 'No passphrase'))).toMatchObject({ reason: 'required' })
+    expect(err(() => restoreBackup(dest, root, 'Wrong passphrase', 'not the passphrase'))).toBeInstanceOf(BackupPassphraseError)
+    expect(err(() => restoreBackup(dest, root, 'Wrong passphrase', 'not the passphrase'))).toMatchObject({ reason: 'wrong' })
+    // A changed byte anywhere (header, body or tag) fails authentication; nothing is restored.
+    for (const at of [10, 30, Math.floor(bytes.length / 2), bytes.length - 1]) {
+      const damaged = Buffer.from(bytes)
+      damaged[at] ^= 0x01
+      const f = join(root, `damaged-${at}.enc`)
+      writeFileSync(f, damaged)
+      expect(err(() => restoreBackup(f, root, `Damaged ${at}`, passphrase)), `byte ${at}`).toMatchObject({ reason: 'wrong' })
+      expect(existsSync(join(root, `Damaged ${at}.bariproj`))).toBe(false)
+    }
+    expect(existsSync(join(root, 'Wrong passphrase.bariproj'))).toBe(false)
+
+    const restored = restoreBackup(dest, root, 'Restored encrypted', passphrase)
+    expect(restored.verified).toMatchObject({ integrity: 'ok', records: { ok: true } })
+    const p2 = Project.open(restored.dir)
+    try {
+      expect(datasetContentHash(p2, versionId)).toBe(datasetContentHash(project, versionId))
+    } finally {
+      p2.close()
+    }
+    // The passphrase is recorded nowhere; the record only says the backup was encrypted.
+    const stored = [...project.db.all<any>('SELECT detail_json AS t FROM audit_log'), ...project.db.all<any>('SELECT manifest_json AS t FROM export_record')].map((r) => r.t).join('\n')
+    expect(stored).not.toContain(passphrase)
+    expect(JSON.parse(project.db.get<any>("SELECT manifest_json FROM export_record WHERE kind = 'backup' AND file_name = 'backup.bariproj.enc'").manifest_json).encrypted).toBe(true)
+    expect(JSON.parse(project.db.get<any>("SELECT detail_json FROM audit_log WHERE action = 'project.backup' ORDER BY id DESC LIMIT 1").detail_json).encrypted).toBe(true)
+  }, 60_000) // key derivation is deliberately slow, and CI's Windows runners are slower still
 })

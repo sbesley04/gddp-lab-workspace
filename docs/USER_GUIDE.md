@@ -92,11 +92,11 @@ Importing the same file again is recognised by its checksum, and the app offers 
   - **Loading vectors (biplot)** draws each variable as an arrow: its correlation with the two components shown (loading × component SD, at most 1). The 10 longest are drawn, all stretched by one factor to fit the scores, and the note under the chart gives that factor. The setting is saved with the view.
 - **Many measures** (correlation matrix, heatmap, PCA) compute no tests, so they are not blocked when a participant appears at more than one visit. A notice says how many rows come from how many participants, and offers each visit as a one-click fix.
 - **History** also shows the **analysis register** (see Statistics below): how many analyses and p-values this project has computed, and the most recent ones.
-- **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a signature, and the chain signature changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
+- **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a fingerprint, and the chain fingerprint changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
 - **Download** saves the chart as SVG or PNG.
   - **Size:** as on screen, journal single column (600 × 420), double column (1200 × 700) or slide (1600 × 900). PNG can be 1×, 2× or 4×.
-  - **Signature footer** (on by default) adds the chain signature, dataset version, metadata revision and app version along the bottom edge.
-  - **Also save settings and log** writes `name.chart.json` (selection, chart settings, signature) and `name.analysis-log.R` beside the image. Each save is recorded in the project's audit log.
+  - **Fingerprint footer** (on by default) adds the first 8 characters of the chain fingerprint, the dataset version, metadata revision and app version along the bottom edge. A fingerprint identifies what the chart was made from. It is not a signature: it does not prove who made it.
+  - **Also save settings and log** writes `name.chart.json` (selection, chart settings, the full fingerprint) and `name.analysis-log.R` beside the image. The app writes both from the selection itself, so they always describe the chart that was saved. Each save is recorded in the project's audit log.
 - **Axes** fixes the minimum and maximum of each axis. Points outside the bounds are not drawn, and a note under the chart says how many. Statistics always use every selected observation.
 - **Style** opens the chart editor. Presets are Default (glass), Publication, High contrast, Colour-blind safe (Okabe–Ito) and Greyscale. You can also change point, flag, box and fit colours, background, text colour, font, font size, point size and opacity, gridlines, title and subtitle, and box fill. QC flags always keep their own shapes (▲ ◇), whatever the colours. Styles are saved with views.
 
@@ -189,7 +189,7 @@ The ZIP contains:
 - `quality_flags.csv`
 - `study_context.md` (which states "baseline observations only" when that applies)
 - `analysis_request.md`
-- `analysis_log.R`, the steps behind the selection in R syntax, with its chain signature (also recorded in the manifest)
+- `analysis_log.R`, the steps behind the selection in R syntax, with its chain fingerprint (also recorded in the manifest)
 - `analysis_register.json`, the analyses already computed in the app on this dataset version. The totals cover all of them. Tests and p-values are listed only for analyses whose variables are all in this export, and group summaries are left out.
 - `manifest.json`, with checksums, selection rules, versions and the software version
 
@@ -199,7 +199,11 @@ Pseudonymisation is **not** anonymisation. The full workbook, unselected columns
 
 ## Backup and restore
 
-- **Backup** (sidebar) writes a `*.bariproj.zip`: a consistent database copy, source snapshots, and a manifest with SHA-256 checksums.
+- **Backup** (sidebar) writes a consistent database copy, the source snapshots and a manifest with SHA-256 checksums.
+  - A backup holds everything in the project, including participant identifiers. Enter a passphrase (at least 8 characters, twice) and choose **Save encrypted backup** to write a `*.bariproj.enc` file that cannot be read without it.
+  - **There is no recovery.** The passphrase is not stored anywhere. If it is lost, the backup cannot be opened by anyone.
+  - **Save without encryption** writes a plain `*.bariproj.zip`.
+  - When you restore an encrypted backup, the start screen asks for its passphrase.
 - **Restore a backup** (start screen) is also the way to move a project to another computer: copying the project folder itself can carry over a lock from the old computer. It verifies the checksums, the database integrity, the observation hashes and the record check below before it opens the restored copy in a new folder.
 
 ## Checking that records were not altered

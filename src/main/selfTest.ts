@@ -67,7 +67,7 @@ export async function runSelfTest(outDir: string | undefined, demoPath: string, 
     const files = unzipSync(new Uint8Array(readFileSync(zipPath)))
     const manifest = JSON.parse(strFromU8(files['manifest.json']))
     check('context export checksums', manifest.files.every((f: any) => sha256(files[f.name]) === f.sha256))
-    check('analysis log in export', strFromU8(files['analysis_log.R']).includes(`# chain signature: ${manifest.analysisLog.signature}`))
+    check('analysis log in export', strFromU8(files['analysis_log.R']).includes(`# chain fingerprint: ${manifest.analysisLog.fingerprint}`))
     const numeric = snap.variables.filter((v) => v.role === 'measure' && v.kind === 'numeric').slice(0, 6)
     const plot = pcaPlot(sel, numeric, null)
     const corr = correlationFromSelection(sel, numeric, 'spearman')

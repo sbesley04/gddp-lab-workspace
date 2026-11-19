@@ -8,12 +8,20 @@
 # The R reference values are checked by r-reference.yml.
 name: build
 on:
+  # Branches are built through their pull request; building the push as well ran every job twice.
+  # Pushes to main and tags are built for their installer artifacts.
   push:
+    branches: [main]
+    tags: ['**']
     # Changes to the R reference workflow alone do not need an installer build.
     paths-ignore: ['.github/workflows/r-reference.yml']
   pull_request:
     paths-ignore: ['.github/workflows/r-reference.yml']
   workflow_dispatch:
+# A newer push to the same branch or pull request replaces a run that is still going.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     strategy:
@@ -33,6 +41,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx electron-vite build
+      # The UI tests drive the development build (a packaged build cannot be driven: its inspect fuse is off).
+      # macOS only: it is the platform they are developed on, and the packaged self-test below covers Windows.
+      - name: End-to-end UI tests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: npx playwright test
+      - name: Keep UI test output when it fails
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results
+          path: test-results/
 
       # ---------- macOS ----------
       - name: Package (macOS universal DMG, unsigned)

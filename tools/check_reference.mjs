@@ -9,8 +9,13 @@ import { join } from 'node:path'
 
 const FILES = ['stats_reference', 'multivariate_reference', 'transforms_reference']
 const REL_TOL = 1e-9
-// Box-Cox λ maximises a likelihood that is flat at its peak, so λ (and values transformed with it) move more.
-const LOOSE = [{ file: 'transforms_reference', path: /\.(lambda|transformed)(\[|$)/, tol: 1e-6 }]
+// Box-Cox λ maximises a likelihood that is flat at its peak, so λ moves by about 1e-7 between platforms (macOS and
+// Linux maths libraries differ in the last bits). A value transformed with it, (y^λ − 1)/λ, moves by about ln(y) times
+// as much in relative terms: 1e-6 was seen on the first CI run for the left-skewed sample, where λ is near 5.9.
+const LOOSE = [
+  { file: 'transforms_reference', path: /\.lambda$/, tol: 1e-6 },
+  { file: 'transforms_reference', path: /\.transformed\[/, tol: 2e-5 }
+]
 
 const diffs = []
 function close(a, b, tol) {

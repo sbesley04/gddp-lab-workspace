@@ -1,4 +1,4 @@
-// Entry point: `node out/mcp/server.js --project <folder.bariproj> [--min-cell-size 5] [--show-extremes] [--no-access-log]`
+// Entry point: `node out/mcp/server.js --project <folder.bariproj> [--min-cell-size 5] [--show-extremes] [--withhold-free-text] [--no-access-log]`
 // Speaks MCP over stdio. stdout carries protocol messages only; diagnostics go to stderr.
 import { join, resolve } from 'node:path'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -24,7 +24,7 @@ async function main() {
 
   let ws: Workspace
   try {
-    ws = Workspace.open(resolve(dir), { mode: 'aggregate', minCellSize, showExtremes: process.argv.includes('--show-extremes') })
+    ws = Workspace.open(resolve(dir), { mode: 'aggregate', minCellSize, showExtremes: process.argv.includes('--show-extremes'), withholdFreeText: process.argv.includes('--withhold-free-text') })
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e))
   }

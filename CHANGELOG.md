@@ -27,6 +27,9 @@ Not in any installer yet. Build from source to use it.
 - Covariate tags and colour-by; display transforms (log2, log10, square root, Box-Cox, centre, z-score, rank).
 - Histograms, correlation matrix, participant × measure heatmap, exploratory PCA with a gap suggestion and biplot.
 - Read-only MCP server for AI assistants (aggregate results, small-count suppression, access log).
+- **Data quality → Version changes**: what differs between two imports of the workbook.
+- Keyboard access to table values (arrow keys, Enter to inspect), and buttons in rows that were only clickable.
+- MCP option `--withhold-free-text`.
 - A message instead of a blank window when a page fails to draw.
 - Audit entries for quasi-identifier flags, segment names and study context.
 - R reference check (`npm run reference:check`) and its CI workflow; end-to-end UI tests in CI.

@@ -3,7 +3,7 @@ export const CHANNELS = [
   'app:info', 'app:networkLog',
   'project:create', 'project:open', 'project:openRecent', 'project:forgetRecent', 'project:recent', 'project:current', 'project:close', 'project:openDemo',
   'import:pickFile', 'import:preview', 'import:validate', 'import:commit', 'import:discard',
-  'data:versions', 'data:snapshot', 'data:formatGroups', 'data:importReport',
+  'data:versions', 'data:snapshot', 'data:formatGroups', 'data:importReport', 'data:compareVersions',
   'curation:editMeta', 'curation:setQuasi', 'curation:setCovariate', 'curation:decideFormat', 'curation:setExclusion', 'curation:nameSegment',
   'curation:setStudyContext', 'curation:getStudyContext', 'curation:history',
   'views:list', 'views:save', 'views:get', 'views:delete',

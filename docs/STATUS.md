@@ -13,11 +13,12 @@
 | Unreleased | 2026-11-19 | Statistical guardrails: independence guard, censoring visibility, analysis register, neutral p-values, R check |
 | Unreleased | 2026-11-19 | Integrity: hash chain over the audit log, revisions and register with a verify command; full curation audit; MCP small-count and extreme-value suppression |
 | Unreleased | 2026-11-19 | Full fingerprints; chart sidecars rebuilt by the main process; encrypted backups; error boundary; threat model |
+| Unreleased | 2026-11-19 | Dataset-version comparison; keyboard access to table values; automated accessibility check |
 
 ## Current test inventory
 
-- `npm test`: 196 Vitest tests in 22 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 7 for the lab-release script, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
-- `npm run e2e`: Playwright, 11 tests. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm test`: 201 Vitest tests in 23 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 7 for the lab-release script, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
+- `npm run e2e`: Playwright, 14 tests. The full UI workflow, the comparison of two imports (`e2e/versions.spec.ts`), the accessibility checks (`e2e/accessibility.spec.ts`), chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test. CI runs it on the app installed from the real DMG (natively and under Rosetta) and from the real Windows setup file.
@@ -191,6 +192,19 @@ More of Phase 2 of [STRATEGY.md](STRATEGY.md).
 | Performance budget on a synthetic dataset of 2,000 participants, 4,800 rows and 300 columns (1.4 million cells, 43,000 flags) | `tests/performance.test.ts`. Measured on an Apple Silicon laptop: selection 3 ms, grouped distribution with Box-Cox 77 ms, statistics 71 ms, counts for all 300 variables 0.2 s, correlation matrix of 60 variables 0.8 s, PCA of 12 variables 7 ms; CSV parse 0.2 s, validation 1 s, import commit 7.5 s, loading the dataset from the database 2.9 s, a 50 MB dataset sent to the window, record check 44 ms. Budgets are about ten times these. Drawing and the transfer to the window are not measured. |
 
 Not done: project folders are not encrypted by the app. The passphrase has no strength check beyond 8 characters and no recovery. The drawn chart image is not verified beyond its footer. Installers are unsigned. The packaged build was not re-run for this work.
+
+## Unreleased: version comparison and accessibility (2026-11-19)
+
+| Feature | Verification |
+| --- | --- |
+| **Data quality → Version changes** compares the dataset version on screen with another import: rows and participants added and removed, measures added and removed, values changed, filled in or now empty, type changes, and QC flags gained or lost. Rows are matched by participant and visit, columns by header. The main process builds both versions and sends only the differences. Nothing is merged. | `tests/versionDiff.test.ts`: hand-built versions with reordered rows and columns and every kind of difference, each expected value worked out by hand ("1.0" equals 1; "<0.5" does not equal 0.5; zero to empty is "now empty"); reversing the direction; the listing cap; and the two synthetic demo workbooks, where it finds the one corrected value. `e2e/versions.spec.ts` imports both through the UI and reads the tab. |
+| Keyboard access to table values: the table body is one Tab stop, arrow keys, Home, End, Page Up and Page Down move between values, and Enter or Space opens the source inspector. Each value announces its measure, participant and state. | `e2e/accessibility.spec.ts` (moves with the arrow keys and opens the inspector) |
+| Clickable rows on Overview (measurement areas) and in Data quality → Comments now contain a real button | `e2e/accessibility.spec.ts` |
+| Automated accessibility check on the start screen, every page, every Data quality tab, the statistics panel and the History, Backup, Verify and Import dialogs: every visible control has an accessible name and is reachable with the keyboard, nothing merely looks clickable, images have alternatives, each page has a heading and a main landmark | `e2e/accessibility.spec.ts`. Its first run found 141 problems of three kinds (table values, clickable rows, and one false alarm from a listbox that is correctly a single Tab stop); all are fixed or accounted for. |
+| Focus is visible, page shortcuts work, the statistics panel can be opened and computed from the keyboard, and a popover returns focus to its button when closed | `e2e/accessibility.spec.ts` |
+| MCP `--withhold-free-text`: the project name, study context, header comments (counted instead) and saved-view names and descriptions are withheld; saved views stay usable by id | `tests/mcp.test.ts` |
+
+Not done: colour contrast (the translucent backgrounds make it hard to compute), reading order, and testing with a real screen reader. Charts are drawn as SVG with a text label but their points are not reachable from the keyboard; the table beside each chart is the accessible route to the same values. The comparison does not detect renamed columns or renamed participants.
 
 ## Remaining work
 

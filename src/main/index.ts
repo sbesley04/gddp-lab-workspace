@@ -16,6 +16,7 @@ import { listExports, previewContextExport, writeChartFiles, writeContextExport 
 import { BackupPassphraseError, createBackup, readBackupBytes, restoreBackup } from './backup'
 import { listRegister, recordAnalysis } from './register'
 import { verifyIntegrity } from './integrity'
+import { diffVersions } from '@core/versionDiff'
 import { APP_VERSION } from './version'
 import { runSelfTest, abortSelfTest } from './selfTest'
 
@@ -207,6 +208,12 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
     const r = requireProject().db.get<any>('SELECT import_report_json, legend_json, segments_json FROM dataset_version WHERE id = ?', p.datasetVersionId)
     if (!r) throw new Error('Dataset version not found.')
     return { report: JSON.parse(r.import_report_json), legend: r.legend_json ? JSON.parse(r.legend_json) : null, segments: JSON.parse(r.segments_json) }
+  },
+  // Both snapshots are built here; the window receives only the differences.
+  'data:compareVersions': (p) => {
+    const project = requireProject()
+    if (p.fromVersionId === p.toVersionId) throw new Error('Choose two different dataset versions to compare.')
+    return diffVersions(buildSnapshot(project, p.fromVersionId), buildSnapshot(project, p.toVersionId))
   },
   'curation:editMeta': (p) => curation.editVariableMeta(requireProject(), { ...p, author: author() }),
   'curation:setQuasi': (p) => curation.setQuasiIdentifier(requireProject(), { ...p, author: author() }),

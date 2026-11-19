@@ -11,7 +11,7 @@
 - **Repeated visits (unreleased guard).** Each row is one participant at one visit. When a selection holds more than one row for any participant, the statistics panel computes no test, confidence interval or fit, and asks you to pick one visit. There are no paired tests or repeated-measures models yet, so change over time cannot be tested in the app. The many-measures views (correlation matrix, heatmap, PCA) compute no tests and are not blocked; they show a notice when visits are pooled.
 - **Censored values** ("<0.5") are never replaced by a number, so every mean and SD leaves them out and is biased (upward for values below a detection limit). The statistics panel shows the percent censored and marks means above 15%. That threshold is provisional and has not been set with a statistician. There are no censoring-aware estimates.
 - **Baseline-only data.** The reference workbook has one visit. The app is visit-aware, but it draws no trajectories and infers no dates or elapsed time.
-- **No automatic record reconciliation** between dataset versions. Each import is its own immutable version.
+- **No automatic record reconciliation** between dataset versions. Each import is its own immutable version. **Data quality → Version changes** (unreleased) lists what differs between two of them, matching rows by participant and visit and columns by header; it cannot tell that a column or participant was renamed.
 
 ## Collaboration
 
@@ -43,4 +43,5 @@
 - Charts are limited to one or two measures plus the many-measures views (correlation matrix, heatmap, PCA). There are no visit-trajectory charts, violin plots, shape-by or facet-by.
 - Formatting interpretation is tuned to this lab's legend conventions (source font colours, QC fills, border groups). A workbook with a different legend style will import correctly, but its formatting will mostly show as "unresolved" until a curator reviews it.
 - Legacy `.xls` files are not supported; save them as `.xlsx` first.
+- **Accessibility** is checked automatically for control names, keyboard reach and visible focus (unreleased). Colour contrast, reading order and use with a real screen reader have not been checked, and chart points cannot be reached from the keyboard.
 - **Size.** The largest dataset tested is a synthetic one of 2,000 participants, 4,800 rows and 300 columns. Calculations stay under a second there (a correlation matrix of 60 variables takes about 0.8 s), but importing takes about 7 seconds and loading the dataset about 3, and it is loaded again after each curation edit. Drawing at that size is not tested. All computation runs in the window's own thread, so a slow step freezes the interface until it finishes. A bug while drawing a page now shows a message instead of a blank window (unreleased), but the page's unsaved chart settings may be lost.

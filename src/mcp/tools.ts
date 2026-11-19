@@ -187,6 +187,9 @@ function count(ws: Workspace, n: number): number | string {
 function counts<K extends string>(ws: Workspace, c: Record<K, number>): Record<K, number | string> {
   return Object.fromEntries(Object.entries<number>(c).map(([k, n]) => [k, count(ws, n)])) as Record<K, number | string>
 }
+const FREE_TEXT_WITHHELD = 'withheld (the server was started with --withhold-free-text)'
+/** Text a person typed, or the withheld marker when the server was started with --withhold-free-text. */
+const freeText = (ws: Workspace, text: string | null): string | null => (text === null || text === '' ? text : ws.policy.withholdFreeText ? FREE_TEXT_WITHHELD : text)
 const EXTREMES_WITHHELD = 'withheld (minimum and maximum are individual values; the server must be started with --show-extremes to return them)'
 const small = (ws: Workspace, n: number) => n > 0 && n < ws.policy.minCellSize
 
@@ -370,7 +373,7 @@ function censoredNote(ws: Workspace, n: number, warnings: string[], what: string
 
 export function studyOverview(ws: Workspace) {
   const versions = ws.versions()
-  if (versions.length === 0) return { project: ws.project.info.name, datasetVersions: [], note: 'No dataset has been imported yet.' }
+  if (versions.length === 0) return { project: freeText(ws, ws.project.info.name), datasetVersions: [], note: 'No dataset has been imported yet.' }
   const latest = ws.version()
   const snap = ws.snapshot(latest.id)
   const sel = computeSelection(snap, { datasetVersionId: latest.id, visitIds: 'all', participantIds: null, qc: { exclude: [] }, filter: { type: 'group', id: 'root', op: 'and', children: [] } })
@@ -388,7 +391,7 @@ export function studyOverview(ws: Workspace) {
   const needsReview = snap.flags.filter((f) => f.status === 'needs_review').length
   const study = getStudyContext(ws.project, latest.id, snap.metadataVersion)
   return {
-    project: ws.project.info.name,
+    project: freeText(ws, ws.project.info.name),
     // The source file is identified by SHA-256 only, as in the analysis log: file names often carry dates or study details.
     datasetVersions: versions.map((v) => ({ version: v.versionNumber, sourceSha256: v.sha256, sheet: v.sheetName, importedAt: v.createdAt.slice(0, 10), rows: count(ws, v.rows), participants: count(ws, v.participants), columns: v.columns })),
     latest: {
@@ -410,7 +413,7 @@ export function studyOverview(ws: Workspace) {
       comments: snap.annotations.length,
       savedViews: listViews(ws.project).length
     },
-    studyContext: study.text || null,
+    studyContext: freeText(ws, study.text || null),
     privacy: { mode: ws.policy.mode, minCellSize: ws.policy.minCellSize }
   }
 }
@@ -516,7 +519,8 @@ export function describeVariable(ws: Workspace, input: SelectionInput & { variab
     sourceAttribution: v.attribution,
     quasiIdentifier: v.quasiIdentifier,
     covariate: v.covariate,
-    headerComments: headerNotes,
+    // Header comments usually explain a column; they are still text a person typed, so they can be withheld and counted.
+    headerComments: ws.policy.withholdFreeText ? { withheld: count(ws, headerNotes.length) } : headerNotes,
     cellComments: count(ws, cellComments),
     selection: selectionInfo(ws, r),
     byVisit,
@@ -921,8 +925,9 @@ export function savedViews(ws: Workspace) {
       const visits = v.spec.selection.visitIds === 'all' ? 'all' : v.spec.selection.visitIds.map((id) => snap.visits.find((x) => x.id === id)?.name ?? id)
       return {
         id: v.id,
-        name: v.name,
-        description: v.description,
+        // With free text withheld, use the id as `savedView` in other tools.
+        name: freeText(ws, v.name),
+        description: freeText(ws, v.description),
         createdAt: v.createdAt.slice(0, 10),
         datasetVersion: v.datasetVersionNumber,
         metadataVersion: v.metadataVersion,

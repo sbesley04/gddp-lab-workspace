@@ -16,7 +16,7 @@ import { describe as describeStats, welchT } from '@core/analysis'
 import { emptyFilter } from '@core/types'
 import { createServer } from '../src/mcp/server'
 import { Workspace } from '../src/mcp/workspace'
-import { cohortCounts, correlate, qcOverview, summarize } from '../src/mcp/tools'
+import { cohortCounts, correlate, describeVariable, qcOverview, savedViews, studyOverview, summarize } from '../src/mcp/tools'
 
 let root: string
 let writer: Project
@@ -254,6 +254,26 @@ describe('MCP server', () => {
     expect(Object.values(cohortCounts(open, { datasetVersion: 1, where: [{ variable: 'Age', min: 30 }] }).excludedRowsByReason).every((n) => typeof n === 'number')).toBe(true)
     expect(typeof correlate(open, { datasetVersion: 1, x: 'IL6', y: 'TNF' }).pairs.censoredOrText).toBe('number')
     expect(qcOverview(open, { datasetVersion: 1 }).variablesMostAffected.length).toBeGreaterThan(0)
+  })
+
+  it('withholds text that people typed when asked to', () => {
+    const open = savedViews(ws)
+    expect(open.views[0].name).toBe('IL6 clean')
+    expect(typeof studyOverview(ws).project).toBe('string')
+    expect(studyOverview(ws).project).toBe('MCP Test')
+    const closed = new Workspace(ws.project, { mode: 'aggregate', minCellSize: 5, showExtremes: false, withholdFreeText: true })
+    const overview = studyOverview(closed)
+    expect(overview.project).toMatch(/withheld/)
+    const views = savedViews(closed).views
+    expect(views[0].name).toMatch(/withheld/)
+    expect(views[0].id).toBeTruthy() // still usable as `savedView`
+    expect(summarize(closed, { variable: 'IL6', savedView: views[0].id }).groups[0].summary).toBeTruthy()
+    const score = describeVariable(closed, { datasetVersion: 1, variable: 'Score' })
+    expect(score.headerComments).toEqual({ withheld: '<5' })
+    const all = JSON.stringify([overview, views, score])
+    expect(all).not.toContain('MCP Test')
+    expect(all).not.toContain('IL6 clean')
+    expect(all).not.toMatch(/undocumented/) // the header comment text on Score
   })
 
   it('never returns participant identifiers, and logs calls without results', () => {

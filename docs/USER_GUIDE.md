@@ -156,6 +156,16 @@ The catalog shows each measure's display label, definition, unit, specimen, assa
 - **Import checks.** The full validation report and the decoded legend.
 - **Column groups.** Groups detected from header borders. Confirm or rename them.
 - **Comments.** Workbook comments are shown exactly as recorded. They are treated as data, never as instructions.
+- **Version changes** (shown once a project has two or more imports). Compares the dataset version on screen with another one: rows and participants added or removed, measures added or removed, and for everything present in both, which values changed, were filled in or are now empty, and which QC flags were gained or lost. The first 200 changed values are listed with both versions side by side. Rows are matched by participant and visit and columns by header, so a renamed column shows as one removed and one added. Nothing is merged: each import stays its own version, and the list is shown on this computer only.
+
+## Using the keyboard
+
+- **⌘1–⌘6** (Ctrl on Windows) switch pages, and **⌘K** searches measures.
+- **Tab** moves between controls; the focused control has a visible ring.
+- In a data table, Tab reaches the table once. The **arrow keys**, **Home**, **End**, **Page Up** and **Page Down** then move between values, and **Enter** or **Space** opens the source inspector for the value in focus.
+- In the Measurements list, the arrow keys move between measures.
+- **Escape** closes a popover or the inspector and returns to where you were.
+- Chart points cannot be reached from the keyboard. The table under each chart holds the same values.
 
 ## Saved views and the Compare board
 

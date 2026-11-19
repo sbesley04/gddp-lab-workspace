@@ -22,10 +22,12 @@
 
 ## Security and privacy
 
+- **Backups** can be encrypted with a passphrase (unreleased); there is no recovery if it is lost. Unencrypted backups are plain ZIP files that hold source identifiers and the pseudonym secret.
 - Project databases and source snapshots are **not encrypted**. They rely on operating-system file permissions and disk encryption (FileVault or BitLocker). Store projects only where study data is permitted.
 - **Pseudonymous export keys are not anonymisation.** Quasi-identifiers (age, sex, race, BMI and similar) need explicit confirmation before export.
 - **No regulatory, IRB or institutional approval** is claimed or implied.
 - The app makes **no network requests**. Updates are manual.
+- [THREAT_MODEL.md](THREAT_MODEL.md) lists what the app defends against and what it leaves to the lab.
 - The optional **MCP server** ([MCP.md](MCP.md)) is read-only and returns aggregate results only, with small-cell suppression. Its results reach whichever AI provider the assistant uses. Counts below the minimum cell size and all minimum and maximum values are withheld, but suppression is not anonymisation: a median can be one participant's value, small counts can sometimes be derived from totals, and overlapping filters could narrow down individuals. It has been tested on synthetic data only; whether a real project may be connected is for the lab's IRB and data use agreements to decide.
 
 ## Platforms

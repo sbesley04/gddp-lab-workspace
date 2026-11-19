@@ -50,6 +50,10 @@ build/          icon, entitlements
 - `integrity_chain` holds one entry per row of `audit_log`, `revision` and `analysis_register`: a SHA-256 of the row and a SHA-256 linking it to the previous entry (`src/main/integrity.ts`). `Project.audit` chains its own row; anything else that inserts into `revision` or `analysis_register` must call `project.chain(table, idBeforeInsert)` in the same transaction. A row that is not chained is reported by `verifyIntegrity` as written outside the app, so a forgotten call shows up as a failing test. A new append-only table needs an entry in `CHAINED_TABLES`.
 - Before migrating an existing project, `Db.migrate` copies the database to `workspace.sqlite.before-schema-<n>.bak` in the project folder.
 
+**Chart export.** `export:chart` carries the drawn image and the selection, chart settings and metadata version. `writeChartFiles` (`src/main/exportService.ts`) rebuilds the analysis log, the settings file and the fingerprint from those; nothing else is accepted from the renderer. An image whose footer fingerprint differs from the one computed here is refused.
+
+**Backups.** `src/main/backup.ts`. With a passphrase the ZIP is encrypted in memory before it is written: `BARIENC1`, 16-byte salt, 12-byte nonce, AES-256-GCM ciphertext, 16-byte tag, with the header authenticated and the key from scrypt (N = 2^15, r = 8, p = 1). The passphrase crosses IPC once and is never stored or logged.
+
 **Statistics panel.** `src/core/analysisRun.ts` holds what the panel computes (`analyseDistribution`, `analyseScatter`). The renderer calls it for display. The main process calls the same code from `src/main/register.ts` to write the analysis register, so it never stores numbers sent by the renderer. The independence guard is inside these functions: when a participant contributes more than one row they return descriptives only. Add a new test to the panel by adding it there and to `distributionTests` / `scatterTests`, so the register counts it.
 
 ## Commands
@@ -58,7 +62,7 @@ build/          icon, entitlements
 | --- | --- |
 | `npm run dev` | Run with hot reload |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest (176 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server, statistical guardrails, the analysis register and record integrity |
+| `npm test` | Vitest (179 tests): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server, statistical guardrails, the analysis register and record integrity |
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted), chart SVG/PNG downloads with sidecars, PCA and many-measures views, the tour and wide table, and screenshots of every screen in light and dark mode |
 | `npm run reference:check` | Runs the three R scripts into a temporary folder and compares the output with `tests/fixtures/*_reference.json`: same structure, same R and package versions (`_r`), numbers within 1e-9 relative (1e-6 for Box-Cox λ and 2e-5 for values transformed with it, which differ in the last digits between macOS and Linux). Needs R with jsonlite and car. CI runs it in its own workflow, `.github/workflows/r-reference.yml`, whenever `tools/` or a reference file changes. |
@@ -82,7 +86,7 @@ build/          icon, entitlements
 "release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test /tmp
 ```
 
-It writes `/tmp/bari-self-test.json` and exits with 0 on success. On Windows, run `"BARI-CNS Research Workspace.exe" --self-test C:\some\folder`. CI (`.github/workflows/build.yml`) runs this on both platforms.
+It writes `/tmp/bari-self-test.json` and exits with 0 on success. On Windows, run `"BARI-CNS Research Workspace.exe" --self-test C:\some\folder`. CI (`.github/workflows/build.yml`) runs this on both platforms, for pull requests and for pushes to `main`.
 
 Playwright cannot drive a packaged build, because the `EnableNodeCliInspectArguments` fuse is disabled for security. That is why the packaged smoke test uses `--self-test`. It includes loading the real renderer in a hidden window through the real IPC bridge.
 
@@ -107,7 +111,7 @@ Notes about a real study workbook (collaborator names, file names, participant r
 - **Guardrails** (`tests/guardrails.test.ts`, `e2e/guardrails.spec.ts`) use a synthetic two-visit CSV built in the test: the independence guard, censoring counts, the register (recomputation, de-duplication, fingerprints, append-only triggers, export) and the pre-migration copy.
 - **Record integrity** (`tests/integrity.test.ts`) tampers with a project through a plain `node:sqlite` connection, the way an outside tool would, and checks that verification names what was done.
 - **Multivariate results** (`tests/pca.test.ts`, `tests/matrix.test.ts`) match R `prcomp(scale. = TRUE)` and `cor(use = "pairwise.complete.obs")` to about 1e-8, with ties and missing values. Histogram counts match R `hist(right = FALSE)`.
-- **Analysis log** (`tests/provenance.test.ts`): the text is deterministic, every upstream change alters the chain signature, and no participant ID or file name is written. SHA-256 is checked against NIST vectors.
+- **Analysis log** (`tests/provenance.test.ts`): the text is deterministic, every upstream change alters the chain fingerprint, and no participant ID or file name is written. SHA-256 is checked against NIST vectors.
 - **Statistics code:** `src/core/distributions.ts` (t, F, χ², normal, binomial via incomplete beta and gamma) and `src/core/analysis.ts`. Statistics are never computed automatically; the UI calls them only after **Compute**.
 - **Fixtures are synthetic** (`DEMO-xx`, `9001…9005`). `demo_workbook.xlsx` is also bundled with the app as the demo, and as the self-test input.
 - **Test-only environment variable:** `BARI_USER_DATA` points the app at an isolated settings folder. It does not affect project data.

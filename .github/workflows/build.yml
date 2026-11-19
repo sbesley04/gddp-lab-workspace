@@ -2,7 +2,9 @@
 name: build
 on:
   # Documentation-only changes do not need a full build (macOS minutes bill at 10x on private repos).
+  # Branches are built through their pull request; building the push as well ran every job twice.
   push:
+    branches: [main]
     paths-ignore: ['**.md', 'docs/**', '.github/workflows/r-reference.yml']
   pull_request:
     paths-ignore: ['**.md', 'docs/**', '.github/workflows/r-reference.yml']

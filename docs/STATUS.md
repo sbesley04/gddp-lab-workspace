@@ -11,10 +11,11 @@
 | Unreleased | 2026-11-09 | Square-root and Box-Cox transforms, PCA biplot |
 | Unreleased | 2026-11-19 | Statistical guardrails: independence guard, censoring visibility, analysis register, neutral p-values, R check |
 | Unreleased | 2026-11-19 | Integrity: hash chain over the audit log, revisions and register with a verify command; full curation audit; MCP small-count and extreme-value suppression |
+| Unreleased | 2026-11-19 | Full fingerprints; chart sidecars rebuilt by the main process; encrypted backups; error boundary; threat model |
 
 ## Current test inventory
 
-- `npm test`: 176 Vitest tests in 19 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails and 6 for record integrity).
+- `npm test`: 179 Vitest tests in 19 files, all on synthetic data (including 15 for the MCP server, 13 for the statistical guardrails and 6 for record integrity).
 - `npm run e2e`: Playwright. The full UI workflow, chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
@@ -82,7 +83,7 @@ From the lab meeting notes (R command history, edit signatures, PCA, covariates,
 | Feature | Verification |
 | --- | --- |
 | Numbered visits sorted numerically on import (Month 2 before Month 6, not text order) | `tests/visitOrder.test.ts` |
-| Analysis log in R syntax with per-step and chain signatures (History panel, `analysis_log.R` in the export ZIP) | `tests/provenance.test.ts` (deterministic text; every upstream change alters the signature; no participant IDs or file name; QC exclusion counts); SHA-256 against NIST vectors; E2E opens History and checks the export ZIP |
+| Analysis log in R syntax with per-step and chain signatures, since renamed fingerprints (History panel, `analysis_log.R` in the export ZIP) | `tests/provenance.test.ts` (deterministic text; every upstream change alters the signature; no participant IDs or file name; QC exclusion counts); SHA-256 against NIST vectors; E2E opens History and checks the export ZIP |
 | Chart download: size presets, PNG scale, signature footer, `.chart.json` and `.analysis-log.R` sidecars | `tests/chartStamp.test.ts`, `tests/chartExport.test.ts` (other files beside the chart are not overwritten); `e2e/charts.spec.ts` saves SVG and PNG through the UI and checks size, footer, legend, XML well-formedness and sidecars |
 | Fix: chart SVG/PNG exports were malformed XML with the default (system) and serif fonts, so PNG export failed and strict SVG readers rejected the file | `e2e/charts.spec.ts` parses the saved SVG; font-stack test |
 | Covariate tag (append-only, carried over), colour-by with a named legend | `tests/workflow.test.ts` (as-of and carry-over), `tests/transforms.test.ts` (categories), `e2e/charts.spec.ts` |
@@ -155,7 +156,21 @@ The first part of Phase 2 of [STRATEGY.md](STRATEGY.md).
 | Error boundary: a failure while drawing a page shows a message, the error text and **Try again**, and the sidebar stays usable; a second boundary covers the whole window | `e2e/guardrails.spec.ts` makes the Explore page throw while it draws, checks the message, opens another page, removes the cause and retries. The whole-window boundary is not tested. |
 | MCP: every count below the minimum cell size returned as "<n"; minimum and maximum withheld unless `--show-extremes`; guide and docs corrected | `tests/mcp.test.ts` walks every tool result for count fields below 5, checks counts inside warnings, and confirms the plain numbers return with a cell size of 1 |
 
-Not done: the chain has no secret key, so it does not prove who wrote a record, and a consistent rewrite is caught only by an anchor. Backups are still not encrypted. Chart sidecars still come from the renderer. The MCP server has no defence against differencing and passes free text through. The packaged build was not re-run for this work.
+Not done: the chain has no secret key, so it does not prove who wrote a record, and a consistent rewrite is caught only by an anchor. The MCP server has no defence against differencing and passes free text through. The packaged build was not re-run for this work.
+
+## Unreleased: fingerprints, chart export and encrypted backups (2026-11-19)
+
+More of Phase 2 of [STRATEGY.md](STRATEGY.md).
+
+| Feature | Verification |
+| --- | --- |
+| The analysis log's "signature" is now called a fingerprint and recorded in full (64 hex characters) in the log, chart settings, export manifest and export record. The first 8 characters are shown on charts and in History. Every earlier fingerprint changes, because steps now chain on the full value. | `tests/provenance.test.ts` (unchanged properties: deterministic, every upstream change alters it, no participant IDs); `tests/workflow.test.ts` (manifest); E2E |
+| Chart export: the main process rebuilds the analysis log, the settings file (`bari-chart/2`) and the fingerprint from the selection and chart settings. Only the drawn image is taken from the window, and one whose footer carries a different fingerprint is refused. | `tests/chartExport.test.ts`: the files equal what the core gives for the selection; a wrong or stale footer writes nothing; a log sent by the caller is ignored; Compare boards (no single selection) save an image only. `e2e/charts.spec.ts` saves SVG and PNG through the UI. |
+| Encrypted backups: optional passphrase, AES-256-GCM with a scrypt-derived key, file extension `.bariproj.enc`. Restore asks for the passphrase before asking where to restore. | `tests/workflow.test.ts`: round trip; no readable project name, identifier or SQLite header in the file; missing and wrong passphrases refused; a changed byte in the header, body or tag refused with nothing restored; the passphrase appears in no audit or export record. `e2e/workflow.spec.ts` backs up with a passphrase through the UI, tries a wrong one, then restores. |
+| Threat model | [THREAT_MODEL.md](THREAT_MODEL.md); a document, not a test |
+| CI builds each branch once (through its pull request) instead of twice | By inspection; first exercised by the pull request that adds it |
+
+Not done: project folders are not encrypted by the app. The passphrase has no strength check beyond 8 characters and no recovery. The drawn chart image is not verified beyond its footer. Installers are unsigned. The packaged build was not re-run for this work.
 
 ## Remaining work
 

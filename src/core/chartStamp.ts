@@ -1,4 +1,4 @@
-// Adds a one-line footer (analysis signature) to an SVG chart. Pure string work so it can be tested without a browser.
+// Adds a one-line footer (analysis fingerprint) to an SVG chart. Pure string work so it can be tested without a browser.
 
 export const STAMP_HEIGHT = 22
 

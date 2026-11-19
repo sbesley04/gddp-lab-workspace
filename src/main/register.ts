@@ -41,7 +41,7 @@ export interface RecordResult {
 
 // A snapshot as of a metadata version never changes, so the last one built can be reused while the same chart is explored.
 const lastSnapshot = new WeakMap<Project, { key: string; snapshot: DatasetSnapshot }>()
-function snapshotFor(project: Project, versionId: string, asOf: number): DatasetSnapshot {
+export function snapshotFor(project: Project, versionId: string, asOf: number): DatasetSnapshot {
   const key = `${versionId}@${asOf}`
   const hit = lastSnapshot.get(project)
   if (hit?.key === key) return hit.snapshot

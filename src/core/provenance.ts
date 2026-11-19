@@ -1,6 +1,8 @@
-// Analysis log: the steps behind a chart, written in R syntax, each with a short signature.
+// Analysis log: the steps behind a chart, written in R syntax, each with a fingerprint.
 // This is a readable record of what the app did, not a script that is guaranteed to run. Pure and deterministic:
-// the same dataset version, metadata version, selection and chart always give the same text and signatures.
+// the same dataset version, metadata version, selection and chart always give the same text and fingerprints.
+// A fingerprint is an unkeyed SHA-256: it identifies the inputs of a chart. It is not a signature and does not prove
+// who made the chart. The full 64 hex characters are recorded; the first 8 are shown where space is short.
 // Participant identifiers and the source file name are never written (the file is identified by its SHA-256, as in the
 // export manifest); participant restrictions and exclusions are reported as counts only.
 
@@ -17,14 +19,18 @@ export interface ProvenanceStep {
   kind: 'source' | 'visits' | 'participants' | 'filter' | 'qc' | 'transform' | 'chart' | 'statistics'
   title: string
   code: string[]
-  /** First 8 hex characters of SHA-256 over the previous signature and this step's text. */
-  signature: string
+  /** SHA-256 (64 hex characters) over the previous step's fingerprint and this step's text. */
+  fingerprint: string
 }
+
+/** Characters of a fingerprint shown on charts and in the History panel. */
+export const SHORT_FINGERPRINT = 8
+export const shortFingerprint = (fingerprint: string) => fingerprint.slice(0, SHORT_FINGERPRINT)
 
 export interface Provenance {
   steps: ProvenanceStep[]
-  /** Signature of the whole chain (the last step's signature). */
-  signature: string
+  /** Fingerprint of the whole chain (the last step's fingerprint), 64 hex characters. */
+  fingerprint: string
   /** The log as R-syntax text, ready to copy or save as .R */
   text: string
 }
@@ -90,7 +96,7 @@ function filterExpr(byKey: Map<string, VariableInfo>, node: FilterNode): string 
 export function buildProvenance(input: ProvenanceInput): Provenance {
   const { snapshot, spec, chart } = input
   const byKey = new Map(snapshot.variables.map((v) => [v.key, v]))
-  const raw: Omit<ProvenanceStep, 'n' | 'signature'>[] = []
+  const raw: Omit<ProvenanceStep, 'n' | 'fingerprint'>[] = []
 
   raw.push({
     kind: 'source',
@@ -227,15 +233,17 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
 
   let prev = ''
   const steps: ProvenanceStep[] = raw.map((s, i) => {
-    prev = sha256Hex(`${prev}\n${s.kind}\n${s.title}\n${s.code.join('\n')}`).slice(0, 8)
-    return { n: i + 1, ...s, signature: prev }
+    prev = sha256Hex(`${prev}\n${s.kind}\n${s.title}\n${s.code.join('\n')}`)
+    return { n: i + 1, ...s, fingerprint: prev }
   })
   const text = [
     '# BARI-CNS Research Workspace analysis log (readable record in R syntax; not guaranteed to run as a script)',
-    ...steps.flatMap((s) => [``, `# step ${s.n} [${s.signature}] ${s.title}`, ...s.code]),
+    '# each step carries the first 8 characters of its fingerprint: a SHA-256 over the step and everything before it',
+    ...steps.flatMap((s) => [``, `# step ${s.n} [${shortFingerprint(s.fingerprint)}] ${s.title}`, ...s.code]),
     '',
-    `# chain signature: ${steps[steps.length - 1].signature}`,
+    `# chain fingerprint: ${steps[steps.length - 1].fingerprint}`,
+    '# (identifies the inputs of this analysis; it is not a signature and does not prove who ran it)',
     ''
   ].join('\n')
-  return { steps, signature: steps[steps.length - 1].signature, text }
+  return { steps, fingerprint: steps[steps.length - 1].fingerprint, text }
 }

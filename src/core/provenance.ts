@@ -8,8 +8,9 @@ import type { ChartConfig, DatasetSnapshot, FilterCondition, FilterNode, QcCateg
 import { QC_CATEGORY_LABELS } from './types'
 import { getObservation, type SelectionResult } from './selection'
 import { sha256Hex } from './hash'
-import { distributionData, histogramBins } from './chartData'
-import { TRANSFORM_LABELS, transformR, type TransformId } from './transforms'
+import { distributionData, histogramBins, numericColumn } from './chartData'
+import { BIPLOT_MAX_VECTORS } from './pca'
+import { TRANSFORM_LABELS, transformParams, transformR, type TransformId } from './transforms'
 
 export interface ProvenanceStep {
   n: number
@@ -143,7 +144,15 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
     const tfLines: string[] = []
     const addTransform = (key: string | null, id: TransformId | undefined) => {
       if (!key || !id || id === 'none') return
-      const x = col(byKey.get(key), key)
+      const v = byKey.get(key)
+      const x = col(v, key)
+      if (id === 'boxcox') {
+        // λ is estimated from the selection, so it is written out: the same selection always gives the same λ.
+        const prm = sel && v ? transformParams(id, numericColumn(sel, v.index)) : null
+        if (prm) tfLines.push(`${x} <- ${transformR(id, x, prm.lambda)}  # Box-Cox, λ by maximum likelihood (y ~ 1) from ${prm.n} positive usable value(s)`)
+        else tfLines.push(`lambda <- car::powerTransform(${x}[${x} > 0] ~ 1)$lambda  # maximum likelihood, from the positive usable values`, `${x} <- ${transformR(id, x)}  # ${TRANSFORM_LABELS[id]}`)
+        return
+      }
       tfLines.push(`${x} <- ${transformR(id, x)}  # ${TRANSFORM_LABELS[id]}`)
     }
     if (chart.type === 'distribution' || chart.type === 'scatter') addTransform(chart.measureKey, chart.transformMeasure)
@@ -152,7 +161,7 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       raw.push({
         kind: 'transform',
         title: 'Display transforms (computed on the usable values of this selection; never imputed)',
-        code: [...tfLines, '# values a transform cannot define (log of a non-positive value, zero spread) become NA and are left out of the chart']
+        code: [...tfLines, '# values a transform cannot define (log or Box-Cox of a non-positive value, square root of a negative value, zero spread) become NA and are left out of the chart']
       })
     }
     const name = (key: string | null) => (key ? byKey.get(key)?.meta.displayLabel.value ?? byKey.get(key)?.header ?? key : null)
@@ -183,6 +192,7 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       lines.push('# runs only when Compute is pressed; rows with any non-numeric, missing or QC-excluded value in these variables are left out (complete cases)')
       lines.push(`pca_data <- na.omit(df[, c(${cols.join(', ')})])`)
       lines.push('pc <- prcomp(pca_data, center = TRUE, scale. = TRUE)  # components fixed so the largest-magnitude loading is positive')
+      if (chart.pcaVectors) lines.push(`# biplot: arrows are each variable's correlation with the shown components, cor(pca_data, pc$x) = rotation × sdev; the ${BIPLOT_MAX_VECTORS} longest are drawn, stretched by one factor to fit the scores`)
     }
     if (chart.colorKey && colourApplies(chart)) lines.push(`# points coloured by ${byKey.get(chart.colorKey)?.meta.displayLabel.value ?? byKey.get(chart.colorKey)?.header ?? chart.colorKey} (categories as recorded; missing shown as its own category)`)
     // Axis settings only for the axes the chart type actually uses (a distribution's x axis is its groups; PCA has none).
@@ -205,7 +215,12 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       raw.push({
         kind: 'statistics',
         title: 'Statistics panel opened (results are computed only when Compute is pressed)',
-        code: ['# exploratory; not adjusted for the number of analyses run', ...(on.length ? [`# overlays: ${on.join(', ')}`] : [])]
+        code: [
+          '# exploratory; not adjusted for the number of analyses run',
+          '# each distinct analysis computed is recorded in the project analysis register, with its tests and p-values',
+          '# no test, interval or fit is computed when a participant contributes more than one observation (visit)',
+          ...(on.length ? [`# overlays: ${on.join(', ')}`] : [])
+        ]
       })
     }
   }

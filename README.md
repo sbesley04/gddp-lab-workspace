@@ -32,7 +32,7 @@ For your own study: **Create project**, pick a folder **on your computer's own d
 1. **Keep active projects on your own computer's disk.** Not on the NAS, a network drive, iCloud, Dropbox, OneDrive or Google Drive: these can corrupt a project that is open. To share work or keep a copy on the NAS, use **Backup** or **Export** in the app.
 2. **Real study data never goes into this repository**, issues, logs or screenshots. Only the invented test files in `tests/fixtures/` belong here.
 
-Projects are protected only by your computer's own login and disk encryption; they are not encrypted by the app. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) for what the app does not do.
+Projects are protected only by your computer's own login and disk encryption; they are not encrypted by the app. A record check (not yet in an installer) detects changes made to a project's history outside the app, but does not prevent them. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) for what the app does not do.
 
 ## Documentation
 
@@ -59,7 +59,7 @@ Projects are protected only by your computer's own login and disk encryption; th
 ## Versions
 
 - **0.3.1** (2026-10-26) is the current installer.
-- The source code already contains more, not yet in an installer: the analysis log, chart downloads, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap, PCA, the MCP server, and a single Mac installer for all Macs. [docs/STATUS.md](docs/STATUS.md) lists each feature and how it was tested.
+- The source code already contains more, not yet in an installer: the analysis log, chart downloads, covariates and colour-by, display transforms (including square root and Box-Cox), histograms, correlation matrix, heatmap, PCA with an optional biplot, the MCP server with stricter small-count suppression, statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), a record check that detects changes made outside the app, and a single Mac installer for all Macs. [docs/STATUS.md](docs/STATUS.md) lists each feature and how it was tested; [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
 
 ## Building from source (maintainers)
 

@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:reference": "vitest run --config vitest.reference.config.ts",
+    "reference:check": "node tools/check_reference.mjs",
     "fixtures": "python3 -I tools/make_fixtures.py tests/fixtures",
     "e2e": "npm run build && playwright test",
     "e2e:packaged": "BARI_E2E_PACKAGED=1 playwright test",

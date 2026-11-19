@@ -1,0 +1,42 @@
+# Statistics are validated against R. This workflow installs the R version and the package snapshot that produced the
+# committed reference values, regenerates them and fails if R no longer agrees (tools/check_reference.mjs).
+# The check also fails if the installed versions differ from those recorded under "_r" in tests/fixtures/*_reference.json.
+name: r-reference
+on:
+  push:
+    paths:
+      - 'tools/**'
+      - 'tests/fixtures/*_reference.json'
+      - '.github/workflows/r-reference.yml'
+  pull_request:
+    paths:
+      - 'tools/**'
+      - 'tests/fixtures/*_reference.json'
+      - '.github/workflows/r-reference.yml'
+  workflow_dispatch:
+env:
+  # A dated Posit Package Manager snapshot pins every package, dependencies included. It must provide the versions
+  # recorded in the reference files (jsonlite 2.0.0, car 3.1.3). Latest CRAN no longer installs on this R version.
+  R_SNAPSHOT: https://packagemanager.posit.co/cran/__linux__/noble/2025-04-01
+jobs:
+  r-reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.2'
+          use-public-rspm: false
+      - name: Install jsonlite and car from the snapshot
+        run: |
+          options(repos = c(CRAN = Sys.getenv("R_SNAPSHOT")))
+          install.packages("pak")
+          # pak installs the system libraries the binary packages need.
+          pak::pkg_install(c("jsonlite", "car"))
+          for (p in c("jsonlite", "car")) cat(p, as.character(packageVersion(p)), "\n")
+        shell: Rscript {0}
+      - run: node tools/check_reference.mjs

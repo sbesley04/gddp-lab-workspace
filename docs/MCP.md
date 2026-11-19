@@ -10,13 +10,17 @@ What the server returns, and what it never returns:
 
 | Returned | Never returned |
 | --- | --- |
-| Counts, descriptive statistics, test results, correlations, PCA variance and loadings | Participant identifiers, row numbers, individual values, PCA scores |
+| Counts, descriptive statistics, test results, correlations, PCA variance and loadings | Participant identifiers, row numbers, row-by-row values, minimum and maximum (by default), PCA scores |
 | Variable metadata, aliases, source attribution, comments on column headers | Text of comments on individual cells (counted only); comment and curator authors |
 | Short text codes in numeric columns (e.g. `QNS`) and censored values (e.g. `<0.5`) | Free-text cell values (counted only) |
+| The imported file's SHA-256 checksum | The imported file's name |
 
-- **Small-cell suppression:** selections and groups with fewer than 5 participants are suppressed (`"<5"`). Change the threshold with `--min-cell-size`.
-- **Quasi-identifiers:** minimum and maximum are withheld for variables marked as quasi-identifiers (age, BMI and similar).
-- These rules reduce risk but are **not anonymisation**. Someone determined could combine overlapping filters to narrow down individuals. Treat the conversation as containing study data.
+- **Small-cell suppression:** selections and groups with fewer than 5 participants are suppressed. Every other count below 5 is returned as `"<5"`, whatever it counts: participants, rows, observations, complete pairs, exclusion reasons, not-analysed values, censored values, text codes, flags, and the counts quoted inside warnings. Zero is shown as zero. Change the threshold with `--min-cell-size`.
+- **Extremes:** minimum and maximum are individual values, so they are withheld for every variable. Start the server with `--show-extremes` to return them; they stay withheld for variables marked as quasi-identifiers (age, BMI and similar).
+- **An aggregate is not always anonymous.** A median or quartile can equal one participant's value, and a mean over five people says a lot about each of them. The server does not hide these.
+- **No protection against differencing.** Suppressed counts are not protected by suppressing others, so a small count can sometimes be worked out from a total and its other parts. Sliding a range filter over groups of five or more can also isolate individuals. There is no query budget and no overlap check.
+- **Free text passes through:** comments on column headers, the curator's study context, saved-view names and descriptions, and the project name are returned as written. Keep identifying details out of them.
+- These rules reduce risk but are **not anonymisation**. Treat the conversation as containing study data.
 - **Read-only:** the server opens the database read-only, never takes the project lock and cannot change anything. It works while the app has the project open, and it picks up curation changes made in the app on the next call.
 - **Access log:** every call is appended to `mcp-access.jsonl` in the project folder: tool name, arguments, success and result size, never results. Turn it off with `--no-access-log`.
 
@@ -57,7 +61,9 @@ claude mcp add bari-cns -- node /path/to/bari-cns-workspace/out/mcp/server.js --
 npx @modelcontextprotocol/inspector node out/mcp/server.js --project "/path/to/My Study.bariproj"
 ```
 
-Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-cell-size <n>` (default 5), `--no-access-log`.
+Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-cell-size <n>` (default 5), `--show-extremes` (return minimum and maximum for variables that are not quasi-identifiers), `--no-access-log`.
+
+After an app update that changes the project database, the server refuses the project until the app has opened it once.
 
 ## What the assistant gets
 
@@ -71,7 +77,7 @@ Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-
 | `search_variables` | Fuzzy search by name, alias, group, unit or definition; returns the keys other tools take |
 | `describe_variable` | Metadata with status and provenance, aliases, source attribution, header comments, per-visit counts and statistics |
 | `cohort_counts` | What a selection keeps, per visit, and why rows were excluded |
-| `summarize` | Descriptive statistics, optionally by group and transform |
+| `summarize` | Descriptive statistics, optionally by group and transform (log2, log10, sqrt, Box-Cox, centre, z-score, rank; Box-Cox states its λ in the warnings) |
 | `compare_groups` | Welch t, Hedges g and Mann–Whitney (2 groups); Welch and classic ANOVA, Kruskal–Wallis and Holm-adjusted pairwise tests (3 or more groups) |
 | `correlate` | Spearman, Pearson or Kendall with CI, plus an OLS fit |
 | `correlation_matrix` | Pairwise-complete coefficients and the strongest pairs |
@@ -81,6 +87,8 @@ Options: `--project <dir>` (or the `BARI_PROJECT` environment variable), `--min-
 | `list_saved_views` | Researchers' saved views; pass `savedView` to other tools to reuse a view's selection |
 
 Every analysis tool takes the same selection fields: `datasetVersion`, `visits`, `where` (filters), `match`, `qcExclude`, or `savedView`. Every result includes a `selection` block (dataset version, metadata version, visits, filter, QC policy, n) so the analysis can be rebuilt in the app, and a `warnings` list. Warnings cover censoring, repeated visits per participant, covariates recorded at only one visit, complete-case losses and untransformable values.
+
+The repeated-visits check is the app's own independence guard (`src/core/independence.ts`). The app refuses to run tests on a selection in which a participant contributes more than one visit. The server still returns the result with a warning, so the assistant must act on it. Analyses run through the server are not written to the app's analysis register (the server is read-only), so they are missing from its count of tests.
 
 **Resources:** `bari://guide` (how to read the data) and `bari://data-dictionary` (every variable, as CSV).
 

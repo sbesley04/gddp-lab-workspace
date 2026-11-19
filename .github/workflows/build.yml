@@ -5,10 +5,14 @@
 # The last job assembles the lab-server download folder (tools/lab-release.mjs). Download the
 # "lab-server-folder" artifact from the run and copy its contents to the NAS; see docs/LAB_SERVER.md.
 # Artifacts are uploaded only for main, tags and manual runs (Actions → build → Run workflow).
+# The R reference values are checked by r-reference.yml.
 name: build
 on:
   push:
+    # Changes to the R reference workflow alone do not need an installer build.
+    paths-ignore: ['.github/workflows/r-reference.yml']
   pull_request:
+    paths-ignore: ['.github/workflows/r-reference.yml']
   workflow_dispatch:
 jobs:
   build:

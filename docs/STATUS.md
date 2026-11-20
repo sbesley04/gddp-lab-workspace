@@ -15,11 +15,12 @@
 | Unreleased | 2026-11-19 | Dataset-version comparison; keyboard access to table values; automated accessibility check |
 | Unreleased | 2026-11-19 | REDCap data dictionary import |
 | Unreleased | 2026-11-19 | Faster reload after curation edits on large datasets |
+| Unreleased | 2026-11-19 | Packaged build checked; `--self-test` and `--verify-project` no longer hang while the app is open |
 
 ## Current test inventory
 
 - `npm test`: 203 Vitest tests in 24 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
-- `npm run e2e`: Playwright, 15 tests. The full UI workflow, the comparison of two imports (`e2e/versions.spec.ts`), a REDCap export and data dictionary (`e2e/redcap.spec.ts`), the accessibility checks (`e2e/accessibility.spec.ts`), chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
+- `npm run e2e`: Playwright, 16 tests. The full UI workflow, the comparison of two imports (`e2e/versions.spec.ts`), a REDCap export and data dictionary (`e2e/redcap.spec.ts`), the accessibility checks (`e2e/accessibility.spec.ts`), chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
 - `--self-test`: packaged-build smoke test.
@@ -213,6 +214,20 @@ The performance budget showed that rebuilding the dataset after each curation ed
 | After an edit the window is sent only the parts curation can change (measures' metadata and flags), not the whole dataset again, and merges them into the snapshot it holds | `tests/snapshotCache.test.ts` (the merged snapshot equals a full one, and selects the same rows); the UI tests exercise edits, saved views pinned to an earlier metadata version, and the data dictionary import through this path. The time saved in the window is not measured. |
 
 Not done: the first load of a large dataset (about 3 s and 50 MB) is unchanged, drawing is not measured, and no computation has moved off the window's thread.
+
+## Unreleased: packaged build check (2026-11-19)
+
+Earlier sections on this page say the packaged build was not re-run. That was wrong for CI and is now also checked by hand.
+
+| Check | Result |
+| --- | --- |
+| Packaged `--self-test` in CI, macOS arm64 and Windows x64, on the unsigned builds of the current source (GitHub Actions run for pull request 8) | 11 of 11 steps on both, including "analysis register records each analysis once" and "audit log, revisions and analysis register verify against their hash chain" (190 entries). CI has run this on every pull request since the steps were added. |
+| Local unsigned packaged build (macOS arm64, `electron-builder --dir`), `--self-test` | 11 of 11 steps |
+| The same build, `--verify-project` on a synthetic project | Exit 0 on a clean project; exit 1, naming the dropped trigger and the edited revision, after another tool changed it; exit 2 for a folder that is not a project |
+
+**Fault found and fixed.** With the installed app open, the packaged `--self-test` printed nothing and never finished; `--verify-project` would have done the same. A second copy of the app asked for the single-instance lock, was refused, carried on, and never became ready. CI never saw this because nothing else runs there. Both commands now skip that lock and use a private temporary profile, so they do not touch the settings folder of the app that is open. `e2e/standalone.spec.ts` runs both while the app has a project open; put back the old behaviour and it times out. Locally the full UI suite passed before this change and the new test passed alone; the last full local run was spoiled by the computer waking from sleep under heavy load, so CI's run is the evidence for the suite as a whole.
+
+Not done: the leftover temporary profile (a few hundred kilobytes, no project data) is not always removed when the command exits, because Chromium is still writing as it closes; profiles older than ten minutes are cleared on the next run. Installers (DMG, NSIS) were not built, and `npm run test:reference` (the real-workbook check) was not run.
 
 ## Remaining work
 

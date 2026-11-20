@@ -207,4 +207,4 @@ A separate, optional MCP server lets an assistant such as Claude Desktop or Clau
 
 ## Checking an installation
 
-Run the app with `--self-test <folder>`. It creates a temporary project from the bundled **synthetic** workbook, then imports, saves a view, reopens it, exports, backs up, restores and loads the interface. It writes `bari-self-test.json` to the folder you gave and exits with code 0 on success. Real projects are not touched.
+Run the app with `--self-test <folder>`. It creates a temporary project from the bundled **synthetic** workbook, then imports, saves a view, reopens it, exports, backs up, restores and loads the interface. It writes `bari-self-test.json` to the folder you gave and exits with code 0 on success. Real projects are not touched. It can be run while the app is open: it uses a private temporary profile and leaves your settings alone. The same is true of `--verify-project`.

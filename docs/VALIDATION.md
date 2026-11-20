@@ -21,7 +21,7 @@ All of this uses synthetic data only and needs no study file.
 | 1 | `npm install` | Completes |
 | 2 | `npm run typecheck` | No output |
 | 3 | `npm test` | 203 tests pass |
-| 4 | `npm run e2e` | 15 tests pass |
+| 4 | `npm run e2e` | 16 tests pass |
 | 5 | `npm run reference:check` (needs R 4.3.2 with jsonlite 2.0.0 and car 3.1.3) | "R reproduces all three reference files." |
 | 6 | Packaged app with `--self-test <folder>` | Exit code 0 and `bari-self-test.json` with every step `ok` |
 
@@ -74,14 +74,15 @@ Not validated because not built: paired tests, repeated-measures models, covaria
 | Two imports are compared by participant, visit and header, with missing never equal to zero | `tests/versionDiff.test.ts`, `e2e/versions.spec.ts` |
 | A data dictionary never sets a unit and never replaces a curator's value | `tests/redcap.test.ts`, `e2e/redcap.spec.ts` |
 | Every control has a name and is reachable with the keyboard | `e2e/accessibility.spec.ts` |
+| `--self-test` and `--verify-project` work while the app is open | `e2e/standalone.spec.ts` |
 | No network request is attempted | `e2e/workflow.spec.ts`, `e2e/guardrails.spec.ts` |
 
 ## Known gaps in the evidence
 
-- The packaged build and `npm run test:reference` (the real-workbook check, counts only) were last run before the 2026-11-19 work.
+- `npm run test:reference` (the real-workbook check, counts only) was last run before the 2026-11-19 work. The packaged self-test passes in CI on macOS and Windows for the current source, and was run by hand on a macOS build; installers were not built.
 - The Windows install wizard has not been run by hand.
 - The largest dataset tested is synthetic: 4,800 rows by 300 columns (`tests/performance.test.ts`). Calculations are fast at that size; importing takes about 8 seconds and opening the dataset about 3. Drawing at that size is not tested, and all computation runs in the window's own thread.
-- The whole-window error boundary, and `--verify-project` on a packaged build, are untested.
+- The whole-window error boundary is untested.
 - Accessibility is checked automatically for names, keyboard reach and focus only. Colour contrast and screen-reader use are not checked.
 - The censoring threshold (15%) is provisional and has not been set with a statistician.
 - No second person has reviewed the statistical code.

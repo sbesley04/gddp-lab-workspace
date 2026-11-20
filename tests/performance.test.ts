@@ -121,6 +121,14 @@ describe('importing and loading a large synthetic file', () => {
       const loaded = await step('build snapshot from the database', 30_000, () => buildSnapshot(p, datasetVersionId))
       expect(loaded.rows.length).toBe(snap.rows.length)
       expect(loaded.variables.filter((v) => v.role === 'measure').length).toBe(300)
+      // What happens after every curation edit: the snapshot is rebuilt. The imported cells cannot have changed,
+      // so only the curation is read again.
+      const { editVariableMeta } = await import('../src/main/curation')
+      editVariableMeta(p, { datasetVersionId, varKey: loaded.variables[5].key, field: 'unit', value: 'pg/mL', status: 'tentative', author: 'Perf', reason: null })
+      const reloaded = await step('rebuild the snapshot after a curation edit', 500, () => buildSnapshot(p, datasetVersionId))
+      expect(reloaded.variables[5].meta.unit.value).toBe('pg/mL')
+      expect(reloaded.metadataVersion).toBe(loaded.metadataVersion + 1)
+      expect(reloaded.values).toBe(loaded.values) // the same imported cells, not a second copy
       const json = await step('serialise the snapshot as it crosses to the window', 3_000, () => JSON.stringify(loaded))
       io['snapshot size (MB)'] = Math.round(json.length / 1e6)
       const report = await step('verify the record chain', 1_000, () => verifyIntegrity(p.db))

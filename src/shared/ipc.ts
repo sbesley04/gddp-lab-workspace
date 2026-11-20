@@ -128,6 +128,7 @@ export const schemas = {
   'import:commit': z.object({ token: id, mapping, confirmMapping: z.literal(true), carryOverFrom: id.nullable() }),
   'import:discard': z.object({ token: id }),
   'data:snapshot': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
+  'data:curation': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
   'data:formatGroups': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
   'data:importReport': z.object({ datasetVersionId: id }),
   'data:compareVersions': z.object({ fromVersionId: id, toVersionId: id }),

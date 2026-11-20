@@ -35,6 +35,10 @@ Not in any installer yet. Build from source to use it.
 - R reference check (`npm run reference:check`) and its CI workflow; end-to-end UI tests in CI.
 - [Threat model](docs/THREAT_MODEL.md), [validation summary](docs/VALIDATION.md) and [improvement strategy](docs/STRATEGY.md).
 
+### Changed
+
+- Reloading after a curation edit no longer re-reads or re-sends the imported data. On a large dataset this takes milliseconds instead of seconds.
+
 ### Fixed
 
 - Numbered visits sort numerically on import (Month 2 before Month 6).

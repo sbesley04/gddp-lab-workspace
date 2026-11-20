@@ -102,12 +102,12 @@ npm run e2e            # builds, then Playwright against the built app
 npm run reference:check  # Rscript the three references into a temp folder and compare with the committed files
 npm run build:mcp      # out/mcp/server.js
 npm run fixtures       # regenerate synthetic fixtures (python3 + openpyxl)
-npm run dist:mac       # unsigned DMG/ZIP arm64+x64 in release/
+npm run dist:mac       # unsigned universal DMG in release/ (npm run release:lab assembles the lab download folder)
 ```
 
 - Before finishing a change: `npm run typecheck && npm test`; run `npm run e2e` for UI changes.
 - R references: `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` (needs jsonlite, car); `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json`; `Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json` (needs car). Run them from the repository root. Each file records its R and package versions under `_r`; the `r-reference` workflow (`.github/workflows/r-reference.yml`) installs that R version and a dated package snapshot, then runs `tools/check_reference.mjs`, which fails on any difference in values or versions. If you regenerate with other versions, change the R version and snapshot date there.
-- Packaged builds can't be driven by Playwright (inspect fuse disabled). Use `--self-test <dir>` instead; it writes `bari-self-test.json` and exits 0 on success. CI (`.github/workflows/build.yml`) does this on macOS and Windows; docs-only changes skip CI.
+- Packaged builds can't be driven by Playwright (inspect fuse disabled). Use `--self-test <dir>` instead; it writes `bari-self-test.json` and exits 0 on success. CI (`.github/workflows/build.yml`) runs it on the app installed from the real DMG (natively and under Rosetta) and the real Windows setup file, on every pull request, every push to `main` or a tag and every manual run, including docs-only changes. Installers are uploaded as artifacts only for `main`, tags and manual runs.
 - `BARI_USER_DATA` (test-only) points the app at an isolated settings folder.
 
 ## Security model (don't weaken)
@@ -128,7 +128,7 @@ Renderer: `sandbox`, `contextIsolation`, no `nodeIntegration`, custom `app://` p
 
 ## Release and docs state
 
-- Installers are **0.3.1** (2026-10-26). Everything since (analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA, MCP server, statistical guardrails and analysis register) is unreleased.
+- Installers are **0.3.1** (2026-10-26). Everything since (analysis log, chart downloads, covariates, transforms, histogram, correlation matrix, heatmap, PCA, MCP server, statistical guardrails and analysis register, version comparison, REDCap data dictionary import, universal Mac installer and lab-server download folder) is unreleased.
 - [docs/STRATEGY.md](docs/STRATEGY.md) sets the order of work; its **Progress** table says what is done. Phase 1 (statistical guardrails) is done apart from the open questions. Phase 2 is done except signing (needs credentials) and the validation pack: hash chain, curation audit, MCP suppression, full fingerprints, encrypted backups, main-process chart sidecars and a threat model ([docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)). Phase 0 still needs the MCP connection settled and a release. Update that table when you finish a strategy item. Check `git log main..HEAD` to see what is on your branch versus `main`.
 - [docs/STATUS.md](docs/STATUS.md) records how each feature was verified; update it (and the README "What works" table, test counts in README/DEVELOPING/STATUS) when you add a feature or tests.
 - Docs style: plain, short sentences, British spelling (colour, visualise, normalise), tables for feature/verification lists, no marketing language, honest about what is untested.

@@ -32,7 +32,8 @@ src/renderer/   React UI (design tokens in styles.css)
 src/mcp/        read-only MCP server for AI assistants (see MCP.md); built separately with vite.mcp.config.ts
 tests/          Vitest unit + integration; tests/reference = opt-in real-workbook check
 e2e/            Playwright Electron tests (UI workflow, chart downloads, tour and wide table, screenshots)
-tools/          make_fixtures.py (synthetic fixtures via openpyxl); stats_reference.R and
+tools/          lab-release.mjs (builds the lab-server download folder), check-fuses.mjs (CI);
+                make_fixtures.py (synthetic fixtures via openpyxl); stats_reference.R,
                 multivariate_reference.R and transforms_reference.R (R reference values for the tests);
                 check_reference.mjs (regenerates and compares them); dev only
 build/          icon, entitlements
@@ -64,7 +65,7 @@ build/          icon, entitlements
 | --- | --- |
 | `npm run dev` | Run with hot reload |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest (203 tests, about 20 seconds): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server, statistical guardrails, the analysis register and record integrity |
+| `npm test` | Vitest (211 tests, about 20 seconds): stats against hand-computed and R values, PCA and correlation matrix, transforms, analysis log, chart export, values, colours, CSV, importer fixtures, full service workflow, MCP server, statistical guardrails, the analysis register, record integrity, REDCap files and the lab-release script |
 | `npm run test:reference` | Real-workbook reconciliation (needs `BARI_REFERENCE_XLSX=/path/to/workbook.xlsx`). Expected counts are read from `tests/reference/expected.local.json` (git-ignored; override with `BARI_REFERENCE_EXPECT`). Without that file only structural checks run. Prints counts only. Never commit its output. |
 | `npm run e2e` | Builds, then runs Playwright: the full UI workflow (import → filter → save → restart → reproduce → export → backup → restore, with no network requests attempted), chart SVG/PNG downloads with sidecars, PCA and many-measures views, the tour and wide table, and screenshots of every screen in light and dark mode |
 | `npm run reference:check` | Runs the three R scripts into a temporary folder and compares the output with `tests/fixtures/*_reference.json`: same structure, same R and package versions (`_r`), numbers within 1e-9 relative (1e-6 for Box-Cox λ and 2e-5 for values transformed with it, which differ in the last digits between macOS and Linux). Needs R with jsonlite and car. CI runs it in its own workflow, `.github/workflows/r-reference.yml`, whenever `tools/` or a reference file changes. |
@@ -73,22 +74,23 @@ build/          icon, entitlements
 | `Rscript tools/stats_reference.R tests/fixtures/stats_reference.json` | Regenerates the R 4.x reference values for `tests/inference.test.ts` (needs R with jsonlite and car) |
 | `Rscript tools/multivariate_reference.R tests/fixtures/multivariate_reference.json` | Regenerates the R reference values for `tests/pca.test.ts` (including biplot vectors) and `tests/matrix.test.ts` (base R and jsonlite) |
 | `Rscript tools/transforms_reference.R tests/fixtures/transforms_reference.json` | Regenerates the Box-Cox reference values for `tests/transforms.test.ts` (needs jsonlite and car) |
-| `npm run dist:mac` | Unsigned DMG and ZIP for arm64 and x64 in `release/` |
-| `npm run dist:win` | Unsigned NSIS x64 installer, which cross-builds from macOS |
+| `npm run dist:mac` | Unsigned universal DMG (Apple Silicon and Intel): `release/BARI-CNS-Research-Workspace-<version>-mac.dmg` |
+| `npm run dist:win` | Unsigned NSIS x64 installer, which cross-builds from macOS: `release/BARI-CNS-Research-Workspace-<version>-windows-setup.exe` |
+| `npm run release:lab -- --out <folder>` | Copies those installers into the lab-server download folder with checksums and a download page. See [LAB_SERVER.md](LAB_SERVER.md). |
 
 **Check a project's records from the command line** (read-only; exit code 0 verified, 1 problems, 2 unreadable):
 
 ```bash
-"release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --verify-project "/path/to/My Study.bariproj"
+"release/mac-universal/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --verify-project "/path/to/My Study.bariproj"
 ```
 
 **Smoke-test a packaged build:**
 
 ```bash
-"release/mac-arm64/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test /tmp
+"release/mac-universal/BARI-CNS Research Workspace.app/Contents/MacOS/BARI-CNS Research Workspace" --self-test /tmp
 ```
 
-It writes `/tmp/bari-self-test.json` and exits with 0 on success. On Windows, run `"BARI-CNS Research Workspace.exe" --self-test C:\some\folder`. CI (`.github/workflows/build.yml`) runs this on both platforms, for pull requests and for pushes to `main`.
+It writes `/tmp/bari-self-test.json` and exits with 0 on success. On Windows, run `"BARI-CNS Research Workspace.exe" --self-test C:\some\folder`. CI (`.github/workflows/build.yml`, GitHub only) runs it for pull requests and for pushes to `main`, on the app installed from the real DMG and setup file, on both platforms, and checks the security fuses with `tools/check-fuses.mjs`. Under Rosetta, `arch -x86_64 "…/BARI-CNS Research Workspace" --self-test /tmp` checks the Intel half of the universal app.
 
 Playwright cannot drive a packaged build, because the `EnableNodeCliInspectArguments` fuse is disabled for security. That is why the packaged smoke test uses `--self-test`. It includes loading the real renderer in a hidden window through the real IPC bridge.
 

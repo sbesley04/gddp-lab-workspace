@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { unzipSync, strFromU8 } from 'fflate'
 import { createHash } from 'node:crypto'
-import { Project, ProjectLockedError, syncFolderWarning } from '../src/main/project'
+import { Project, ProjectLockedError, lockedProjectMessage, syncFolderWarning } from '../src/main/project'
 import { commitImport, inspect, parseSource, previewMapping, validate, datasetContentHash } from '../src/main/importService'
 import { buildSnapshot, listVersions } from '../src/main/snapshot'
 import { decideFormat, editVariableMeta, setCellExclusion, setCovariate } from '../src/main/curation'
@@ -54,10 +54,18 @@ describe('project persistence', () => {
     expect(() => Project.open(project.dir)).toThrow(ProjectLockedError)
     writeFileSync(lockPath, original)
   })
+  it('explains how to clear a lock left by another computer', () => {
+    const fromElsewhere = new ProjectLockedError({ pid: 1, host: 'lab-imac', at: 'now', sessionId: 'x' })
+    expect(lockedProjectMessage(fromElsewhere, 'my-laptop')).toMatch(/delete the hidden "\.lock" file/)
+    expect(lockedProjectMessage(fromElsewhere, 'lab-imac')).toMatch(/clears automatically/)
+  })
   it('warns about sync and network folders', () => {
     expect(syncFolderWarning('/Users/x/Library/Mobile Documents/com~apple~CloudDocs/p')).toMatch(/iCloud/)
     expect(syncFolderWarning('/Users/x/Dropbox/lab')).toMatch(/Dropbox/)
     expect(syncFolderWarning('/Users/x/Documents/lab')).toBeNull()
+    expect(syncFolderWarning('/Volumes/lab-nas/projects/study')).toMatch(/network or external volume/)
+    expect(syncFolderWarning('\\\\lab-nas\\projects\\study')).toMatch(/network share/)
+    expect(syncFolderWarning('C:\\Users\\x\\iCloudDrive\\study')).toMatch(/iCloud/)
   })
 })
 

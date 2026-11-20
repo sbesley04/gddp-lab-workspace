@@ -75,6 +75,8 @@ test('every control on every page has a name and is reachable with the keyboard'
     const p = await scan(page)
     if (p.length) found[where] = p
   }
+  // Wait for the start screen to be drawn: right after launch the window can still be empty, with no heading yet.
+  await page.getByText('Open synthetic demo').waitFor()
   // The start screen has no <main> of its own design; check its controls only.
   found['welcome'] = (await scan(page)).filter((p) => !p.startsWith('no main landmark'))
   if (!found['welcome'].length) delete found['welcome']

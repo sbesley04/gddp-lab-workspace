@@ -15,6 +15,7 @@ Not in any installer yet. Build from source to use it.
 - The chart settings sidecar is now `bari-chart/2` and uses `fingerprint` where it had `signature`.
 - MCP results return counts below the minimum cell size as `"<5"` and withhold `min` and `max` unless the server is started with `--show-extremes`.
 - **Backup** opens a short form (passphrase or no encryption) instead of saving at once.
+- One Mac installer for all Macs (Apple Silicon and Intel) replaces the separate arm64 and x64 files. Installer file names no longer contain spaces: `BARI-CNS-Research-Workspace-<version>-mac.dmg` and `…-windows-setup.exe`.
 
 ### Added
 
@@ -33,6 +34,7 @@ Not in any installer yet. Build from source to use it.
 - A message instead of a blank window when a page fails to draw.
 - Audit entries for quasi-identifier flags, segment names and study context.
 - R reference check (`npm run reference:check`) and its CI workflow; end-to-end UI tests in CI.
+- A lab-server download folder built by CI (`npm run release:lab`), with an install guide ([docs/INSTALL.md](docs/INSTALL.md)). CI installs the real DMG and setup file and runs the self-test on them (Intel Macs under Rosetta).
 - [Threat model](docs/THREAT_MODEL.md), [validation summary](docs/VALIDATION.md) and [improvement strategy](docs/STRATEGY.md).
 
 ### Changed

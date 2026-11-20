@@ -9,5 +9,12 @@ export default defineConfig({
       '@importer': resolve(__dirname, 'src/importer')
     }
   },
-  test: { include: ['tests/**/*.test.ts'], exclude: ['tests/reference/**'], environment: 'node' }
+  test: {
+    include: ['tests/**/*.test.ts'],
+    exclude: ['tests/reference/**'],
+    environment: 'node',
+    // Set-up hooks create SQLite projects on disk and import a workbook. On a busy Windows CI runner, with
+    // every test file running in parallel, that has taken more than the default 10 s.
+    hookTimeout: 60_000
+  }
 })

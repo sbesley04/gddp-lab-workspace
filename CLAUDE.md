@@ -41,7 +41,7 @@ Path aliases: `@core/*`, `@shared/*`, `@importer/*` (tsconfig + electron.vite.co
 ## Key concepts and where they live
 
 - **`CellValue`** (`src/core/types.ts`): `missing | number | censored | text`. `classifyValue` in `src/core/values.ts` is the only classifier. Whitespace is missing; `<0.5`/`≥3` are censored; numeric-looking text from CSV becomes a number with `raw` kept. Participant IDs are always text (`identifierText`), even when the source stored numbers.
-- **`DatasetSnapshot`**: the in-memory form of one dataset version + curation "as of" a metadata version. Built by `buildSnapshot(project, versionId, asOf)` in `src/main/snapshot.ts`. `values[variableIndex][rowIndex]` (column-major).
+- **`DatasetSnapshot`**: the in-memory form of one dataset version + curation "as of" a metadata version. Built by `buildSnapshot(project, versionId, asOf)` in `src/main/snapshot.ts`. `values[variableIndex][rowIndex]` (column-major). The imported part (`visits`, `rows`, `values`, `annotations`) is cached per version and **frozen**: never write to it; `variables` and `flags` are fresh per snapshot. The renderer refreshes after an edit through `data:curation` (curated parts only).
 - **Metadata version** = `MAX(revision.id)` for the project (`Project.metadataVersion()`). Every curation edit bumps it.
 - **`computeSelection`** (`src/core/selection.ts`) is **the single selection engine**. Everything that decides inclusion must call it. Key semantics:
   - QC-excluded observations count as unavailable in filters (like missing).

@@ -37,6 +37,10 @@ Not in any installer yet. Build from source to use it.
 - A lab-server download folder built by CI (`npm run release:lab`), with an install guide ([docs/INSTALL.md](docs/INSTALL.md)). CI installs the real DMG and setup file and runs the self-test on them (Intel Macs under Rosetta).
 - [Threat model](docs/THREAT_MODEL.md), [validation summary](docs/VALIDATION.md) and [improvement strategy](docs/STRATEGY.md).
 
+### Changed
+
+- Reloading after a curation edit no longer re-reads or re-sends the imported data. On a large dataset this takes milliseconds instead of seconds.
+
 ### Fixed
 
 - Numbered visits sort numerically on import (Month 2 before Month 6).

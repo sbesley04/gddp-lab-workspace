@@ -1,6 +1,7 @@
 // Electron main process: hardened window, offline enforcement, validated IPC.
 import { app, BrowserWindow, dialog, ipcMain, powerSaveBlocker, protocol, session, nativeTheme, type IpcMainInvokeEvent } from 'electron'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, mkdtempSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { removeTree } from './fsutil'
 import { join, normalize, sep, basename, dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
@@ -461,8 +462,34 @@ if (process.env.BARI_USER_DATA) {
   // Stop macOS App Nap from suspending the test app while its window is hidden.
   app.whenReady().then(() => powerSaveBlocker.start('prevent-app-suspension'))
 }
+// `--self-test` and `--verify-project` are short commands that must work while the app itself is open. A second copy
+// that shares the first one's settings folder never becomes ready (it hung until killed), so each of these runs gets a
+// private, temporary profile and does not ask for the single-instance lock. Neither reads or writes user settings.
+const standalone = process.argv.includes('--self-test') || process.argv.includes('--verify-project')
+if (standalone && !process.env.BARI_USER_DATA) {
+  // Clear profiles left by earlier runs that could not tidy up (a crash, or Chromium still writing as it closed).
+  try {
+    for (const name of readdirSync(tmpdir())) {
+      const old = join(tmpdir(), name)
+      if (name.startsWith('bari-standalone-') && Date.now() - statSync(old).mtimeMs > 10 * 60 * 1000) removeTree(old)
+    }
+  } catch {
+    /* tidying is best effort */
+  }
+  const profile = mkdtempSync(join(tmpdir(), 'bari-standalone-'))
+  app.setPath('userData', profile)
+  const tidy = () => {
+    try {
+      removeTree(profile)
+    } catch {
+      /* swept on a later run */
+    }
+  }
+  app.on('quit', tidy)
+  process.on('exit', tidy)
+}
 app.enableSandbox()
-if (!app.requestSingleInstanceLock() && !process.argv.includes('--self-test') && !process.argv.includes('--verify-project')) app.quit()
+if (!standalone && !app.requestSingleInstanceLock()) app.quit()
 
 app.on('second-instance', () => {
   if (mainWindow) {

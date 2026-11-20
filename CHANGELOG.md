@@ -44,6 +44,7 @@ Not in any installer yet. Build from source to use it.
 - Numbered visits sort numerically on import (Month 2 before Month 6).
 - Chart SVG and PNG exports were malformed XML with the system and serif fonts.
 - The direct Box-Cox formula lost precision at large |λ|.
+- `--self-test` hung when the app was already open (and `--verify-project` would have).
 - In a small window, a popover that opened upwards could put its first buttons above the top of the window, out of reach.
 
 ## 0.3.1 (2026-10-26)

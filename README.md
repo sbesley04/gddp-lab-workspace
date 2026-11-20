@@ -7,7 +7,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 ## Versions
 
 - **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
-- **Source (`main`), unreleased:** analysis log with fingerprints, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server described in [docs/MCP.md](docs/MCP.md), statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, stricter MCP suppression, encrypted backups, and a comparison of dataset versions. None of this is in the 0.3.1 installers; build from source to use it. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
+- **Source (`main`), unreleased:** analysis log with fingerprints, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server described in [docs/MCP.md](docs/MCP.md), statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, stricter MCP suppression, encrypted backups, a comparison of dataset versions, and REDCap data dictionary import. None of this is in the 0.3.1 installers; build from source to use it. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
 
 ## What works
 
@@ -18,6 +18,7 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 | Numbered visits sorted numerically on import (Month 2 before Month 6) | Working (unreleased) |
 | Source/QC preservation: theme colours and tints, rich-text headers turned into aliases, threaded comments, legend decoding with exact / needs-review / unresolved statuses, curator decisions | Working |
 | Measurement catalog with append-only metadata revisions, quasi-identifier flags and covariate tags | Working |
+| REDCap files: a record export imports with its own identifier and event columns; a data dictionary fills in labels, definitions, forms and identifier flags as tentative metadata | Working (unreleased), synthetic files only |
 | Comparison of two imports of the workbook: rows, participants, measures, changed values and QC flags (nothing is merged) | Working (unreleased) |
 | AND/OR cohort filters with explicit missing handling; QC inclusion policy with impact counts | Working |
 | Distribution (box + all points; histogram unreleased) and two-measure scatter; linked table; forced axis bounds; chart style editor with presets | Working |
@@ -61,7 +62,7 @@ npm run dev
 | Command | Purpose |
 | --- | --- |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Vitest unit and integration tests (193, synthetic data only; about 15 seconds) |
+| `npm test` | Vitest unit and integration tests (199, synthetic data only; about 15 seconds) |
 | `npm run e2e` | Builds, then runs the Playwright UI tests |
 | `npm run test:reference` | Opt-in checks against a local real workbook (counts only) |
 | `npm run reference:check` | Regenerates the R reference values and compares them with the committed files (needs R) |

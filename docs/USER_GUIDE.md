@@ -113,6 +113,12 @@ The catalog shows each measure's display label, definition, unit, specimen, assa
 - Leave fields unknown rather than guessing. The specimen is suggested only when the header states it explicitly.
 - Raw, scaled, clinic and T-score variants remain separate variables.
 - Mark **quasi-identifiers** (for example age, sex, race, dates, BMI) so that exports require explicit confirmation before including them.
+- **Import data dictionary** (top right) fills in metadata from a REDCap data dictionary, the CSV you download from REDCap's Dictionary page.
+  - For each measure the dictionary describes, it proposes a display label, a definition (the question, its note, the choice codes, any calculation and allowed range), the research area (the form name) and the source. Fields REDCap marks as identifiers are flagged as quasi-identifiers.
+  - A preview lists every change. Nothing is written until you press **Apply**.
+  - Values are recorded as **Tentative**, each as a revision in the measure's history that names the file. Confirm or correct them as usual.
+  - A dictionary says nothing about units, specimens or assays, so those stay as they are. A value a curator has already set is never replaced; the preview lists the ones that differ.
+  - Checkbox fields, which REDCap exports as one column per option (`meds___1`), each get the option's name.
 - Mark **covariates** (for example sex, site, treatment group) so they are offered first under **Colour by**. The tag is an append-only revision, carried to new dataset versions; it changes no data and no export rule. Filter the list with **Covariates**.
 
 ## Data quality

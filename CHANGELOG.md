@@ -26,6 +26,7 @@ Not in any installer yet. Build from source to use it.
 - Covariate tags and colour-by; display transforms (log2, log10, square root, Box-Cox, centre, z-score, rank).
 - Histograms, correlation matrix, participant × measure heatmap, exploratory PCA with a gap suggestion and biplot.
 - Read-only MCP server for AI assistants (aggregate results, small-count suppression, access log).
+- **Measurements → Import data dictionary**: labels, definitions, forms and identifier flags from a REDCap data dictionary, recorded as tentative.
 - **Data quality → Version changes**: what differs between two imports of the workbook.
 - Keyboard access to table values (arrow keys, Enter to inspect), and buttons in rows that were only clickable.
 - MCP option `--withhold-free-text`.

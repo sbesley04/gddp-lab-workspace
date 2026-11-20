@@ -14,10 +14,11 @@
 | Unreleased | 2026-11-19 | Full fingerprints; chart sidecars rebuilt by the main process; encrypted backups; error boundary; threat model |
 | Unreleased | 2026-11-19 | Dataset-version comparison; keyboard access to table values; automated accessibility check |
 | Unreleased | 2026-11-19 | REDCap data dictionary import |
+| Unreleased | 2026-11-19 | Faster reload after curation edits on large datasets |
 
 ## Current test inventory
 
-- `npm test`: 199 Vitest tests in 23 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
+- `npm test`: 203 Vitest tests in 24 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
 - `npm run e2e`: Playwright, 15 tests. The full UI workflow, the comparison of two imports (`e2e/versions.spec.ts`), a REDCap export and data dictionary (`e2e/redcap.spec.ts`), the accessibility checks (`e2e/accessibility.spec.ts`), chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
@@ -200,6 +201,18 @@ Not done: colour contrast (the translucent backgrounds make it hard to compute),
 | Nothing is assumed or overwritten: units, specimens and assays are never set; a value a curator has set is kept and listed; an identifier flag a curator has decided is left alone; values are recorded as tentative, as ordinary append-only revisions that name the file by checksum; one audit entry covers the import; applying the same dictionary again changes nothing | `tests/redcap.test.ts` (including the record chain verifying afterwards); `e2e/redcap.spec.ts` applies it through the UI, then finds nothing to change the second time |
 
 Not done: repeating instruments and repeating events (rows that share a participant and event are refused as duplicates; export one instrument at a time); the REDCap API; branching logic and required-field rules are ignored; a real REDCap export has not been tried, only a synthetic file written from REDCap's documented format.
+
+## Unreleased: faster reload after curation (2026-11-19)
+
+The performance budget showed that rebuilding the dataset after each curation edit cost as much as loading it the first time.
+
+| Change | Verification |
+| --- | --- |
+| The imported part of a dataset version (visits, rows, cell values, the formatting found on import, comments) is read from the database once and reused; only curation is read again. The two most recently used versions are kept. On the synthetic dataset of 4,800 rows by 300 columns, a rebuild after an edit went from about 2,600 ms to 12 ms. | `tests/snapshotCache.test.ts` compares every reused snapshot with one read by a second connection that has cached nothing: before and after a metadata edit, an exclusion and a formatting decision; at an earlier pinned metadata version; and across three versions. `tests/performance.test.ts` holds the rebuild to a 500 ms budget. |
+| The shared part is frozen: writing to a value, a row or the comment list throws, so one snapshot cannot alter another | `tests/snapshotCache.test.ts`; the other 199 unit tests and 15 UI tests ran unchanged, so nothing was writing to it |
+| After an edit the window is sent only the parts curation can change (measures' metadata and flags), not the whole dataset again, and merges them into the snapshot it holds | `tests/snapshotCache.test.ts` (the merged snapshot equals a full one, and selects the same rows); the UI tests exercise edits, saved views pinned to an earlier metadata version, and the data dictionary import through this path. The time saved in the window is not measured. |
+
+Not done: the first load of a large dataset (about 3 s and 50 MB) is unchanged, drawing is not measured, and no computation has moved off the window's thread.
 
 ## Remaining work
 

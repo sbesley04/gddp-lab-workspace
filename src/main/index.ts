@@ -8,7 +8,7 @@ import { schemas, type IpcResult } from '@shared/ipc'
 import { CHANNELS, type ChannelName } from '@shared/channels'
 import { Project, ProjectLockedError, syncFolderWarning } from './project'
 import { commitImport, inspect, parseSource, previewMapping, validate, type ParsedSource } from './importService'
-import { buildSnapshot, listVersions } from './snapshot'
+import { buildSnapshot, buildSnapshotCuration, listVersions } from './snapshot'
 import * as curation from './curation'
 import * as views from './views'
 import * as boards from './boards'
@@ -206,6 +206,7 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   'import:discard': (p) => pendingImports.delete(p.token),
   'data:versions': () => listVersions(requireProject()),
   'data:snapshot': (p) => buildSnapshot(requireProject(), p.datasetVersionId, p.asOf ?? undefined),
+  'data:curation': (p) => buildSnapshotCuration(requireProject(), p.datasetVersionId, p.asOf ?? undefined),
   'data:formatGroups': (p) => curation.formatGroups(requireProject(), p.datasetVersionId, p.asOf ?? requireProject().metadataVersion()),
   'data:importReport': (p) => {
     const r = requireProject().db.get<any>('SELECT import_report_json, legend_json, segments_json FROM dataset_version WHERE id = ?', p.datasetVersionId)

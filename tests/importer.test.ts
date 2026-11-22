@@ -14,6 +14,34 @@ function model(file: string, sheet?: string) {
   return buildImportModel(wb, { sheetName: s.name, headerRow: 1, participantColumn: m.participantColumn!, eventColumn: m.eventColumn })
 }
 
+describe('cell font colours', () => {
+  it.each([1, 2, 4])('are compared with the chosen header row (row %i)', (headerRow) => {
+    const wb = readWorkbook(fx('demo_workbook.xlsx'))
+    const sheet = wb.sheets[0]
+    const header = [...sheet.cells.get(1)!.values()]
+    const red = header.find((c) => c.value === 'HVLT T-score')!
+    const orange = header.find((c) => c.value === 'Age')!
+    // A red column under a red header (no flag), and one red cell under an orange header (one flag).
+    for (let r = 2; r <= sheet.maxRow; r++) sheet.cells.get(r)!.get(red.c)!.style = red.style
+    sheet.cells.get(2)!.get(orange.c)!.style = red.style
+
+    const by = headerRow - 1
+    if (by) {
+      const move = (r: number) => r + by
+      sheet.cells = new Map([...sheet.cells].map(([r, row]) => [move(r), new Map([...row].map(([c, x]) => [c, { ...x, r: move(r) }]))]))
+      sheet.maxRow += by
+      sheet.comments = []
+      // A title in row 1, coloured the opposite way to the headers below it.
+      const title = (c: number, style: number) => [c, { ...red, r: 1, c, style, value: 'Synthetic title' }] as const
+      sheet.cells.set(1, new Map([title(red.c, orange.style), title(orange.c, red.style)]))
+    }
+
+    const m = buildImportModel(wb, { sheetName: sheet.name, headerRow, participantColumn: 1, eventColumn: 2 })
+    const differing = m.flags.filter((f) => f.kind === 'cell_source' && f.status === 'needs_review')
+    expect(differing.map((f) => [m.columns[f.col].header, f.row])).toEqual([['Age', 0]])
+  })
+})
+
 describe('synthetic demo workbook', () => {
   const m = model('demo_workbook.xlsx', 'Synthetic Demo Datasheet')
   const col = (h: string) => m.columns.find((c) => c.header === h)!

@@ -518,7 +518,7 @@ export function buildImportModel(wb: XWorkbook, mapping: ImportMapping, sourceKi
   if (inconsistent.length) issue('warning', 'alias_inconsistent', `${inconsistent.length} multi-source header(s) have aliases that name different tests; check the source labels.`, inconsistent.map((c) => `${c.letter}: ${c.aliases.map((a) => a.text).join(' / ')}`))
 
   // ---- cell formatting interpretations ----
-  if (legend && sourceKind === 'xlsx') applyCellFormatting(sheet, styles, legend, columns, dataRowNumbers, flags, issue)
+  if (legend && sourceKind === 'xlsx') applyCellFormatting(sheet, styles, legend, hr, columns, dataRowNumbers, flags, issue)
 
   // ---- annotations ----
   const annotations: ImportAnnotation[] = sheet.comments.map((cm) => {
@@ -589,6 +589,7 @@ function applyCellFormatting(
   sheet: XSheet,
   styles: XStyle[],
   legend: Legend,
+  headerRow: number,
   columns: ColumnModel[],
   dataRowNumbers: number[],
   flags: ImportFlag[],
@@ -607,7 +608,7 @@ function applyCellFormatting(
   columns.forEach((col, ci) => {
     if (col.role === 'blank') return
     const mixed = col.attribution?.mode === 'mixed_source' || /also italic/.test(col.attribution?.note ?? '')
-    const headerStyle = styles[getCell(sheet, 1, col.col)?.style ?? 0]
+    const headerStyle = styles[getCell(sheet, headerRow, col.col)?.style ?? 0]
     dataRowNumbers.forEach((rn, ri) => {
       const cell = getCell(sheet, rn, col.col)
       if (!cell) return

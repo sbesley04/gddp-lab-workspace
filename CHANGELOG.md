@@ -42,6 +42,7 @@ Not in any installer yet. Build from source to use it.
 ### Fixed
 
 - Numbered visits sort numerically on import (Month 2 before Month 6).
+- When the header row was not row 1 (for example, below a title), cell font colours were compared with row 1 instead of the headers. This could mark cells as "differs from the column attribution" wrongly, or miss cells that do differ. Imports are never changed, so import such a workbook again to correct its flags.
 - Chart SVG and PNG exports were malformed XML with the system and serif fonts.
 - The direct Box-Cox formula lost precision at large |λ|.
 - In a small window, a popover that opened upwards could put its first buttons above the top of the window, out of reach.

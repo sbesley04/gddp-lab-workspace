@@ -10,6 +10,7 @@ Not in any installer yet. Build from source to use it.
 
 - Two database upgrades happen the first time a project is opened (analysis register, record chain). The app keeps a copy of the database as it was, named `workspace.sqlite.before-schema-<n>.bak`, in the project folder.
 - After that upgrade, the MCP server refuses a project until the app has opened it once.
+- Mac installers: one universal `…-mac.dmg` for Apple Silicon and Intel replaces the separate arm64 and x64 files. The Windows installer is named `…-windows-setup.exe`.
 - Every analysis-log fingerprint (formerly "signature") changes. Charts saved earlier keep the old 8-character value in their footer.
 - The research-context package has two more files, `analysis_log.R` and `analysis_register.json`. In `manifest.json`, `analysisLog.signature` is now `analysisLog.fingerprint`.
 - The chart settings sidecar is now `bari-chart/2` and uses `fingerprint` where it had `signature`.
@@ -33,10 +34,15 @@ Not in any installer yet. Build from source to use it.
 - A message instead of a blank window when a page fails to draw.
 - Audit entries for quasi-identifier flags, segment names and study context.
 - R reference check (`npm run reference:check`) and its CI workflow; end-to-end UI tests in CI.
+- `npm run release:lab` builds the lab-server download folder: verified copies, `SHA256SUMS.txt`, an offline download page and plain-text install steps. It never overwrites a published version.
+- CI installs and self-tests the files researchers download: the DMG (natively and under Rosetta) and the Windows setup, with a check of the security fuses.
+- [Install guide](docs/INSTALL.md) and [lab server guide](docs/LAB_SERVER.md) (hosting the repository and downloads on the lab NAS).
 - [Threat model](docs/THREAT_MODEL.md), [validation summary](docs/VALIDATION.md) and [improvement strategy](docs/STRATEGY.md).
 
 ### Changed
 
+- A project locked by another computer (for example a folder copied off the NAS) now says how to clear the lock, and that Backup and Restore are the way to move a project. The network-folder warning also recognises Windows network paths and iCloudDrive.
+- Install instructions use **Open Anyway** in Privacy & Security; right-click → Open no longer works on macOS 15.
 - Reloading after a curation edit no longer re-reads or re-sends the imported data. On a large dataset this takes milliseconds instead of seconds.
 
 ### Fixed

@@ -16,13 +16,15 @@
 | Unreleased | 2026-11-19 | REDCap data dictionary import |
 | Unreleased | 2026-11-19 | Faster reload after curation edits on large datasets |
 
+| Unreleased | 2026-11-10 | One Mac installer, fixed file names, lab-server download folder, installers tested as downloaded |
+
 ## Current test inventory
 
-- `npm test`: 203 Vitest tests in 24 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget). The performance test imports a large synthetic file, so the run takes about 15 seconds.
+- `npm test`: 211 Vitest tests in 25 files, all on synthetic data (including 16 for the MCP server, 13 for the statistical guardrails, 6 for record integrity, 6 property tests for the selection engine and 3 for the performance budget, 7 for the lab-release script). The performance test imports a large synthetic file, so the run takes about 15 seconds.
 - `npm run e2e`: Playwright, 15 tests. The full UI workflow, the comparison of two imports (`e2e/versions.spec.ts`), a REDCap export and data dictionary (`e2e/redcap.spec.ts`), the accessibility checks (`e2e/accessibility.spec.ts`), chart downloads (`e2e/charts.spec.ts`), the tour, wide table, PCA and many-measures views (`e2e/tour-table.spec.ts`), the statistical guardrails, the record check and the error boundary (`e2e/guardrails.spec.ts`), and screenshots of every screen in light and dark mode.
 - `npm run reference:check`: regenerates the three R reference files and compares them with the committed ones (needs R with jsonlite and car).
 - `npm run test:reference`: opt-in, local-only checks against the real workbook; expected counts live in a git-ignored file.
-- `--self-test`: packaged-build smoke test.
+- `--self-test`: packaged-build smoke test. CI runs it on the app installed from the real DMG (natively and under Rosetta) and from the real Windows setup file.
 - R reference values: `tools/stats_reference.R` (tests, CIs, regression) `tools/multivariate_reference.R` (PCA, biplot vectors, correlation matrix) and `tools/transforms_reference.R` (Box-Cox). Each file records the R and package versions that produced it (R 4.3.2, jsonlite 2.0.0, car 3.1.3).
 
 ## 0.1.0 (first release, 2026-10-22)
@@ -214,12 +216,28 @@ The performance budget showed that rebuilding the dataset after each curation ed
 
 Not done: the first load of a large dataset (about 3 s and 50 MB) is unchanged, drawing is not measured, and no computation has moved off the window's thread.
 
+## Unreleased: downloads and the lab server (2026-11-10)
+
+Preparing to host the repository and the installers on the lab NAS ([LAB_SERVER.md](LAB_SERVER.md)), and removing the steps where downloads went wrong.
+
+| Change | Why | Verification |
+| --- | --- | --- |
+| One universal Mac DMG instead of separate Apple Silicon and Intel files | Researchers had to know their Mac's processor; a wrong pick does not run | CI: `lipo` shows both architectures; `--self-test` passes natively and under Rosetta |
+| Installer names set in `package.json` (`…-mac.dmg`, `…-windows-setup.exe`) | 0.3.1 files were renamed by hand after building, so the names in docs and builds disagreed | CI looks for the exact names |
+| `tools/lab-release.mjs` (`npm run release:lab`) | Builds the download folder: verified copies (no half-copied installers on the share), `SHA256SUMS.txt`, an offline download page that highlights the right file, plain-text instructions, never overwrites a published version | `tests/labRelease.test.ts` (7 tests); the CI job `lab-server-folder` runs it on the real installers |
+| CI installs what researchers download | Earlier CI ran the unpacked app, not the DMG or setup file | macOS: mount DMG, copy out, signature, fuses, self-test. Windows: silent install, self-test, uninstall |
+| `tools/check-fuses.mjs` | Fuses were checked by hand | Run in CI on both platforms |
+| Install instructions: **Open Anyway** in Privacy & Security | "Right-click → Open" no longer works on macOS 15 | Docs and download page |
+| Locked-project message explains the hidden `.lock` file when the lock comes from another computer | A project folder copied from another computer (e.g. off the NAS) could never be opened, with no hint why | `tests/workflow.test.ts` |
+| Network-folder warning also recognises Windows paths (`\\server\share`, `iCloudDrive`) | Projects on the NAS must not be opened live | `tests/workflow.test.ts` |
+
 ## Remaining work
 
 1. Run the NSIS install wizard by hand on Windows 10/11, then import, save, export and reopen through the UI. CI already runs the unit tests and the packaged `--self-test` on Windows.
-2. Build and smoke-test installers that include the unreleased work, then tag a release.
-3. Obtain signing credentials and notarise or sign (see [SIGNING.md](SIGNING.md)).
-4. Curator decisions recorded in the local workbook notes (see [WORKBOOK_SEMANTICS.md](WORKBOOK_SEMANTICS.md)):
+2. Build and smoke-test installers that include the unreleased work, publish them to the lab server ([LAB_SERVER.md](LAB_SERVER.md)) and tag a release.
+3. Move the repository and the 0.3.1 installers to the NAS ([LAB_SERVER.md](LAB_SERVER.md), sections 1 and 4).
+4. Obtain signing credentials and notarise or sign (see [SIGNING.md](SIGNING.md)).
+5. Curator decisions recorded in the local workbook notes (see [WORKBOOK_SEMANTICS.md](WORKBOOK_SEMANTICS.md)):
    - the sample-warning colour mismatch;
    - column-group naming;
    - header alias inconsistencies;

@@ -1,13 +1,69 @@
 # BARI-CNS Research Workspace
 
-An offline desktop app (macOS and Windows) for exploring BARI-CNS study spreadsheets without SQL or data-wrangling code. It imports a workbook while keeping its source attribution, QC highlights and comments. You can then build reproducible selections and charts, record every step in an R-syntax analysis log, and export a documented research-context package for statisticians or AI assistants. An optional read-only MCP server lets an AI assistant query aggregate results directly.
+A desktop app (Mac and Windows) for exploring BARI-CNS study spreadsheets **without writing code**. You open a workbook, pick participants and measures, draw charts, run statistics when you ask for them, and save or export exactly what you did.
 
-It is a research tool for **exploration**. Statistical tests and multivariate methods run only when you ask for them, are labelled exploratory, and are validated against R. The app makes no causal or efficacy claims and gives no clinical recommendations.
+- **Works offline.** The app never connects to the internet and sends no data anywhere.
+- **Keeps the spreadsheet's context.** Source colours, QC highlights and comments come along with the numbers.
+- **Reproducible.** Every chart has a record of the steps behind it (in R syntax) that a statistician can check.
+- **For exploration.** Statistics are labelled exploratory and are checked against R. The app makes no causal or clinical claims.
+
+## Get the app
+
+Download it from the **lab download page** on the lab server. Ask the lab's data manager for the address if you do not have it.
+
+| Your computer | File to download |
+| --- | --- |
+| Any Mac (Apple Silicon or Intel), macOS 13 or newer | `BARI-CNS-Research-Workspace-<version>-mac.dmg` |
+| Windows 10 or 11 (64-bit) | `BARI-CNS-Research-Workspace-<version>-windows-setup.exe` |
+
+The app is not signed with a paid certificate, so your computer warns you the first time you open it. That is expected. **[docs/INSTALL.md](docs/INSTALL.md)** shows what to click, and what to do if a download or install goes wrong.
+
+## Start in five minutes
+
+1. Open the app and click **Open synthetic demo**. It loads invented data, so you can try everything safely.
+2. Go to **Explore**, choose a measure, and look at the chart and the table under it.
+3. Add a filter, colour the points by a group, then press **Analyze → Compute statistics**.
+4. Click **Save view** to keep what you made.
+
+For your own study: **Create project**, pick a folder **on your computer's own disk**, then **Import workbook**. The **[user guide](docs/USER_GUIDE.md)** walks through every screen.
+
+## Two rules for study data
+
+1. **Keep active projects on your own computer's disk.** Not on the NAS, a network drive, iCloud, Dropbox, OneDrive or Google Drive: these can corrupt a project that is open. To share work or keep a copy on the NAS, use **Backup** or **Export** in the app.
+2. **Real study data never goes into this repository**, issues, logs or screenshots. Only the invented test files in `tests/fixtures/` belong here.
+
+Projects are protected only by your computer's own login and disk encryption; they are not encrypted by the app. Backups can be encrypted with a passphrase (unreleased), and a record check detects changes made to the audit log and curation history outside the app (unreleased), but does not prevent them. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) for what the app does not do.
+
+## Documentation
+
+**For researchers**
+
+| Document | What it covers |
+| --- | --- |
+| [INSTALL.md](docs/INSTALL.md) | Downloading, installing, updating, and fixing install problems |
+| [USER_GUIDE.md](docs/USER_GUIDE.md) | Every screen and workflow, with a glossary |
+| [LIMITATIONS.md](docs/LIMITATIONS.md) | What the app does not do; privacy and data protection |
+| [MCP.md](docs/MCP.md) | Optional: letting an AI assistant query aggregate results (check IRB approval first) |
+
+**For whoever maintains the app**
+
+| Document | What it covers |
+| --- | --- |
+| [LAB_SERVER.md](docs/LAB_SERVER.md) | Hosting this repository on the lab NAS and publishing new versions to the download page |
+| [DEVELOPING.md](docs/DEVELOPING.md) | Building from source, architecture, security model, tests |
+| [STATUS.md](docs/STATUS.md) | Release history and how each feature was verified |
+| [ROADMAP.md](docs/ROADMAP.md) | Planned work |
+| [STRATEGY.md](docs/STRATEGY.md) | Review findings (2026-11-17), the order in which to address them, and progress |
+| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | What the app defends against, and what it leaves to the lab |
+| [VALIDATION.md](docs/VALIDATION.md) | The evidence that the app does what it says, and how to re-run it |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
+| [WORKBOOK_SEMANTICS.md](docs/WORKBOOK_SEMANTICS.md) | How to document a study workbook (details stay local) |
+| [SIGNING.md](docs/SIGNING.md) | Code signing, if the lab gets certificates |
 
 ## Versions
 
 - **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
-- **Source (`main`), unreleased:** analysis log with fingerprints, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server described in [docs/MCP.md](docs/MCP.md), statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, stricter MCP suppression, encrypted backups, a comparison of dataset versions, and REDCap data dictionary import. None of this is in the 0.3.1 installers; build from source to use it. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
+- **Source (`main`), unreleased:** analysis log with fingerprints, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server, statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, stricter MCP suppression, encrypted backups, a comparison of dataset versions, REDCap data dictionary import, and a single Mac installer for all Macs. None of this is in the 0.3.1 installers. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
 
 ## What works
 
@@ -35,21 +91,15 @@ It is a research tool for **exploration**. Statistical tests and multivariate me
 | Research-context ZIP (pseudonymous keys, checksums, preview); `analysis_log.R` and `analysis_register.json` are the seventh and eighth files in unreleased builds | Working |
 | Backup and verified restore; optional passphrase encryption (unreleased) | Working |
 | MCP server for AI assistants (read-only, aggregate results, every small count suppressed, extremes withheld, access log) | Working (unreleased), tested on synthetic data only |
-| macOS installers (arm64 and x64 DMG/ZIP, unsigned) | Built and smoke-tested with `--self-test` (x64 under Rosetta) |
-| Windows installer (NSIS x64, unsigned) | Unit tests and the packaged `--self-test` pass on Windows in CI; the install wizard has not been run by hand |
+| macOS installer: one universal DMG for Apple Silicon and Intel, unsigned (0.3.1 shipped separate arm64 and x64 files) | CI mounts the DMG, copies the app out, checks it is universal, its signature and fuses, and runs `--self-test` natively and under Rosetta (unreleased) |
+| Windows installer (NSIS x64, unsigned) | CI runs the setup silently, self-tests the installed app and uninstalls it; the install wizard has not been run by hand |
+| Lab-server download folder (`npm run release:lab`): verified copies, checksums, offline download page | `tests/labRelease.test.ts`; built from the real installers in CI (unreleased) |
 
 Rows marked *unreleased* are in the source but not in the 0.3.1 installers. [docs/STATUS.md](docs/STATUS.md) lists how each feature was verified.
 
-## For researchers
+## Building from source (maintainers)
 
-1. Install from a release your lab provides (or `release/` after building). The app is unsigned, so on macOS right-click it and choose **Open** the first time. On Windows, choose **More info → Run anyway** in SmartScreen.
-2. **Create project** and choose a folder on a local disk (not iCloud, Dropbox, OneDrive or a network drive).
-3. **Import workbook**, confirm `Subject_ID` and `Event Name`, review the checks, then commit.
-4. Use **Explore**, **Measurements**, **Data quality**, **Saved views** and **Export**.
-
-**Open synthetic demo** loads invented data you can use to learn the app safely. Full guide: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
-
-## For developers
+Needs Node.js 22.13 or newer. Clone the repository to a **local** disk (building on a network share is slow and can fail).
 
 ```bash
 npm install
@@ -59,38 +109,4 @@ npm install
 npm run dev
 ```
 
-| Command | Purpose |
-| --- | --- |
-| `npm run typecheck` | TypeScript |
-| `npm test` | Vitest unit and integration tests (203, synthetic data only; about 20 seconds) |
-| `npm run e2e` | Builds, then runs the Playwright UI tests |
-| `npm run test:reference` | Opt-in checks against a local real workbook (counts only) |
-| `npm run reference:check` | Regenerates the R reference values and compares them with the committed files (needs R) |
-| `npm run build:mcp` | Builds the MCP server to `out/mcp/server.js` |
-| `npm run dist:mac` / `npm run dist:win` | Unsigned installers in `release/` |
-
-Statistics and multivariate results are checked against R with `tools/stats_reference.R`, `tools/multivariate_reference.R` and `tools/transforms_reference.R`. See [docs/DEVELOPING.md](docs/DEVELOPING.md) for architecture, the security model, the reference-workbook check, packaging and signing.
-
-## Documentation
-
-| Document | Contents |
-| --- | --- |
-| [USER_GUIDE.md](docs/USER_GUIDE.md) | Every screen and workflow |
-| [MCP.md](docs/MCP.md) | Connecting an AI assistant, what it can and cannot see |
-| [LIMITATIONS.md](docs/LIMITATIONS.md) | Scope, privacy, platforms and known gaps |
-| [STATUS.md](docs/STATUS.md) | Release history and how each feature was verified |
-| [DEVELOPING.md](docs/DEVELOPING.md) | Architecture, commands, security model, testing |
-| [ROADMAP.md](docs/ROADMAP.md) | Planned work |
-| [STRATEGY.md](docs/STRATEGY.md) | Review findings (2026-11-17), the order in which to address them, and progress |
-| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | What the app defends against, and what it leaves to the lab |
-| [VALIDATION.md](docs/VALIDATION.md) | The evidence that the app does what it says, and how to re-run it |
-| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
-| [WORKBOOK_SEMANTICS.md](docs/WORKBOOK_SEMANTICS.md) | How to document a study workbook (details stay local) |
-| [SIGNING.md](docs/SIGNING.md) | Code signing and notarisation |
-
-## Data protection
-
-- No network access, telemetry, accounts or API keys. The app blocks every outgoing request, and tests assert that none were attempted.
-- The optional MCP server makes no network requests either, but the AI assistant you connect it to sends its results to the AI provider. Read [docs/MCP.md](docs/MCP.md) and check your IRB approval and data use agreement before connecting a real project.
-- Real study data must never go into source control, logs, issues or installers. `.gitignore` excludes spreadsheets except the synthetic fixtures in `tests/fixtures/`, and study-specific notes stay in the git-ignored `docs/private/`.
-- Project databases are protected only by operating-system file permissions. A record check (unreleased) detects changes made to the audit log and curation history outside the app, but it does not prevent them. Backups can be encrypted with a passphrase (unreleased); project databases are **not encrypted**, and the app makes no regulatory-compliance claims. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+Installers and publishing them to the lab server: [docs/LAB_SERVER.md](docs/LAB_SERVER.md). Everything else: [docs/DEVELOPING.md](docs/DEVELOPING.md).

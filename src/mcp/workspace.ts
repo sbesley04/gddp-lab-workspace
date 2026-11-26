@@ -8,11 +8,18 @@ import { buildSnapshot, listVersions, type DatasetVersionSummary } from '../main
 export interface PrivacyPolicy {
   /** Only aggregate results leave the server: no participant IDs, row numbers or individual values. */
   mode: 'aggregate'
-  /** Groups and selections with fewer participants than this are suppressed. */
+  /** Counts of participants, rows, observations and pairs below this are returned as "<n"; smaller groups are suppressed. */
   minCellSize: number
+  /** Return the minimum and maximum of non-quasi-identifier variables. Off by default: they are individual values. */
+  showExtremes: boolean
+  /**
+   * Withhold text that people typed: the project name, the curator's study context, comments on column headers, and
+   * saved-view names and descriptions. Off by default, because that text is how a workbook explains itself.
+   */
+  withholdFreeText?: boolean
 }
 
-export const DEFAULT_POLICY: PrivacyPolicy = { mode: 'aggregate', minCellSize: 5 }
+export const DEFAULT_POLICY: PrivacyPolicy = { mode: 'aggregate', minCellSize: 5, showExtremes: false, withholdFreeText: false }
 
 /** An error whose message is meant for the model: it says what went wrong and what to do instead. */
 export class ToolError extends Error {}

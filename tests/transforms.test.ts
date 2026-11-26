@@ -1,6 +1,10 @@
-// Hand-computed values; R equivalents noted (log2, scale(), rank(ties.method = "average")).
+// Hand-computed values; R equivalents noted (log2, sqrt, scale(), rank(ties.method = "average")).
+// Box-Cox is checked against R (tools/transforms_reference.R → transforms_reference.json).
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildTransform, transformedVariable, transformR } from '@core/transforms'
+import { boxcox, boxcoxLambda, boxcoxLogLik, buildTransform, transformedVariable, transformParams, transformR } from '@core/transforms'
+import { buildProvenance } from '@core/provenance'
 import { distributionData, scatterData, numericColumn } from '@core/chartData'
 import { classifyValue } from '@core/values'
 import { computeSelection } from '@core/selection'
@@ -31,8 +35,55 @@ describe('buildTransform', () => {
     expect([2, 4, 8, 16].map(r)).toEqual([1, 2.5, 4, 5])
     expect(r(5)).toBeNull()
   })
+  it('square root keeps zero and drops negative values', () => {
+    const f = buildTransform('sqrt', col)
+    expect(f(16)).toBe(4)
+    expect(f(0)).toBe(0)
+    expect(f(-1)).toBeNull()
+  })
   it('writes matching R', () => {
     expect(transformR('rank', 'x')).toBe('rank(x, na.last = "keep", ties.method = "average")')
+    expect(transformR('sqrt', 'x')).toBe('ifelse(x >= 0, sqrt(x), NA)')
+    expect(transformR('boxcox', 'x', 0.25)).toBe('ifelse(x > 0, (x^0.25 - 1) / 0.25, NA)')
+    expect(transformR('boxcox', 'x', 0)).toBe('ifelse(x > 0, log(x), NA)')
+    expect(transformR('boxcox', 'x', null)).toContain('NA_real_')
+  })
+})
+
+const RB = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'transforms_reference.json'), 'utf8')) as Record<string, { y: number[]; lambda: number; loglik: number; lambda_car: number; transformed: number[] }>
+describe('Box-Cox matches R', () => {
+  // Keys starting with "_" are metadata (the R and package versions that produced the file), not samples.
+  for (const [name, ref] of Object.entries(RB).filter(([k]) => !k.startsWith('_'))) {
+    it(`${name}: λ by maximum likelihood, log-likelihood and transformed values`, () => {
+      const lambda = boxcoxLambda(ref.y)!
+      // The likelihood is flat at its maximum, so λ agrees to about 1e-7 while the log-likelihood agrees far closer.
+      expect(Math.abs(lambda - ref.lambda)).toBeLessThan(1e-6)
+      expect(Math.abs(lambda - ref.lambda_car)).toBeLessThan(1e-5) // car::powerTransform (optim)
+      expect(Math.abs(boxcoxLogLik(ref.y, lambda) - ref.loglik)).toBeLessThan(1e-9 * Math.max(1, Math.abs(ref.loglik)))
+      // The formula itself, at R's λ: car::bcPower
+      ref.y.forEach((v, i) => expect(Math.abs(boxcox(v, ref.lambda) - ref.transformed[i])).toBeLessThan(1e-10 * Math.max(1, Math.abs(ref.transformed[i]))))
+    })
+  }
+  it('estimates λ from positive values only and drops non-positive ones', () => {
+    const y = RB.right_skew.y
+    expect(boxcoxLambda([...y, 0, -3])).toBeCloseTo(boxcoxLambda(y)!, 12)
+    const f = buildTransform('boxcox', [...y, 0])
+    expect(f(0)).toBeNull()
+    expect(f(-2)).toBeNull()
+    expect(f(y[0])).not.toBeNull()
+  })
+  it('is undefined with fewer than 3 positive values or no spread', () => {
+    expect(boxcoxLambda([1, 2])).toBeNull()
+    expect(boxcoxLambda([4, 4, 4, 4])).toBeNull()
+    expect(buildTransform('boxcox', [4, 4, 4])(4)).toBeNull()
+  })
+  it('reports an estimate at the search limit', () => {
+    expect(transformParams('boxcox', RB.left_skew.y)!.atLimit).toBe(false)
+    // Values bunched at the top with a long left tail: car::powerTransform estimates λ ≈ 48, beyond the limit of 10.
+    const p = transformParams('boxcox', [90, 99, 99.5, 99.8, 99.9, 100])!
+    expect(p.atLimit).toBe(true)
+    expect(p.lambda).toBeCloseTo(10, 5)
+    expect(transformParams('log2', [1, 2, 3])).toBeNull()
   })
 })
 
@@ -75,6 +126,20 @@ describe('chart data with transforms and colouring', () => {
     const z = distributionData(sel, 0, null, 'linear', { transform: 'zscore' })
     const v = z.groups[0].points.map((p) => p.value)
     expect(v.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 12)
+  })
+  it('states the Box-Cox λ for the chart and the log, from the same selection', () => {
+    const d = distributionData(sel, 0, null, 'linear', { transform: 'boxcox' })
+    const lambda = boxcoxLambda([1, 2, 8])!
+    expect(d.transformDropped).toBe(1) // the zero
+    expect(d.transformNotes[0]).toContain(`λ = ${+lambda.toPrecision(4)}`)
+    expect(d.transformNotes[0]).toContain('3 positive value(s)')
+    expect(scatterData(sel, 1, 0, 'linear', 'linear', { transformX: 'boxcox', transformY: 'sqrt' }).transformNotes).toHaveLength(1)
+    const chart = { type: 'distribution' as const, measureKey: 'y', compareKey: null, groupKey: null, xScale: 'linear' as const, yScale: 'linear' as const, tableColumns: [], transformMeasure: 'boxcox' as const }
+    const log = buildProvenance({ snapshot: snap, spec: sel.ctx.snapshot && { datasetVersionId: 'v', visitIds: 'all', filter: emptyFilter(), qc: { exclude: [] }, participantIds: null }, chart, sel, appVersion: 't' })
+    expect(log.text).toContain(`(df[["y"]]^${+lambda.toPrecision(10)} - 1) / ${+lambda.toPrecision(10)}`)
+    expect(log.text).toContain('from 3 positive usable value(s)')
+    const noSel = buildProvenance({ snapshot: snap, spec: { datasetVersionId: 'v', visitIds: 'all', filter: emptyFilter(), qc: { exclude: [] }, participantIds: null }, chart, appVersion: 't' })
+    expect(noSel.text).toContain('car::powerTransform')
   })
   it('relabels the variable for display only', () => {
     const t = transformedVariable(snap.variables[0], 'log2')

@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { pca, pcaInput, symmetricEigen } from '@core/pca'
+import { biplotScale, biplotVectors, pca, pcaInput, symmetricEigen } from '@core/pca'
 import { classifyValue } from '@core/values'
 import { computeSelection } from '@core/selection'
 import { emptyFilter } from '@core/types'
@@ -23,6 +23,35 @@ describe('pca matches R prcomp', () => {
   it('loadings and scores (signs fixed the same way)', () => {
     r.loadings.forEach((row, i) => row.forEach((v, j) => close(v, R.rotation[i][j], 1e-8)))
     r.scores.forEach((row, i) => row.forEach((v, j) => close(v, R.scores[i][j], 1e-8)))
+  })
+})
+
+describe('biplot vectors match R', () => {
+  const r = pca(R.x)
+  it('each vector is the variable\'s correlation with the components: cor(X, pc$x)', () => {
+    const { vectors, hidden } = biplotVectors(r, 0, 1)
+    expect(hidden).toBe(0)
+    for (const v of vectors) {
+      close(v.x, R.biplot_cor[v.index][0], 1e-8)
+      close(v.y, R.biplot_cor[v.index][1], 1e-8)
+      expect(v.length).toBeLessThanOrEqual(1 + 1e-12)
+    }
+    // other component pairs too
+    for (const v of biplotVectors(r, 2, 1).vectors) close(v.x, R.biplot_cor[v.index][2], 1e-8)
+  })
+  it('sorts longest first, caps the number drawn and counts the rest', () => {
+    const { vectors, hidden } = biplotVectors(r, 0, 1, 2)
+    expect(vectors).toHaveLength(2)
+    expect(hidden).toBe(2)
+    expect(vectors[0].length).toBeGreaterThanOrEqual(vectors[1].length)
+    const all = biplotVectors(r, 0, 1).vectors.map((v) => v.length)
+    expect(vectors[1].length).toBeGreaterThanOrEqual(Math.max(...all.slice(2)))
+  })
+  it('stretches by one factor so the longest coordinate reaches 85% of the smaller score half-range', () => {
+    const { vectors } = biplotVectors(r, 0, 1)
+    const f = biplotScale(r.scores, 0, 1, vectors)
+    const half = Math.min(...[0, 1].map((c) => Math.max(...r.scores.map((s) => Math.abs(s[c])))))
+    close(Math.max(...vectors.map((v) => Math.max(Math.abs(v.x), Math.abs(v.y)))) * f, 0.85 * half, 1e-12)
   })
 })
 

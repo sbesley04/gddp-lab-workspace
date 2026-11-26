@@ -61,7 +61,7 @@ const SHA256_K = new Uint32Array([
   0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 ])
 
-/** SHA-256 of a UTF-8 string, hex. Pure so the renderer and the main process derive identical signatures. */
+/** SHA-256 of a UTF-8 string, hex. Pure so the renderer and the main process derive identical fingerprints. */
 export function sha256Hex(text: string): string {
   const data = new TextEncoder().encode(text)
   const padded = new Uint8Array(((data.length + 9 + 63) >> 6) << 6)

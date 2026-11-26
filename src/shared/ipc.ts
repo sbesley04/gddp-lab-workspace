@@ -69,6 +69,7 @@ export const chartConfig = z.object({
   variableSet: z.array(z.string().max(200)).max(2000).optional(),
   corrMethod: z.enum(['pearson', 'spearman']).optional(),
   distStyle: z.enum(['box', 'histogram']).optional(),
+  pcaVectors: z.boolean().optional(),
   xMin: z.number().finite().nullable().optional(),
   xMax: z.number().finite().nullable().optional(),
   yMin: z.number().finite().nullable().optional(),
@@ -127,8 +128,10 @@ export const schemas = {
   'import:commit': z.object({ token: id, mapping, confirmMapping: z.literal(true), carryOverFrom: id.nullable() }),
   'import:discard': z.object({ token: id }),
   'data:snapshot': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
+  'data:curation': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
   'data:formatGroups': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
   'data:importReport': z.object({ datasetVersionId: id }),
+  'data:compareVersions': z.object({ fromVersionId: id, toVersionId: id }),
   'curation:editMeta': z.object({ datasetVersionId: id, varKey: id, field: z.enum(META_FIELDS), value: z.string().max(5000).nullable(), status: z.enum(['unknown', 'tentative', 'confirmed']), reason }),
   'curation:setQuasi': z.object({ datasetVersionId: id, varKey: id, value: z.boolean(), reason }),
   'curation:setCovariate': z.object({ datasetVersionId: id, varKey: id, value: z.boolean(), reason }),
@@ -138,6 +141,9 @@ export const schemas = {
   'curation:setStudyContext': z.object({ datasetVersionId: id, text: z.string().max(50000) }),
   'curation:getStudyContext': z.object({ datasetVersionId: id, asOf: z.number().int().min(0).nullable() }),
   'curation:history': z.object({ datasetVersionId: id, target: z.string().max(500).optional(), kind: z.string().max(50).optional() }),
+  'dictionary:pick': z.object({ datasetVersionId: id }),
+  'dictionary:apply': z.object({ token: id, datasetVersionId: id }),
+  'dictionary:discard': z.object({ token: id }),
   'views:save': z.object({ name: z.string().min(1).max(200), description: z.string().max(5000).nullable(), spec: savedViewSpec, metadataVersion: z.number().int().min(0) }),
   'views:get': z.object({ id }),
   'views:delete': z.object({ id }),
@@ -147,10 +153,20 @@ export const schemas = {
     format: z.enum(['svg', 'png', 'r']),
     data: z.string().max(40_000_000),
     suggestedName: z.string().max(200),
-    /** Optional sidecar files written next to the chart, and the context recorded in the export record. */
-    sidecars: z.object({ settings: z.string().max(2_000_000), log: z.string().max(2_000_000) }).optional(),
-    context: z.object({ datasetVersionId: z.string().max(100), metadataVersion: z.number().int().min(0), signature: z.string().max(64) }).optional()
+    /** Write the settings and analysis log beside the image. The main process builds both from `context`. */
+    sidecars: z.boolean().optional(),
+    /** Short fingerprint the renderer printed in the image footer; the main process refuses a mismatch. */
+    stamped: z.string().regex(/^[0-9a-f]{8}$/).nullable().optional(),
+    /** What the chart shows. The log, settings and fingerprint are recomputed from it; none is accepted from the renderer. */
+    context: z.object({ spec: selectionSpec, chart: chartConfig, metadataVersion: z.number().int().min(0) }).optional()
   }),
+  /** The main process recomputes the analysis from the spec and chart; no result is accepted from the renderer. */
+  'analysis:record': z.object({ spec: selectionSpec, chart: chartConfig, metadataVersion: z.number().int().min(0) }),
+  'analysis:list': z.object({ datasetVersionId: id.nullable(), limit: z.number().int().min(1).max(500).optional() }),
+  /** A passphrase encrypts the backup. It is used once, in the main process, and never stored or logged. */
+  'backup:create': z.object({ passphrase: z.string().min(8).max(256).nullable() }),
+  /** First call: no token. For an encrypted backup the reply asks for a passphrase and gives a token for the second call. */
+  'backup:restore': z.object({ token: id.optional(), passphrase: z.string().min(1).max(256).optional() }),
   'settings:setAuthor': z.object({ authorLabel: z.string().max(80) }),
   'boards:get': z.object({ id }),
   'boards:save': z.object({ id: id.nullable(), name: z.string().min(1).max(200), layout: boardLayout }),

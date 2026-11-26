@@ -16,6 +16,7 @@ import { describe as describeStats, welchT } from '@core/analysis'
 import { emptyFilter } from '@core/types'
 import { createServer } from '../src/mcp/server'
 import { Workspace } from '../src/mcp/workspace'
+import { cohortCounts, correlate, describeVariable, qcOverview, savedViews, studyOverview, summarize } from '../src/mcp/tools'
 
 let root: string
 let writer: Project
@@ -93,6 +94,9 @@ describe('MCP server', () => {
     expect(json.latest.visits).toEqual([{ name: 'Baseline', order: expect.any(Number), participants: 24 }])
     expect(json.privacy).toEqual({ mode: 'aggregate', minCellSize: 5 })
     expect(json.latest.measures).toBeGreaterThan(15)
+    expect(json.datasetVersions[0].sourceSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(json.datasetVersions[0]).not.toHaveProperty('sourceFile')
+    expect(JSON.stringify(json)).not.toMatch(/\.(xlsx|csv)/i)
   })
 
   it('finds variables by fuzzy search and resolves headers to keys', async () => {
@@ -106,10 +110,10 @@ describe('MCP server', () => {
   it('describes a variable with censored values and text codes', async () => {
     const { json } = await call('describe_variable', { variable: 'TNF' })
     const b = json.byVisit[0]
-    expect(b.censoredValues).toEqual({ '<0.5': 1 })
+    expect(b.censoredValues).toEqual({ '<0.5': '<5' }) // a count of 1 is suppressed like any other small count
     expect(b.summary.n).toBe(b.counts.numeric)
     const cx = (await call('describe_variable', { variable: 'CXCL10' })).json
-    expect(cx.byVisit[0].textCodes).toEqual({ QNS: 1 })
+    expect(cx.byVisit[0].textCodes).toEqual({ QNS: '<5' })
     const score = (await call('describe_variable', { variable: 'Score' })).json
     expect(score.headerComments[0]).toMatch(/undocumented/)
   })
@@ -123,7 +127,7 @@ describe('MCP server', () => {
     const { json } = await call('summarize', { variable: 'IL6', qcExclude: ['sample_warning'] })
     expect(json.groups[0].summary.n).toBe(expected.n)
     expect(json.groups[0].summary.mean).toBeCloseTo(expected.mean!, 3)
-    expect(json.groups[0].notAnalysed.qcExcluded).toBe(1)
+    expect(json.groups[0].notAnalysed.qcExcluded).toBe('<5')
   })
 
   it('compares groups with the validated Welch test', async () => {
@@ -146,22 +150,27 @@ describe('MCP server', () => {
     for (const g of json.groups) if (typeof g.participants === 'string') expect(g.summary).toMatch(/suppressed/)
   })
 
-  it('withholds extremes for quasi-identifiers and picks up curation made in the app', async () => {
-    expect((await call('summarize', { variable: 'Age' })).json.groups[0].summary.min).toMatch(/withheld/)
+  it('withholds extremes by default, always for quasi-identifiers, and picks up curation made in the app', async () => {
+    expect((await call('summarize', { variable: 'Age' })).json.groups[0].summary.min).toMatch(/withheld \(quasi-identifier\)/)
     const before = (await call('summarize', { variable: 'HVLT T-score' })).json
-    expect(typeof before.groups[0].summary.min).toBe('number')
+    expect(before.groups[0].summary.min).toMatch(/withheld \(minimum and maximum are individual values/)
+    expect(before.groups[0].summary.max).toMatch(/withheld/)
+    // Only a server started with --show-extremes returns them, and never for quasi-identifiers.
+    const open = new Workspace(ws.project, { mode: 'aggregate', minCellSize: 5, showExtremes: true })
+    expect(typeof (summarize(open, { variable: 'HVLT T-score' }).groups[0].summary as { min: unknown }).min).toBe('number')
+    expect((summarize(open, { variable: 'Age' }).groups[0].summary as { min: unknown }).min).toMatch(/quasi-identifier/)
     const snap = buildSnapshot(writer, ws.version().id)
     const hvlt = snap.variables.find((v) => v.header === 'HVLT T-score')!
     setQuasiIdentifier(writer, { datasetVersionId: snap.datasetVersionId, varKey: hvlt.key, value: true, author: 'Test RA', reason: null })
     const after = (await call('summarize', { variable: 'HVLT T-score' })).json
-    expect(after.groups[0].summary.min).toMatch(/withheld/)
+    expect(after.groups[0].summary.min).toMatch(/quasi-identifier/)
     expect(after.selection.metadataVersion).toBe(before.selection.metadataVersion + 1)
   })
 
   it('reports correlation, matrix and PCA without individual data', async () => {
     const c = await call('correlate', { x: 'IL6', y: 'TNF' })
     expect(c.json.correlation.method).toMatch(/Spearman/)
-    expect(c.json.pairs.censoredOrText).toBeGreaterThanOrEqual(1)
+    expect(c.json.pairs.censoredOrText).not.toBe(0)
     const m = await call('correlation_matrix', { variables: ['IL6', 'TNF', 'IFNG', 'CCL2'] })
     expect(m.json.r[0][0]).toBe(1)
     const p = await call('principal_components', { variables: ['IL6', 'TNF', 'CXCL10', 'IFNG', 'CCL2', 'IL10'], groupBy: 'Biological_Sex' })
@@ -188,13 +197,13 @@ describe('MCP server', () => {
     const overview = (await call('get_study_overview')).json
     expect(overview.latest.visits.map((v: { name: string }) => v.name)).toEqual(['Baseline', 'Month 6'])
     const ch = await call('change_between_visits', { variable: 'Marker', from: 'Baseline', to: 'Month 6', groupBy: 'Sex' })
-    expect(ch.json.participantsWithOnlyFrom).toBe(1)
+    expect(ch.json.participantsWithOnlyFrom).toBe('<5') // one participant, so the count is suppressed
     const female = ch.json.groups.find((g: { group: string }) => g.group === 'Female')
     expect(female.participants).toBe(6)
     expect(female.change.meanChange).toBeCloseTo(2.1, 1)
     const pooled = await call('summarize', { variable: 'Marker', groupBy: 'Sex' })
     expect(pooled.json.warnings.join(' ')).toMatch(/groupFrom/)
-    expect(pooled.json.warnings.join(' ')).toMatch(/several visits/)
+    expect(pooled.json.warnings.join(' ')).toMatch(/contribute more than one visit/)
     const carried = await call('summarize', { variable: 'Marker', groupBy: 'Sex', groupFrom: 'participant', visits: ['Month 6'] })
     expect(carried.json.groups.map((g: { group: string }) => g.group)).toEqual(['Female', 'Male'])
     const badVisit = await call('summarize', { variable: 'Marker', visits: ['Month 12'] })
@@ -206,6 +215,65 @@ describe('MCP server', () => {
     expect((g.contents[0] as { text: string }).text).toMatch(/Censored/i)
     const d = await client.readResource({ uri: 'bari://data-dictionary' })
     expect((d.contents[0] as { text: string }).text.split('\n')[0]).toMatch(/^key,header/)
+  })
+
+  it('returns no count below the minimum cell size, whatever it counts', async () => {
+    // Exercise the tools that used to return raw small counts (exclusion reasons, not-analysed counts, pair counts).
+    // Dataset version 1 is the demo workbook; a later test imported a second, longitudinal version.
+    for (const r of [await call('cohort_counts', { datasetVersion: 1, where: [{ variable: 'Age', min: 30 }] }), await call('qc_overview', { datasetVersion: 1 }), await call('correlate', { datasetVersion: 1, x: 'IL6', y: 'TNF' })]) expect(r.isError).toBe(false)
+    const COUNT_KEYS = new Set(['participants', 'observations', 'rows', 'missing', 'censored', 'text', 'qcExcluded', 'included', 'numeric', 'flaggedIncluded', 'missingX', 'missingY', 'missingBoth', 'censoredOrText', 'complete', 'flagged', 'droppedRows', 'completeRows', 'increased', 'decreased', 'unchanged', 'participantsWithOnlyFrom', 'participantsWithOnlyTo', 'influentialPoints', 'cellComments', 'flagsNeedingCuratorReview', 'count'])
+    const COUNT_RECORDS = new Set(['excludedRowsByReason', 'censoredValues', 'textCodes', 'qcFlagsInSelection', 'flagStatus', 'qcFlaggedObservations', 'visitsPerParticipant', 'notAnalysed', 'counts', 'pairs'])
+    const bad: string[] = []
+    const ok = (v: unknown) => typeof v !== 'number' || v === 0 || v >= 5
+    const walk = (node: unknown, path: string, tool: string) => {
+      if (Array.isArray(node)) return node.forEach((x, i) => walk(x, `${path}[${i}]`, tool))
+      if (!node || typeof node !== 'object') return
+      for (const [k, v] of Object.entries(node)) {
+        if (k === 'measuresByKind') continue // counts of columns, not of people or observations
+        if (COUNT_KEYS.has(k) && !ok(v)) bad.push(`${path}.${k} = ${v}`)
+        if (COUNT_RECORDS.has(k) && v && typeof v === 'object') for (const [kk, vv] of Object.entries(v)) if (!ok(vv)) bad.push(`${path}.${k}.${kk} = ${vv}`)
+        // The pair-count matrix of correlation_matrix.
+        if (k === 'n' && Array.isArray(v)) for (const row of v as unknown[][]) for (const x of row) if (!ok(x)) bad.push(`${path}.n has ${x}`)
+        walk(v, `${path}.${k}`, tool)
+      }
+    }
+    for (const text of outputs) {
+      try {
+        walk(JSON.parse(text), '', '')
+      } catch {
+        /* an error message, not JSON */
+      }
+    }
+    expect(bad).toEqual([])
+    // Warnings carry counts too.
+    const tnf = summarize(ws, { datasetVersion: 1, variable: 'TNF' })
+    expect(tnf.warnings.join(' ')).toMatch(/<5 censored value\(s\)/)
+    // The same functions with a cell size of 1 return the plain numbers, so the check above is not vacuous.
+    const open = new Workspace(ws.project, { mode: 'aggregate', minCellSize: 1, showExtremes: false })
+    expect(summarize(open, { datasetVersion: 1, variable: 'TNF' }).warnings.join(' ')).toMatch(/1 censored value\(s\)/)
+    expect(Object.values(cohortCounts(open, { datasetVersion: 1, where: [{ variable: 'Age', min: 30 }] }).excludedRowsByReason).every((n) => typeof n === 'number')).toBe(true)
+    expect(typeof correlate(open, { datasetVersion: 1, x: 'IL6', y: 'TNF' }).pairs.censoredOrText).toBe('number')
+    expect(qcOverview(open, { datasetVersion: 1 }).variablesMostAffected.length).toBeGreaterThan(0)
+  })
+
+  it('withholds text that people typed when asked to', () => {
+    const open = savedViews(ws)
+    expect(open.views[0].name).toBe('IL6 clean')
+    expect(typeof studyOverview(ws).project).toBe('string')
+    expect(studyOverview(ws).project).toBe('MCP Test')
+    const closed = new Workspace(ws.project, { mode: 'aggregate', minCellSize: 5, showExtremes: false, withholdFreeText: true })
+    const overview = studyOverview(closed)
+    expect(overview.project).toMatch(/withheld/)
+    const views = savedViews(closed).views
+    expect(views[0].name).toMatch(/withheld/)
+    expect(views[0].id).toBeTruthy() // still usable as `savedView`
+    expect(summarize(closed, { variable: 'IL6', savedView: views[0].id }).groups[0].summary).toBeTruthy()
+    const score = describeVariable(closed, { datasetVersion: 1, variable: 'Score' })
+    expect(score.headerComments).toEqual({ withheld: '<5' })
+    const all = JSON.stringify([overview, views, score])
+    expect(all).not.toContain('MCP Test')
+    expect(all).not.toContain('IL6 clean')
+    expect(all).not.toMatch(/undocumented/) // the header comment text on Score
   })
 
   it('never returns participant identifiers, and logs calls without results', () => {

@@ -99,17 +99,35 @@ export function segmentsOf(project: Project, datasetVersionId: string, asOf: num
   return segs
 }
 
-export function buildSnapshot(project: Project, datasetVersionId: string, asOfInput?: number): DatasetSnapshot {
-  const db = project.db
-  const dv = db.get<any>(
-    `SELECT dv.*, sf.original_name, sf.sha256, sf.kind FROM dataset_version dv JOIN source_file sf ON sf.id = dv.source_file_id WHERE dv.id = ?`,
-    datasetVersionId
-  )
-  if (!dv) throw new Error('Dataset version not found.')
-  const asOf = asOfInput ?? project.metadataVersion()
-  const revs = revisionsAsOf(project, datasetVersionId, asOf)
-  const segments = segmentsOf(project, datasetVersionId, asOf)
+/**
+ * The part of a dataset version that can never change: visits, rows, cell values, the formatting found on import and
+ * the workbook's comments. Imports are immutable (triggers refuse updates and deletes), so this is read from the
+ * database once per version and reused. Only curation (metadata, formatting decisions, exclusions) is re-read when a
+ * snapshot is rebuilt, which is what happens after every curation edit.
+ */
+interface VersionBase {
+  visits: DatasetSnapshot['visits']
+  rows: DatasetSnapshot['rows']
+  values: CellValue[][]
+  interpretations: { row_index: number; var_index: number; kind: string; status: string; format_key: string; detail: string }[]
+  annotations: Annotation[]
+}
 
+// The two most recently used versions per project: enough for the one on screen and one being compared with it.
+const baseCache = new WeakMap<Project, Map<string, VersionBase>>()
+const BASES_KEPT = 2
+
+function versionBase(project: Project, datasetVersionId: string, variableCount: number): VersionBase {
+  let perProject = baseCache.get(project)
+  if (!perProject) baseCache.set(project, (perProject = new Map()))
+  const hit = perProject.get(datasetVersionId)
+  if (hit) {
+    // Move to the end: the map keeps insertion order, so the first key is the least recently used.
+    perProject.delete(datasetVersionId)
+    perProject.set(datasetVersionId, hit)
+    return hit
+  }
+  const db = project.db
   const visits = db
     .all<any>('SELECT id, event_name, sort_order FROM visit WHERE dataset_version_id = ? ORDER BY sort_order', datasetVersionId)
     .map((v) => ({ id: v.id, name: v.event_name, order: v.sort_order, actualDate: null as null }))
@@ -120,6 +138,58 @@ export function buildSnapshot(project: Project, datasetVersionId: string, asOfIn
       datasetVersionId
     )
     .map((r) => ({ index: r.row_index, rowNumber: r.row_number, participantId: r.source_identifier, visitId: r.visit_id }))
+  const values: CellValue[][] = Array.from({ length: variableCount }, () => new Array(rows.length).fill({ k: 'missing' }))
+  for (const c of db.all<any>('SELECT var_index, row_index, value_kind, raw_text, numeric_value, censor_op FROM cell WHERE dataset_version_id = ?', datasetVersionId)) {
+    let v: CellValue
+    switch (c.value_kind) {
+      case 'number':
+        v = { k: 'number', v: c.numeric_value, raw: c.raw_text }
+        break
+      case 'censored':
+        v = { k: 'censored', op: c.censor_op, bound: c.numeric_value, raw: c.raw_text }
+        break
+      case 'text':
+        v = { k: 'text', raw: c.raw_text }
+        break
+      default:
+        v = { k: 'missing' }
+    }
+    values[c.var_index][c.row_index] = v
+  }
+  const interpretations = db.all<any>('SELECT row_index, var_index, kind, status, format_key, detail FROM format_interpretation WHERE dataset_version_id = ?', datasetVersionId)
+  const annotations: Annotation[] = db
+    .all<any>('SELECT * FROM annotation WHERE dataset_version_id = ? ORDER BY id', datasetVersionId)
+    .map((a) => ({ id: String(a.id), address: a.address, row: a.row_index, variable: a.var_index, text: a.text, author: a.author, threaded: !!a.threaded }))
+  // Shared by every snapshot of this version, so nothing may write to it. Frozen so that an attempt fails loudly.
+  for (const column of values) Object.freeze(column)
+  const base: VersionBase = { visits: Object.freeze(visits) as typeof visits, rows: Object.freeze(rows.map((r) => Object.freeze(r))) as typeof rows, values: Object.freeze(values) as CellValue[][], interpretations, annotations: Object.freeze(annotations) as Annotation[] }
+  perProject.set(datasetVersionId, base)
+  while (perProject.size > BASES_KEPT) perProject.delete(perProject.keys().next().value!)
+  return base
+}
+
+/** The parts of a snapshot that curation can change. Everything else is fixed for a dataset version. */
+export type SnapshotCuration = Pick<DatasetSnapshot, 'datasetVersionId' | 'metadataVersion' | 'variables' | 'flags'>
+
+/**
+ * What a window that already holds a version's snapshot needs after a curation edit: the curated parts only.
+ * The imported rows and values are not sent again.
+ */
+export function buildSnapshotCuration(project: Project, datasetVersionId: string, asOfInput?: number): SnapshotCuration {
+  const s = buildSnapshot(project, datasetVersionId, asOfInput)
+  return { datasetVersionId: s.datasetVersionId, metadataVersion: s.metadataVersion, variables: s.variables, flags: s.flags }
+}
+
+export function buildSnapshot(project: Project, datasetVersionId: string, asOfInput?: number): DatasetSnapshot {
+  const db = project.db
+  const dv = db.get<any>(
+    `SELECT dv.*, sf.original_name, sf.sha256, sf.kind FROM dataset_version dv JOIN source_file sf ON sf.id = dv.source_file_id WHERE dv.id = ?`,
+    datasetVersionId
+  )
+  if (!dv) throw new Error('Dataset version not found.')
+  const asOf = asOfInput ?? project.metadataVersion()
+  const revs = revisionsAsOf(project, datasetVersionId, asOf)
+  const segments = segmentsOf(project, datasetVersionId, asOf)
 
   // Metadata: importer seeds < segment names (for area) < curator edits.
   const seed = new Map<string, RevisionRow>()
@@ -172,24 +242,7 @@ export function buildSnapshot(project: Project, datasetVersionId: string, asOfIn
       }
     })
 
-  const values: CellValue[][] = variables.map(() => new Array(rows.length).fill({ k: 'missing' }))
-  for (const c of db.all<any>('SELECT var_index, row_index, value_kind, raw_text, numeric_value, censor_op FROM cell WHERE dataset_version_id = ?', datasetVersionId)) {
-    let v: CellValue
-    switch (c.value_kind) {
-      case 'number':
-        v = { k: 'number', v: c.numeric_value, raw: c.raw_text }
-        break
-      case 'censored':
-        v = { k: 'censored', op: c.censor_op, bound: c.numeric_value, raw: c.raw_text }
-        break
-      case 'text':
-        v = { k: 'text', raw: c.raw_text }
-        break
-      default:
-        v = { k: 'missing' }
-    }
-    values[c.var_index][c.row_index] = v
-  }
+  const { visits, rows, values, interpretations, annotations } = versionBase(project, datasetVersionId, variables.length)
 
   // Formatting decisions apply to every interpretation sharing a format key.
   const decisions = new Map<string, { decision: string; asKind?: InterpretationKind; rev: RevisionRow }>()
@@ -199,7 +252,7 @@ export function buildSnapshot(project: Project, datasetVersionId: string, asOfIn
     if (r.kind === 'cell_exclusion') exclusions.set(r.target, { ...JSON.parse(r.value_json ?? '{}'), rev: r })
   }
   const flags: CellFlag[] = []
-  for (const f of db.all<any>('SELECT * FROM format_interpretation WHERE dataset_version_id = ?', datasetVersionId)) {
+  for (const f of interpretations) {
     let kind = f.kind as InterpretationKind
     let status = f.status as InterpretationStatus
     let detail = f.detail as string
@@ -231,10 +284,6 @@ export function buildSnapshot(project: Project, datasetVersionId: string, asOfIn
       detail: `Excluded by curator${ex.rev.author_label ? ` (${ex.rev.author_label})` : ''} on ${ex.rev.created_at.slice(0, 10)}: ${ex.rev.reason ?? 'no reason given'}`
     })
   }
-
-  const annotations: Annotation[] = db
-    .all<any>('SELECT * FROM annotation WHERE dataset_version_id = ? ORDER BY id', datasetVersionId)
-    .map((a) => ({ id: String(a.id), address: a.address, row: a.row_index, variable: a.var_index, text: a.text, author: a.author, threaded: !!a.threaded }))
 
   return {
     datasetVersionId,

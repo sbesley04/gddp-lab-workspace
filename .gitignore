@@ -19,3 +19,7 @@ playwright-report/
 # Study-specific notes and expected counts stay on the researcher's machine.
 docs/private/
 tests/reference/expected.local.json
+
+# Local assistant configuration and session outputs (may name folders outside the repository).
+.codex/
+Claude outputs/

@@ -1,5 +1,6 @@
 // Thin wrapper over node:sqlite (built into Electron's Node runtime: no native modules to rebuild).
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
+import { copyFileSync, existsSync } from 'node:fs'
 import { MIGRATIONS } from './migrations'
 
 export type Row = Record<string, any>
@@ -9,7 +10,7 @@ export class Db {
   private cache = new Map<string, StatementSync>()
   private depth = 0
 
-  constructor(path: string, opts: { readOnly?: boolean } = {}) {
+  constructor(private readonly path: string, opts: { readOnly?: boolean } = {}) {
     this.raw = new DatabaseSync(path, { readOnly: opts.readOnly ?? false })
     // Rollback journal (not WAL): a single file plus a transient journal is safer to copy and back up,
     // and avoids WAL's shared-memory requirements on network filesystems.
@@ -67,6 +68,12 @@ export class Db {
     const current = (this.get<{ v: number | null }>('SELECT MAX(version) AS v FROM schema_migrations')?.v ?? 0) as number
     if (current > MIGRATIONS.length)
       throw new Error(`This project was created by a newer version of the app (schema ${current}; this app supports ${MIGRATIONS.length}). Update the app to open it.`)
+    // Before changing the schema of an existing project, keep a copy of the database as it was. Nothing else has it
+    // open for writing (the project lock), and the rollback journal means the single file is the whole database.
+    if (current > 0 && current < MIGRATIONS.length && this.path !== ':memory:') {
+      const copy = `${this.path}.before-schema-${MIGRATIONS.length}.bak`
+      if (!existsSync(copy)) copyFileSync(this.path, copy)
+    }
     for (let v = current + 1; v <= MIGRATIONS.length; v++) {
       this.transaction(() => {
         this.raw.exec(MIGRATIONS[v - 1])

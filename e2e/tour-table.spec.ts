@@ -78,8 +78,13 @@ test('PCA is computed only on request, and shows loadings and variance explained
   await page.screenshot({ path: join(import.meta.dirname, '..', 'test-results', 'screens', 'pca.png') })
   if (await page.getByTestId('pca-result').count()) {
     await expect(page.getByTestId('pca-loadings')).toContainText('Variance')
+    // Biplot: loading vectors are drawn on request, explained in a notice and recorded in the log
+    await page.getByTestId('pca-vectors').check()
+    await expect(page.getByText(/^Arrows: each variable's correlation with PC1 and PC2/)).toBeVisible()
+    await page.screenshot({ path: join(import.meta.dirname, '..', 'test-results', 'screens', 'pca-biplot.png') })
     await page.getByTestId('history').click()
     await expect(page.getByText('prcomp(pca_data')).toBeVisible()
+    await expect(page.getByText(/# biplot: arrows are each variable's correlation/)).toBeVisible()
   }
   await app.close()
 })
@@ -123,6 +128,30 @@ test('correlation matrix, heatmap and histogram share settings and record themse
   await page.screenshot({ path: join(shots, 'heatmap.png') })
 
   await page.getByTestId('type-pca').click()
+  await expect(page.getByTestId('compute-pca')).toBeEnabled()
+  await app.close()
+})
+
+test('popovers stay reachable at the minimum window size', async () => {
+  // CI's first run of these tests failed here: on a small screen the Add variable popover opened upwards and its
+  // first buttons ended up above the top of the window, where they cannot be scrolled to.
+  const { app, page } = await launch(mkdtempSync(join(tmpdir(), 'bari-small-')))
+  await app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows()[0]
+    w.setSize(1024, 680)
+  })
+  await page.getByText('Open synthetic demo').click()
+  await page.getByText('Outstanding metadata tasks').waitFor({ timeout: 20000 })
+  await page.getByRole('button', { name: 'Explore data' }).first().click()
+  await page.getByTestId('type-many').click()
+  await page.getByTestId('type-pca').click()
+  await page.getByTestId('pca-add').click()
+  const area = page.getByTestId('pca-add-area-AQ NULISA')
+  const box = (await area.boundingBox())!
+  const size = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.y + box.height).toBeLessThanOrEqual(size.h)
+  await area.click({ timeout: 5000 })
   await expect(page.getByTestId('compute-pca')).toBeEnabled()
   await app.close()
 })

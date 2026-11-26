@@ -269,6 +269,8 @@ export interface ChartConfig {
   variableSet?: string[]
   /** Correlation matrix coefficient. */
   corrMethod?: 'pearson' | 'spearman'
+  /** PCA view: draw loading vectors over the scores (a correlation biplot). */
+  pcaVectors?: boolean
   /** Distribution view drawn as box plot with points, or as a histogram. */
   distStyle?: 'box' | 'histogram'
   /** Forced axis bounds; null = automatic. Values outside are counted, never silently dropped. */

@@ -2,6 +2,8 @@
 
 Architectural boundaries already exist for each item below. Item 6 is partly implemented; the others are not started.
 
+This list is not in priority order. [STRATEGY.md](STRATEGY.md) sets the order and lists the work that should come first.
+
 1. **Longitudinal data.**
    - The data model already separates scheduled visit names (`visit.event_name`) from actual dates (`visit.actual_date`, never inferred).
    - Next steps: visit windows, explicit missing-visit rules, change-from-baseline views and treatment timelines. The `observation_context.treatment_exposure` column is reserved for exposure data.
@@ -10,7 +12,7 @@ Architectural boundaries already exist for each item below. Item 6 is partly imp
    - Each would be validated against statistician-provided reference cases before release.
    - They would be a separate module next to `src/core/stats.ts`, fed by the same `computeSelection` output.
    - Covariate adjustment, paired tests and PERMANOVA belong here. Covariate tags and PCA already exist, as exploratory tools only.
-3. **REDCap.** API import and metadata (data dictionary) import, source reconciliation, and dataset-version comparison.
+3. **REDCap.** Done for files (unreleased): record exports import as CSV, a data dictionary import fills in tentative metadata, and two dataset versions can be compared. Still to do: repeating instruments, source reconciliation, and API import, which would be an explicit opt-in because the app is otherwise offline.
 4. **Optional AI assistance with the user's own key.** Implement `AnalysisAssistantProvider` (`src/core/assistant.ts`) with:
    - explicit provider and key setup;
    - keys stored in the OS keychain;

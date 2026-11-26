@@ -32,7 +32,7 @@ For your own study: **Create project**, pick a folder **on your computer's own d
 1. **Keep active projects on your own computer's disk.** Not on the NAS, a network drive, iCloud, Dropbox, OneDrive or Google Drive: these can corrupt a project that is open. To share work or keep a copy on the NAS, use **Backup** or **Export** in the app.
 2. **Real study data never goes into this repository**, issues, logs or screenshots. Only the invented test files in `tests/fixtures/` belong here.
 
-Projects are protected only by your computer's own login and disk encryption; they are not encrypted by the app. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) for what the app does not do.
+Projects are protected only by your computer's own login and disk encryption; they are not encrypted by the app. Backups can be encrypted with a passphrase (unreleased), and a record check detects changes made to the audit log and curation history outside the app (unreleased), but does not prevent them. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) for what the app does not do.
 
 ## Documentation
 
@@ -53,13 +53,49 @@ Projects are protected only by your computer's own login and disk encryption; th
 | [DEVELOPING.md](docs/DEVELOPING.md) | Building from source, architecture, security model, tests |
 | [STATUS.md](docs/STATUS.md) | Release history and how each feature was verified |
 | [ROADMAP.md](docs/ROADMAP.md) | Planned work |
+| [STRATEGY.md](docs/STRATEGY.md) | Review findings (2026-11-17), the order in which to address them, and progress |
+| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | What the app defends against, and what it leaves to the lab |
+| [VALIDATION.md](docs/VALIDATION.md) | The evidence that the app does what it says, and how to re-run it |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 | [WORKBOOK_SEMANTICS.md](docs/WORKBOOK_SEMANTICS.md) | How to document a study workbook (details stay local) |
 | [SIGNING.md](docs/SIGNING.md) | Code signing, if the lab gets certificates |
 
 ## Versions
 
-- **0.3.1** (2026-10-26) is the current installer.
-- The source code already contains more, not yet in an installer: the analysis log, chart downloads, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap, PCA, the MCP server, and a single Mac installer for all Macs. [docs/STATUS.md](docs/STATUS.md) lists each feature and how it was tested.
+- **Installers: 0.3.1** (2026-10-26). 0.3.0 plus a Windows fix for deleting folders that contain read-only source snapshots.
+- **Source (`main`), unreleased:** analysis log with fingerprints, chart downloads with sidecars, covariates and colour-by, display transforms, histograms, correlation matrix, heatmap and PCA, the read-only MCP server, statistical guardrails (independence guard, censoring visibility, analysis register, neutral p-values), the record hash chain with its verify command, stricter MCP suppression, encrypted backups, a comparison of dataset versions, REDCap data dictionary import, and a single Mac installer for all Macs. None of this is in the 0.3.1 installers. [docs/STRATEGY.md](docs/STRATEGY.md) records what is done and what is next.
+
+## What works
+
+| Area | Status |
+| --- | --- |
+| Projects in local folders (SQLite, single-writer lock, sync-folder warning) | Working |
+| XLSX/CSV import: preview, guided ID/visit mapping, validation, one-transaction commit, read-only checksummed snapshot, immutable versions, mapping reuse | Working |
+| Numbered visits sorted numerically on import (Month 2 before Month 6) | Working (unreleased) |
+| Source/QC preservation: theme colours and tints, rich-text headers turned into aliases, threaded comments, legend decoding with exact / needs-review / unresolved statuses, curator decisions | Working |
+| Measurement catalog with append-only metadata revisions, quasi-identifier flags and covariate tags | Working |
+| REDCap files: a record export imports with its own identifier and event columns; a data dictionary fills in labels, definitions, forms and identifier flags as tentative metadata | Working (unreleased), synthetic files only |
+| Comparison of two imports of the workbook: rows, participants, measures, changed values and QC flags (nothing is merged) | Working (unreleased) |
+| AND/OR cohort filters with explicit missing handling; QC inclusion policy with impact counts | Working |
+| Distribution (box + all points; histogram unreleased) and two-measure scatter; linked table; forced axis bounds; chart style editor with presets | Working |
+| Colour-by a categorical variable; display transforms (log2, log10, square root, Box-Cox, centre, z-score, rank) that never change stored data or exports | Working (unreleased) |
+| On-demand statistics: CIs, normality, Welch t / Mann–Whitney / ANOVA / Kruskal–Wallis with effect sizes and Holm-adjusted pairwise tests, Pearson / Spearman / Kendall, linear fit with confidence and prediction bands; copyable tables, APA summaries and methods text | Working, validated against R 4.3 |
+| Statistical guardrails: no test, interval or fit when a participant contributes more than one visit (with a one-click fix); percent censored beside every summary; p-values shown without emphasis | Working (unreleased) |
+| Analysis register: every distinct analysis computed, with its p-values, recorded append-only by the main process; shown in History and exported | Working (unreleased) |
+| Record check: the audit log, curation history and analysis register are hash-chained; **Verify** (or `--verify-project`) reports any row changed, removed or added outside the app | Working (unreleased) |
+| Many measures: correlation matrix (no p-values), participant × measure heatmap, and exploratory PCA with a gap suggestion for wide panels and an optional biplot (loading vectors) | Working (unreleased), validated against R |
+| Analysis log in R syntax with per-step and chain fingerprints (History panel, `analysis_log.R` in exports) | Working (unreleased) |
+| Chart download: SVG/PNG, journal and slide size presets, fingerprint footer, `.chart.json` and `.analysis-log.R` sidecars written by the main process | Working (unreleased) |
+| Saved views pinned to dataset and metadata versions and reproduced after restart; Compare whiteboard of views and notes, exportable as SVG/PNG | Working |
+| First-run tour, ⌘K search and ⌘1–⌘6 shortcuts; wide tables virtualised in both directions; table values reachable with the arrow keys (unreleased) | Working |
+| Research-context ZIP (pseudonymous keys, checksums, preview); `analysis_log.R` and `analysis_register.json` are the seventh and eighth files in unreleased builds | Working |
+| Backup and verified restore; optional passphrase encryption (unreleased) | Working |
+| MCP server for AI assistants (read-only, aggregate results, every small count suppressed, extremes withheld, access log) | Working (unreleased), tested on synthetic data only |
+| macOS installer: one universal DMG for Apple Silicon and Intel, unsigned (0.3.1 shipped separate arm64 and x64 files) | CI mounts the DMG, copies the app out, checks it is universal, its signature and fuses, and runs `--self-test` natively and under Rosetta (unreleased) |
+| Windows installer (NSIS x64, unsigned) | CI runs the setup silently, self-tests the installed app and uninstalls it; the install wizard has not been run by hand |
+| Lab-server download folder (`npm run release:lab`): verified copies, checksums, offline download page | `tests/labRelease.test.ts`; built from the real installers in CI (unreleased) |
+
+Rows marked *unreleased* are in the source but not in the 0.3.1 installers. [docs/STATUS.md](docs/STATUS.md) lists how each feature was verified.
 
 ## Building from source (maintainers)
 

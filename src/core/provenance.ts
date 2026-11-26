@@ -1,6 +1,8 @@
-// Analysis log: the steps behind a chart, written in R syntax, each with a short signature.
+// Analysis log: the steps behind a chart, written in R syntax, each with a fingerprint.
 // This is a readable record of what the app did, not a script that is guaranteed to run. Pure and deterministic:
-// the same dataset version, metadata version, selection and chart always give the same text and signatures.
+// the same dataset version, metadata version, selection and chart always give the same text and fingerprints.
+// A fingerprint is an unkeyed SHA-256: it identifies the inputs of a chart. It is not a signature and does not prove
+// who made the chart. The full 64 hex characters are recorded; the first 8 are shown where space is short.
 // Participant identifiers and the source file name are never written (the file is identified by its SHA-256, as in the
 // export manifest); participant restrictions and exclusions are reported as counts only.
 
@@ -8,22 +10,27 @@ import type { ChartConfig, DatasetSnapshot, FilterCondition, FilterNode, QcCateg
 import { QC_CATEGORY_LABELS } from './types'
 import { getObservation, type SelectionResult } from './selection'
 import { sha256Hex } from './hash'
-import { distributionData, histogramBins } from './chartData'
-import { TRANSFORM_LABELS, transformR, type TransformId } from './transforms'
+import { distributionData, histogramBins, numericColumn } from './chartData'
+import { BIPLOT_MAX_VECTORS } from './pca'
+import { TRANSFORM_LABELS, transformParams, transformR, type TransformId } from './transforms'
 
 export interface ProvenanceStep {
   n: number
   kind: 'source' | 'visits' | 'participants' | 'filter' | 'qc' | 'transform' | 'chart' | 'statistics'
   title: string
   code: string[]
-  /** First 8 hex characters of SHA-256 over the previous signature and this step's text. */
-  signature: string
+  /** SHA-256 (64 hex characters) over the previous step's fingerprint and this step's text. */
+  fingerprint: string
 }
+
+/** Characters of a fingerprint shown on charts and in the History panel. */
+export const SHORT_FINGERPRINT = 8
+export const shortFingerprint = (fingerprint: string) => fingerprint.slice(0, SHORT_FINGERPRINT)
 
 export interface Provenance {
   steps: ProvenanceStep[]
-  /** Signature of the whole chain (the last step's signature). */
-  signature: string
+  /** Fingerprint of the whole chain (the last step's fingerprint), 64 hex characters. */
+  fingerprint: string
   /** The log as R-syntax text, ready to copy or save as .R */
   text: string
 }
@@ -89,7 +96,7 @@ function filterExpr(byKey: Map<string, VariableInfo>, node: FilterNode): string 
 export function buildProvenance(input: ProvenanceInput): Provenance {
   const { snapshot, spec, chart } = input
   const byKey = new Map(snapshot.variables.map((v) => [v.key, v]))
-  const raw: Omit<ProvenanceStep, 'n' | 'signature'>[] = []
+  const raw: Omit<ProvenanceStep, 'n' | 'fingerprint'>[] = []
 
   raw.push({
     kind: 'source',
@@ -143,7 +150,15 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
     const tfLines: string[] = []
     const addTransform = (key: string | null, id: TransformId | undefined) => {
       if (!key || !id || id === 'none') return
-      const x = col(byKey.get(key), key)
+      const v = byKey.get(key)
+      const x = col(v, key)
+      if (id === 'boxcox') {
+        // λ is estimated from the selection, so it is written out: the same selection always gives the same λ.
+        const prm = sel && v ? transformParams(id, numericColumn(sel, v.index)) : null
+        if (prm) tfLines.push(`${x} <- ${transformR(id, x, prm.lambda)}  # Box-Cox, λ by maximum likelihood (y ~ 1) from ${prm.n} positive usable value(s)`)
+        else tfLines.push(`lambda <- car::powerTransform(${x}[${x} > 0] ~ 1)$lambda  # maximum likelihood, from the positive usable values`, `${x} <- ${transformR(id, x)}  # ${TRANSFORM_LABELS[id]}`)
+        return
+      }
       tfLines.push(`${x} <- ${transformR(id, x)}  # ${TRANSFORM_LABELS[id]}`)
     }
     if (chart.type === 'distribution' || chart.type === 'scatter') addTransform(chart.measureKey, chart.transformMeasure)
@@ -152,7 +167,7 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       raw.push({
         kind: 'transform',
         title: 'Display transforms (computed on the usable values of this selection; never imputed)',
-        code: [...tfLines, '# values a transform cannot define (log of a non-positive value, zero spread) become NA and are left out of the chart']
+        code: [...tfLines, '# values a transform cannot define (log or Box-Cox of a non-positive value, square root of a negative value, zero spread) become NA and are left out of the chart']
       })
     }
     const name = (key: string | null) => (key ? byKey.get(key)?.meta.displayLabel.value ?? byKey.get(key)?.header ?? key : null)
@@ -183,6 +198,7 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       lines.push('# runs only when Compute is pressed; rows with any non-numeric, missing or QC-excluded value in these variables are left out (complete cases)')
       lines.push(`pca_data <- na.omit(df[, c(${cols.join(', ')})])`)
       lines.push('pc <- prcomp(pca_data, center = TRUE, scale. = TRUE)  # components fixed so the largest-magnitude loading is positive')
+      if (chart.pcaVectors) lines.push(`# biplot: arrows are each variable's correlation with the shown components, cor(pca_data, pc$x) = rotation × sdev; the ${BIPLOT_MAX_VECTORS} longest are drawn, stretched by one factor to fit the scores`)
     }
     if (chart.colorKey && colourApplies(chart)) lines.push(`# points coloured by ${byKey.get(chart.colorKey)?.meta.displayLabel.value ?? byKey.get(chart.colorKey)?.header ?? chart.colorKey} (categories as recorded; missing shown as its own category)`)
     // Axis settings only for the axes the chart type actually uses (a distribution's x axis is its groups; PCA has none).
@@ -205,22 +221,29 @@ export function buildProvenance(input: ProvenanceInput): Provenance {
       raw.push({
         kind: 'statistics',
         title: 'Statistics panel opened (results are computed only when Compute is pressed)',
-        code: ['# exploratory; not adjusted for the number of analyses run', ...(on.length ? [`# overlays: ${on.join(', ')}`] : [])]
+        code: [
+          '# exploratory; not adjusted for the number of analyses run',
+          '# each distinct analysis computed is recorded in the project analysis register, with its tests and p-values',
+          '# no test, interval or fit is computed when a participant contributes more than one observation (visit)',
+          ...(on.length ? [`# overlays: ${on.join(', ')}`] : [])
+        ]
       })
     }
   }
 
   let prev = ''
   const steps: ProvenanceStep[] = raw.map((s, i) => {
-    prev = sha256Hex(`${prev}\n${s.kind}\n${s.title}\n${s.code.join('\n')}`).slice(0, 8)
-    return { n: i + 1, ...s, signature: prev }
+    prev = sha256Hex(`${prev}\n${s.kind}\n${s.title}\n${s.code.join('\n')}`)
+    return { n: i + 1, ...s, fingerprint: prev }
   })
   const text = [
     '# BARI-CNS Research Workspace analysis log (readable record in R syntax; not guaranteed to run as a script)',
-    ...steps.flatMap((s) => [``, `# step ${s.n} [${s.signature}] ${s.title}`, ...s.code]),
+    '# each step carries the first 8 characters of its fingerprint: a SHA-256 over the step and everything before it',
+    ...steps.flatMap((s) => [``, `# step ${s.n} [${shortFingerprint(s.fingerprint)}] ${s.title}`, ...s.code]),
     '',
-    `# chain signature: ${steps[steps.length - 1].signature}`,
+    `# chain fingerprint: ${steps[steps.length - 1].fingerprint}`,
+    '# (identifies the inputs of this analysis; it is not a signature and does not prove who ran it)',
     ''
   ].join('\n')
-  return { steps, signature: steps[steps.length - 1].signature, text }
+  return { steps, fingerprint: steps[steps.length - 1].fingerprint, text }
 }

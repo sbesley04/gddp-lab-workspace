@@ -2,17 +2,25 @@
 #   macOS:   mounts the DMG, copies the app out as a researcher would, checks the security fuses and
 #            runs --self-test natively (Apple Silicon) and under Rosetta (Intel).
 #   Windows: runs the setup .exe silently, runs --self-test on the installed app, then uninstalls it.
+# The R reference values are checked by r-reference.yml.
 # The last job assembles the lab-server download folder (tools/lab-release.mjs). Download the
 # "lab-server-folder" artifact from the run and copy its contents to the NAS; see docs/LAB_SERVER.md.
 # Artifacts are uploaded only for main, tags and manual runs (Actions → build → Run workflow).
 name: build
 on:
   # Documentation-only changes do not need a full build (macOS minutes bill at 10x on private repos).
+  # Branches are built through their pull request; building the push as well ran every job twice.
   push:
-    paths-ignore: ['**.md', 'docs/**']
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['**.md', 'docs/**', '.github/workflows/r-reference.yml']
   pull_request:
-    paths-ignore: ['**.md', 'docs/**']
+    paths-ignore: ['**.md', 'docs/**', '.github/workflows/r-reference.yml']
   workflow_dispatch:
+# A newer push to the same branch or pull request replaces a run that is still going.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     strategy:
@@ -32,6 +40,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx electron-vite build
+      # The UI tests drive the development build (a packaged build cannot be driven: its inspect fuse is off).
+      # macOS only: it is the platform they are developed on, and the packaged self-test below covers Windows.
+      - name: End-to-end UI tests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: npx playwright test
+      - name: Keep UI test output when it fails
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: test-results/
 
       # ---------- macOS ----------
       - name: Package (macOS universal DMG, unsigned)

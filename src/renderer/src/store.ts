@@ -139,9 +139,15 @@ export const useStore = create<State>((set, get) => ({
   loadVersion: async (id, asOf = null) => {
     set({ loading: true })
     try {
-      const snapshot = await call<DatasetSnapshot>('data:snapshot', { datasetVersionId: id, asOf })
       const prev = get().snapshot
       const sameVersion = prev?.datasetVersionId === id
+      // A dataset version's rows and values never change, so when this version is already loaded only the parts
+      // curation can change are fetched (after an edit, or when a saved view pins an earlier metadata version).
+      let snapshot: DatasetSnapshot
+      if (sameVersion && prev) {
+        const c = await call<Pick<DatasetSnapshot, 'datasetVersionId' | 'metadataVersion' | 'variables' | 'flags'>>('data:curation', { datasetVersionId: id, asOf })
+        snapshot = { ...prev, metadataVersion: c.metadataVersion, variables: c.variables, flags: c.flags }
+      } else snapshot = await call<DatasetSnapshot>('data:snapshot', { datasetVersionId: id, asOf })
       const chart = sameVersion ? get().chart : { ...defaultChart(), ...pickDefaults(snapshot) }
       set({ snapshot, versionId: id, asOf, chart, ...(sameVersion ? {} : { filter: emptyFilter(), visitIds: 'all' as const, highlight: [], inspected: null }) })
     } finally {

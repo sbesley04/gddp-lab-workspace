@@ -7,6 +7,7 @@ import { useStore, errorText } from '../store'
 import { ReportView } from '../components/ImportWizard'
 import { INTERP_TEXT, label, shortDate } from '../lib/format'
 import { columnLetter } from '@core/hash'
+import type { VersionDiff } from '@core/versionDiff'
 
 interface FormatGroup {
   groupKey: string
@@ -21,7 +22,7 @@ interface FormatGroup {
   decision: { decision: string; asKind?: string; author: string | null; reason: string | null; at: string } | null
 }
 
-type Tab = 'interpretations' | 'checks' | 'map' | 'groups' | 'comments'
+type Tab = 'interpretations' | 'checks' | 'map' | 'groups' | 'comments' | 'versions'
 
 const KIND_LABEL: Record<string, string> = {
   qc_sample: 'Sample QC warning',
@@ -35,6 +36,7 @@ const KIND_LABEL: Record<string, string> = {
 
 export function DataQuality() {
   const snapshot = useStore((s) => s.snapshot)!
+  const versions = useStore((s) => s.project?.versions.length ?? 0)
   const [tab, setTab] = useState<Tab>('interpretations')
   return (
     <>
@@ -51,7 +53,8 @@ export function DataQuality() {
             ['map', 'Flag map'],
             ['checks', 'Import checks'],
             ['groups', 'Column groups'],
-            ['comments', `Comments (${snapshot.annotations.length})`]
+            ['comments', `Comments (${snapshot.annotations.length})`],
+            ...(versions > 1 ? [['versions', 'Version changes'] as [Tab, string]] : [])
           ] as [Tab, string][]).map(([k, l]) => (
             <button key={k} role="tab" aria-pressed={tab === k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
           ))}
@@ -61,8 +64,101 @@ export function DataQuality() {
         {tab === 'map' && <FlagMap />}
         {tab === 'groups' && <Groups />}
         {tab === 'comments' && <Comments />}
+        {tab === 'versions' && <VersionChanges />}
       </div>
     </>
+  )
+}
+
+const CHANGE_TEXT: Record<string, string> = { value: 'Changed', filled: 'Was empty', emptied: 'Now empty' }
+
+/** What differs between the dataset version on screen and another import of the study workbook. Nothing is merged. */
+function VersionChanges() {
+  const snapshot = useStore((s) => s.snapshot)!
+  const project = useStore((s) => s.project)!
+  const openParticipant = useStore((s) => s.openParticipant)
+  const others = project.versions.filter((v) => v.id !== snapshot.datasetVersionId)
+  const [otherId, setOtherId] = useState(others[0]?.id ?? '')
+  const [diff, setDiff] = useState<VersionDiff | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const other = others.find((v) => v.id === otherId)
+  // Always read as "older to newer", whichever of the two is on screen.
+  const older = other && other.versionNumber < snapshot.versionNumber
+  useEffect(() => {
+    if (!other) return
+    setDiff(null)
+    setError(null)
+    const payload = older ? { fromVersionId: other.id, toVersionId: snapshot.datasetVersionId } : { fromVersionId: snapshot.datasetVersionId, toVersionId: other.id }
+    call<VersionDiff>('data:compareVersions', payload).then(setDiff).catch((e) => setError(errorText(e)))
+  }, [other?.id, snapshot.datasetVersionId, snapshot.metadataVersion, older])
+  if (!other) return <div className="paper empty">Import a second version of the workbook to compare versions.</div>
+  const names = (xs: string[]) => (xs.length ? `${xs.slice(0, 12).join(', ')}${xs.length > 12 ? ` and ${xs.length - 12} more` : ''}` : 'none')
+  return (
+    <div className="stack" data-testid="version-changes">
+      <div className="paper card">
+        <div className="card-head">
+          <h3>Version changes</h3>
+          <span className="spacer" />
+          <label className="row small" style={{ gap: 6 }}>Compare v{snapshot.versionNumber} with
+            <select className="btn sm" value={otherId} onChange={(e) => setOtherId(e.target.value)} aria-label="Version to compare with">
+              {others.map((v) => <option key={v.id} value={v.id}>v{v.versionNumber} · {shortDate(v.createdAt)}</option>)}
+            </select>
+          </label>
+        </div>
+        <p className="small muted" style={{ margin: 0 }}>Each import is its own unchangeable version. This lists what differs between two of them; nothing is merged or carried from one to the other. Rows are matched by participant and visit, columns by header, so a renamed column appears as one removed and one added.</p>
+      </div>
+      {error && <div className="paper card"><div className="callout danger"><p className="small">{error}</p></div></div>}
+      {!diff && !error && <div className="paper empty">Comparing…</div>}
+      {diff && (
+        <>
+          <div className="paper card">
+            <div className="card-head"><h3>v{diff.from.versionNumber} → v{diff.to.versionNumber}</h3>{diff.identical && <span className="badge outline" data-testid="versions-identical">No differences in the data</span>}</div>
+            <div className="kv">
+              <div className="k">Rows</div><div>{diff.from.rows} → {diff.to.rows} · {diff.rows.added.length} added · {diff.rows.removed.length} removed · {diff.rows.common} in both</div>
+              <div className="k">Participants</div><div>{diff.from.participants} → {diff.to.participants} · added: {names(diff.participants.added)} · removed: {names(diff.participants.removed)}</div>
+              <div className="k">Measures</div><div>{diff.from.variables} → {diff.to.variables} · added: {names(diff.variables.added.map((v) => v.header))} · removed: {names(diff.variables.removed.map((v) => v.header))}</div>
+              <div className="k">Values in both</div><div data-testid="version-totals">{diff.totals.value} changed · {diff.totals.filled} filled in (were empty) · {diff.totals.emptied} now empty</div>
+              <div className="k">QC flags in both</div><div>{diff.flags.added} gained · {diff.flags.removed} lost</div>
+            </div>
+          </div>
+          {diff.changedVariables.length > 0 && (
+            <div className="paper card">
+              <div className="card-head"><h3>Measures with changes</h3><span className="muted small">{diff.changedVariables.length} of {diff.variables.common} measures in both versions</span></div>
+              <div className="table-wrap" style={{ maxHeight: 320 }}>
+                <table className="data">
+                  <thead><tr><th>Measure</th><th>Changed</th><th>Filled in</th><th>Now empty</th><th>Type</th></tr></thead>
+                  <tbody>
+                    {diff.changedVariables.map((v) => (
+                      <tr key={v.key}><td>{v.header}</td><td className="num">{v.value}</td><td className="num">{v.filled}</td><td className="num">{v.emptied}</td><td>{v.kindBefore ? `${v.kindBefore} → ${v.kindAfter}` : ''}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {diff.cells.length > 0 && (
+            <div className="paper card">
+              <div className="card-head"><h3>Changed values</h3><span className="muted small">{diff.cellsTruncated ? `first ${diff.cells.length} of ${diff.cells.length + diff.cellsTruncated}` : `${diff.cells.length}`} · shown on this computer only, never exported</span></div>
+              <div className="table-wrap" style={{ maxHeight: 420 }}>
+                <table className="data" data-testid="version-cells">
+                  <thead><tr><th>Participant</th><th>Visit</th><th>Measure</th><th>What</th><th>v{diff.from.versionNumber}</th><th>v{diff.to.versionNumber}</th></tr></thead>
+                  <tbody>
+                    {diff.cells.map((c, i) => (
+                      <tr key={i}>
+                        <td><button className="btn ghost sm" onClick={() => openParticipant(c.participantId)}>{c.participantId}</button></td>
+                        <td>{c.visit}</td><td>{c.header}</td><td>{CHANGE_TEXT[c.kind]}</td>
+                        <td className="num">{c.before === '' ? <span className="muted">empty</span> : c.before}</td>
+                        <td className="num">{c.after === '' ? <span className="muted">empty</span> : c.after}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   )
 }
 
@@ -314,7 +410,7 @@ function Comments() {
               const r = a.row !== null ? snapshot.rows[a.row] : null
               return (
                 <tr key={a.id} style={{ cursor: r && v ? 'pointer' : undefined }} onClick={() => r && v && inspect({ row: r.index, variable: v.index })}>
-                  <td className="mono">{a.address}</td>
+                  <td className="mono">{r && v ? <button className="btn ghost sm mono" style={{ padding: '0 6px' }} title="Inspect this cell" aria-label={`Inspect cell ${a.address}`}>{a.address}</button> : a.address}</td>
                   <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{v ? label(v) : '—'}</td>
                   <td>{r ? r.participantId : <span className="muted">header</span>}</td>
                   <td style={{ whiteSpace: 'pre-wrap', minWidth: 320 }}>{a.text}</td>

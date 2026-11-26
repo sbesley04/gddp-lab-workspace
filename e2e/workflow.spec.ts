@@ -76,9 +76,9 @@ test('import, select, save, export, back up — all offline', async () => {
   await page.getByTestId('compute-stats').click()
   await expect(page.getByTestId('stats-panel')).toContainText('Shapiro–Wilk')
 
-  // The analysis log shows every step with a signature
+  // The analysis log shows every step with a fingerprint
   await page.getByTestId('history').click()
-  await expect(page.getByTestId('chain-signature')).toHaveText(/^[0-9a-f]{8}$/)
+  await expect(page.getByTestId('chain-fingerprint')).toHaveText(/^[0-9a-f]{8}$/)
   await expect(page.getByText('Analysis log', { exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
 
@@ -87,6 +87,12 @@ test('import, select, save, export, back up — all offline', async () => {
   await page.getByTestId('history').click()
   await expect(page.getByText('Display transforms')).toBeVisible()
   await expect(page.getByText(/log2\(df\[\[/).first()).toBeVisible()
+  await page.keyboard.press('Escape')
+  // Box-Cox states its estimated λ on the chart and writes it into the log
+  await page.getByTestId('transform-measure').selectOption('boxcox')
+  await expect(page.getByText(/Box-Cox λ = -?[0-9.]+ for /).first()).toBeVisible()
+  await page.getByTestId('history').click()
+  await expect(page.getByText(/Box-Cox, λ by maximum likelihood/).first()).toBeVisible()
   await page.keyboard.press('Escape')
   await page.getByTestId('transform-measure').selectOption('none')
 
@@ -115,10 +121,22 @@ test('import, select, save, export, back up — all offline', async () => {
   const head = page.locator('.board-card-head').first()
   const cardTitle = await head.locator('.t').innerText()
   const card = page.getByTestId('board-card').filter({ has: page.locator('.t', { hasText: cardTitle }) })
-  const box = (await head.boundingBox())!
+  // In a small window (CI runs at the minimum size) the board is still moving as its charts load. Bring the card
+  // header to the middle of the window, wait until it has stopped moving and is the element under the pointer,
+  // and only then drag it.
+  await head.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  let box = (await head.boundingBox())!
+  await expect
+    .poll(async () => {
+      const now = (await head.boundingBox())!
+      const still = Math.abs(now.x - box.x) < 0.5 && Math.abs(now.y - box.y) < 0.5
+      box = now
+      return still && (await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.board-card-head'), [now.x + 60, now.y + now.height / 2]))
+    }, { intervals: [300] })
+    .toBe(true)
   await page.mouse.move(box.x + 60, box.y + box.height / 2)
   await page.mouse.down()
-  await page.mouse.move(box.x + 60, box.y + 260, { steps: 8 })
+  await page.mouse.move(box.x + 60, box.y + 120, { steps: 8 })
   await page.mouse.up()
   await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 5000 })
   const movedTop = await card.evaluate((el) => (el as HTMLElement).style.top)
@@ -150,7 +168,7 @@ test('import, select, save, export, back up — all offline', async () => {
   await page.screenshot({ path: join(shots, '03-export.png') })
   const files = unzipSync(new Uint8Array(readFileSync(zipPath)))
   const manifest = JSON.parse(strFromU8(files['manifest.json']))
-  expect(Object.keys(files).sort()).toEqual(['analysis_log.R', 'analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
+  expect(Object.keys(files).sort()).toEqual(['analysis_log.R', 'analysis_register.json', 'analysis_request.md', 'data_dictionary.csv', 'manifest.json', 'quality_flags.csv', 'selected_data.csv', 'study_context.md'])
   for (const f of manifest.files) expect(createHash('sha256').update(files[f.name]).digest('hex')).toBe(f.sha256)
   expect(manifest.selection.rows).toBe(rows)
   expect(JSON.stringify(manifest)).not.toContain(work)
@@ -176,14 +194,30 @@ test('import, select, save, export, back up — all offline', async () => {
   await expect(page.getByTestId('board-card')).toHaveCount(2)
   expect(await page.getByTestId('board-card').filter({ has: page.locator('.t', { hasText: cardTitle }) }).evaluate((el) => (el as HTMLElement).style.top)).toBe(movedTop)
 
-  // Backup, close, restore
-  const backupPath = join(work, 'backup.bariproj.zip')
+  // Backup with a passphrase, close, restore: a wrong passphrase is refused, the right one restores
+  const backupPath = join(work, 'backup.bariproj.enc')
   await mockDialogs(app, { save: [backupPath], open: [[backupPath], [work]] })
-  await page.getByRole('button', { name: 'Backup' }).click()
-  await expect(page.getByText(/Backup saved/)).toBeVisible()
-  await page.getByRole('button', { name: 'Close' }).click()
+  await page.getByTestId('backup').click()
+  await expect(page.getByTestId('backup-encrypted')).toBeDisabled()
+  await page.getByLabel('Backup passphrase', { exact: true }).fill('synthetic passphrase')
+  await page.getByLabel('Repeat backup passphrase').fill('synthetic passphrase')
+  await page.getByTestId('backup-encrypted').click()
+  await expect(page.getByText(/Backup saved: .*encrypted/)).toBeVisible()
+  // The file is not a readable ZIP and does not contain the project name or a participant identifier in clear text.
+  const encrypted = readFileSync(backupPath)
+  expect(encrypted.subarray(0, 8).toString('ascii')).toBe('BARIENC1')
+  expect(encrypted.includes(Buffer.from('E2E synthetic'))).toBe(false)
+  expect(encrypted.includes(Buffer.from('DEMO-'))).toBe(false)
+  await page.getByTestId('close-project').click()
   await page.getByText('Restore a backup').click()
-  await expect(page.getByText(/Backup restored and verified/)).toBeVisible()
+  const prompt = page.getByTestId('restore-passphrase')
+  await expect(prompt).toContainText('is encrypted')
+  await prompt.getByLabel('Backup passphrase').fill('not the passphrase')
+  await prompt.getByRole('button', { name: 'Restore' }).click()
+  await expect(prompt).toContainText('does not open this backup')
+  await prompt.getByLabel('Backup passphrase').fill('synthetic passphrase')
+  await prompt.getByRole('button', { name: 'Restore' }).click()
+  await expect(page.getByText(/Backup restored and verified.*Records verified/)).toBeVisible()
   await expect(page.getByText('Outstanding metadata tasks')).toBeVisible()
   expect(existsSync(join(work, 'E2E synthetic (restored).bariproj', 'workspace.sqlite'))).toBe(true)
   const net2 = await invoke<{ blocked: unknown[] }>(page, 'app:networkLog')

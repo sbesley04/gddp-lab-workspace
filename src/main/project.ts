@@ -5,6 +5,7 @@ import { hostname } from 'node:os'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Db } from './db/db'
 import { MIGRATIONS } from './db/migrations'
+import { chainRows, maxId, startChain, type ChainedTable } from './integrity'
 
 export const PROJECT_SCHEMA = 'bari-cns-project'
 export const PROJECT_FORMAT_VERSION = 1
@@ -68,6 +69,7 @@ export class Project {
     this.db = new Db(join(dir, 'workspace.sqlite'), { readOnly })
     if (!readOnly) {
       this.db.migrate()
+      startChain(this.db)
       return
     }
     // A read-only reader never migrates, so it must match the schema this code understands exactly.
@@ -152,7 +154,20 @@ export class Project {
   }
 
   audit(action: string, detail: unknown, author: string | null = null) {
-    this.db.run('INSERT INTO audit_log(at, action, detail_json, author_label) VALUES (?, ?, ?, ?)', new Date().toISOString(), action, JSON.stringify(detail ?? null), author)
+    this.db.transaction(() => {
+      const r = this.db.run('INSERT INTO audit_log(at, action, detail_json, author_label) VALUES (?, ?, ?, ?)', new Date().toISOString(), action, JSON.stringify(detail ?? null), author)
+      chainRows(this.db, 'audit_log', Number(r.lastInsertRowid) - 1)
+    })
+  }
+
+  /** Highest id in an append-only table; take it before inserting, then pass it to `chain`. */
+  maxRowId(table: ChainedTable): number {
+    return maxId(this.db, table)
+  }
+
+  /** Enters the rows written since `afterId` into the integrity chain. Call inside the transaction that wrote them. */
+  chain(table: ChainedTable, afterId: number) {
+    chainRows(this.db, table, afterId)
   }
 
   metadataVersion(): number {

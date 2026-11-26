@@ -8,12 +8,16 @@ import { schemas, type IpcResult } from '@shared/ipc'
 import { CHANNELS, type ChannelName } from '@shared/channels'
 import { Project, ProjectLockedError, lockedProjectMessage, syncFolderWarning } from './project'
 import { commitImport, inspect, parseSource, previewMapping, validate, type ParsedSource } from './importService'
-import { buildSnapshot, listVersions } from './snapshot'
+import { buildSnapshot, buildSnapshotCuration, listVersions } from './snapshot'
 import * as curation from './curation'
 import * as views from './views'
 import * as boards from './boards'
 import { listExports, previewContextExport, writeChartFiles, writeContextExport } from './exportService'
-import { createBackup, restoreBackup } from './backup'
+import { BackupPassphraseError, createBackup, readBackupBytes, restoreBackup } from './backup'
+import { listRegister, recordAnalysis } from './register'
+import { verifyIntegrity } from './integrity'
+import { diffVersions } from '@core/versionDiff'
+import { applyDictionary, planFor, readDictionary, type ParsedDictionary } from './dictionary'
 import { APP_VERSION } from './version'
 import { runSelfTest, abortSelfTest } from './selfTest'
 
@@ -44,6 +48,10 @@ let settings: Settings
 // ---------- state ----------
 let current: Project | null = null
 const pendingImports = new Map<string, ParsedSource>()
+/** Data dictionaries read and waiting for the researcher to apply or discard them. */
+const pendingDictionaries = new Map<string, ParsedDictionary>()
+/** Encrypted backups waiting for a passphrase: opaque token to file path, so the renderer never handles the path. */
+const pendingRestores = new Map<string, string>()
 const blockedRequests: { url: string; at: string }[] = []
 let mainWindow: BrowserWindow | null = null
 
@@ -198,11 +206,18 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   'import:discard': (p) => pendingImports.delete(p.token),
   'data:versions': () => listVersions(requireProject()),
   'data:snapshot': (p) => buildSnapshot(requireProject(), p.datasetVersionId, p.asOf ?? undefined),
+  'data:curation': (p) => buildSnapshotCuration(requireProject(), p.datasetVersionId, p.asOf ?? undefined),
   'data:formatGroups': (p) => curation.formatGroups(requireProject(), p.datasetVersionId, p.asOf ?? requireProject().metadataVersion()),
   'data:importReport': (p) => {
     const r = requireProject().db.get<any>('SELECT import_report_json, legend_json, segments_json FROM dataset_version WHERE id = ?', p.datasetVersionId)
     if (!r) throw new Error('Dataset version not found.')
     return { report: JSON.parse(r.import_report_json), legend: r.legend_json ? JSON.parse(r.legend_json) : null, segments: JSON.parse(r.segments_json) }
+  },
+  // Both snapshots are built here; the window receives only the differences.
+  'data:compareVersions': (p) => {
+    const project = requireProject()
+    if (p.fromVersionId === p.toVersionId) throw new Error('Choose two different dataset versions to compare.')
+    return diffVersions(buildSnapshot(project, p.fromVersionId), buildSnapshot(project, p.toVersionId))
   },
   'curation:editMeta': (p) => curation.editVariableMeta(requireProject(), { ...p, author: author() }),
   'curation:setQuasi': (p) => curation.setQuasiIdentifier(requireProject(), { ...p, author: author() }),
@@ -213,6 +228,24 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
   'curation:setStudyContext': (p) => curation.setStudyContext(requireProject(), { ...p, author: author() }),
   'curation:getStudyContext': (p) => curation.getStudyContext(requireProject(), p.datasetVersionId, p.asOf ?? requireProject().metadataVersion()),
   'curation:history': (p) => curation.history(requireProject(), p.datasetVersionId, { target: p.target, kind: p.kind }),
+  'dictionary:pick': async (p) => {
+    const project = requireProject()
+    const r = await dialog.showOpenDialog(mainWindow!, { title: 'Choose a REDCap data dictionary (CSV)', properties: ['openFile'], filters: [{ name: 'REDCap data dictionary', extensions: ['csv'] }] })
+    if (r.canceled || !r.filePaths[0]) return null
+    if (statSync(r.filePaths[0]).size > 20 * 1024 * 1024) throw new Error('This file is larger than a data dictionary should be (20 MB limit).')
+    const dict = readDictionary(new Uint8Array(readFileSync(r.filePaths[0])))
+    const token = randomUUID()
+    pendingDictionaries.set(token, dict)
+    return { token, fileName: basename(r.filePaths[0]), sha256: dict.sha256, plan: planFor(project, p.datasetVersionId, dict) }
+  },
+  'dictionary:apply': (p) => {
+    const dict = pendingDictionaries.get(p.token)
+    if (!dict) throw new Error('This data dictionary is no longer loaded. Choose the file again.')
+    const result = applyDictionary(requireProject(), p.datasetVersionId, dict, author())
+    pendingDictionaries.delete(p.token)
+    return { ...result, project: projectState() }
+  },
+  'dictionary:discard': (p) => pendingDictionaries.delete(p.token),
   'boards:list': () => boards.listBoards(requireProject()),
   'boards:get': (p) => boards.getBoard(requireProject(), p.id),
   'boards:save': (p) => boards.saveBoard(requireProject(), { ...p, author: author() }),
@@ -237,20 +270,50 @@ const handlers: Partial<Record<ChannelName, Handler>> = {
     if (r.canceled || !r.filePath) return null
     return writeChartFiles(current, p, r.filePath, author())
   },
-  'backup:create': async () => {
+  'analysis:record': (p) => recordAnalysis(requireProject(), { ...p, author: author() }),
+  'analysis:list': (p) => listRegister(requireProject(), { datasetVersionId: p.datasetVersionId, limit: p.limit }),
+  'integrity:verify': () => {
+    const project = requireProject()
+    const report = verifyIntegrity(project.db)
+    project.audit('integrity.verify', { ok: report.ok, entries: report.entries, problems: report.problemCount }, author())
+    return report
+  },
+  'backup:create': async (p) => {
     const project = requireProject()
     const stamp = new Date().toISOString().slice(0, 10)
-    const r = await dialog.showSaveDialog(mainWindow!, { title: 'Save project backup', defaultPath: `${project.info.name}-backup-${stamp}.bariproj.zip`, filters: [{ name: 'Project backup', extensions: ['zip'] }] })
+    // An encrypted backup is not a ZIP any more, so it gets its own extension.
+    const ext = p.passphrase ? 'bariproj.enc' : 'bariproj.zip'
+    const r = await dialog.showSaveDialog(mainWindow!, { title: p.passphrase ? 'Save encrypted project backup' : 'Save project backup', defaultPath: `${project.info.name}-backup-${stamp}.${ext}`, filters: [{ name: p.passphrase ? 'Encrypted project backup' : 'Project backup', extensions: [p.passphrase ? 'enc' : 'zip'] }] })
     if (r.canceled || !r.filePath) return null
-    const m = await createBackup(project, r.filePath, author())
-    return { fileName: basename(r.filePath), files: m.files.length, datasets: m.datasets.length }
+    const m = await createBackup(project, r.filePath, author(), { passphrase: p.passphrase })
+    return { fileName: basename(r.filePath), files: m.files.length, datasets: m.datasets.length, encrypted: !!p.passphrase }
   },
-  'backup:restore': async () => {
-    const f = await dialog.showOpenDialog(mainWindow!, { title: 'Choose a project backup', properties: ['openFile'], filters: [{ name: 'Project backup', extensions: ['zip'] }] })
-    if (f.canceled || !f.filePaths[0]) return null
+  'backup:restore': async (p) => {
+    let file: string
+    if (p.token) {
+      const known = pendingRestores.get(p.token)
+      if (!known) throw new Error('This restore expired. Choose the backup file again.')
+      file = known
+    } else {
+      const f = await dialog.showOpenDialog(mainWindow!, { title: 'Choose a project backup', properties: ['openFile'], filters: [{ name: 'Project backup', extensions: ['zip', 'enc'] }] })
+      if (f.canceled || !f.filePaths[0]) return null
+      file = f.filePaths[0]
+    }
+    // Check the passphrase before asking where to restore, so a wrong one costs nothing.
+    try {
+      readBackupBytes(file, p.passphrase)
+    } catch (e) {
+      if (e instanceof BackupPassphraseError) {
+        const token = p.token ?? randomUUID()
+        pendingRestores.set(token, file)
+        return { needsPassphrase: true, token, fileName: basename(file), wrong: e.reason === 'wrong' }
+      }
+      throw e
+    }
     const parent = await pickDirectory('Choose where to restore the project folder')
     if (!parent) return null
-    const res = restoreBackup(f.filePaths[0], parent)
+    const res = restoreBackup(file, parent, undefined, p.passphrase)
+    if (p.token) pendingRestores.delete(p.token)
     const state = openProjectAt(res.dir)
     return { verified: res.verified, project: state }
   }
@@ -399,7 +462,7 @@ if (process.env.BARI_USER_DATA) {
   app.whenReady().then(() => powerSaveBlocker.start('prevent-app-suspension'))
 }
 app.enableSandbox()
-if (!app.requestSingleInstanceLock() && !process.argv.includes('--self-test')) app.quit()
+if (!app.requestSingleInstanceLock() && !process.argv.includes('--self-test') && !process.argv.includes('--verify-project')) app.quit()
 
 app.on('second-instance', () => {
   if (mainWindow) {
@@ -411,6 +474,26 @@ app.on('second-instance', () => {
 app.whenReady().then(async () => {
   settings = loadSettings()
   installSecurity()
+  // `--verify-project <folder.bariproj>`: check the record chain of a project without opening a window. Read-only;
+  // prints the report as JSON and exits 0 when the records verify, 1 when they do not, 2 when the project cannot be read.
+  const vp = process.argv.indexOf('--verify-project')
+  if (vp !== -1) {
+    let code = 2
+    try {
+      const p = Project.openReadOnly(process.argv[vp + 1] ?? '')
+      try {
+        const report = verifyIntegrity(p.db)
+        process.stdout.write(JSON.stringify(report, null, 2) + '\n')
+        code = report.ok ? 0 : 1
+      } finally {
+        p.close()
+      }
+    } catch (e) {
+      process.stdout.write(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }, null, 2) + '\n')
+    }
+    app.exit(code)
+    return
+  }
   const st = process.argv.indexOf('--self-test')
   if (st !== -1) {
     // The self-test uses a hidden window; keep macOS App Nap from suspending it.
@@ -435,7 +518,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.argv.includes('--self-test')) return // the self-test exits explicitly with its result code
+  if (process.argv.includes('--self-test') || process.argv.includes('--verify-project')) return // these exit explicitly with their result code
   current?.close()
   current = null
   app.quit()

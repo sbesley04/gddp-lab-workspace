@@ -1,4 +1,4 @@
-// Analysis log: deterministic text and signatures on a hand-built snapshot.
+// Analysis log: deterministic text and fingerprints on a hand-built snapshot.
 import { describe, expect, it } from 'vitest'
 import { buildProvenance } from '@core/provenance'
 import { sha256Hex } from '@core/hash'
@@ -54,7 +54,7 @@ describe('analysis log', () => {
     expect(p.text).toContain('(!is.na(df[["IL6"]]) & (df[["IL6"]] >= 1 & df[["IL6"]] <= 9)) & (is.na(df[["Sex"]]) | (df[["Sex"]] %in% c("F")))')
     expect(p.text).toContain('Curator exclusion')
     expect(p.text).toContain('boxplot(df[["IL6"]] ~ df[["Sex"]])')
-    expect(p.text).toContain(`chain signature: ${p.signature}`)
+    expect(p.text).toContain(`chain fingerprint: ${p.fingerprint}`)
   })
 
   it('never writes participant identifiers', () => {
@@ -63,20 +63,20 @@ describe('analysis log', () => {
     expect(p.text).toContain('2 identifiers')
   })
 
-  it('changes the signature when anything upstream changes', () => {
-    const base = build(spec()).signature
-    expect(build(spec({ visitIds: ['m2'] })).signature).not.toBe(base)
-    expect(build(spec({ qc: { exclude: ['sample_warning'] } })).signature).not.toBe(base)
-    expect(build(spec(), chart, '0.3.2').signature).not.toBe(base)
-    expect(build(spec(), { ...chart, groupKey: null }).signature).not.toBe(base)
-    expect(buildProvenance({ snapshot: { ...snapshot, metadataVersion: 8 }, spec: spec(), chart, appVersion: '0.3.1' }).signature).not.toBe(base)
+  it('changes the fingerprint when anything upstream changes', () => {
+    const base = build(spec()).fingerprint
+    expect(build(spec({ visitIds: ['m2'] })).fingerprint).not.toBe(base)
+    expect(build(spec({ qc: { exclude: ['sample_warning'] } })).fingerprint).not.toBe(base)
+    expect(build(spec(), chart, '0.3.2').fingerprint).not.toBe(base)
+    expect(build(spec(), { ...chart, groupKey: null }).fingerprint).not.toBe(base)
+    expect(buildProvenance({ snapshot: { ...snapshot, metadataVersion: 8 }, spec: spec(), chart, appVersion: '0.3.1' }).fingerprint).not.toBe(base)
   })
 
-  it('chains: an early change alters every later signature', () => {
+  it('chains: an early change alters every later fingerprint', () => {
     const a = build(spec({ visitIds: ['base'] })).steps
     const b = build(spec({ visitIds: ['m2'] })).steps
-    expect(a[0].signature).toBe(b[0].signature)
-    expect(a.slice(1).every((s, i) => s.signature !== b[i + 1].signature)).toBe(true)
+    expect(a[0].fingerprint).toBe(b[0].fingerprint)
+    expect(a.slice(1).every((s, i) => s.fingerprint !== b[i + 1].fingerprint)).toBe(true)
   })
 
   it('works without a chart', () => {
@@ -85,12 +85,12 @@ describe('analysis log', () => {
 })
 
 describe('transforms and colouring in the log', () => {
-  it('records transforms before the chart step and changes the signature', () => {
+  it('records transforms before the chart step and changes the fingerprint', () => {
     const t = build(spec(), { ...chart, transformMeasure: 'log2', colorKey: 'k1' })
     expect(t.steps.map((s) => s.kind)).toEqual(['source', 'qc', 'transform', 'chart'])
     expect(t.text).toContain('df[["IL6"]] <- ifelse(df[["IL6"]] > 0, log2(df[["IL6"]]), NA)')
     expect(t.text).toContain('points coloured by Sex')
-    expect(t.signature).not.toBe(build(spec()).signature)
+    expect(t.fingerprint).not.toBe(build(spec()).fingerprint)
   })
   it('records the compare transform only for scatter charts', () => {
     const sc: ChartConfig = { ...chart, type: 'scatter', compareKey: 'k1', groupKey: null, transformCompare: 'zscore' }
@@ -108,8 +108,8 @@ describe('PCA in the log', () => {
     expect(p.text).toContain('Chart: PCA of 2 variables')
     expect(p.steps.map((s) => s.kind)).not.toContain('transform')
   })
-  it('the variable set changes the signature', () => {
-    expect(build(spec(), pcaChart).signature).not.toBe(build(spec(), { ...pcaChart, variableSet: ['k0'] }).signature)
+  it('the variable set changes the fingerprint', () => {
+    expect(build(spec(), pcaChart).fingerprint).not.toBe(build(spec(), { ...pcaChart, variableSet: ['k0'] }).fingerprint)
   })
 })
 
@@ -152,7 +152,7 @@ describe('matrix views and histograms in the log', () => {
     expect(p.text).toContain('cor(df[, c("IL6", "Sex")], use = "pairwise.complete.obs", method = "pearson")')
     expect(p.text).toContain('no p-values')
     expect(p.text).not.toContain('points coloured by')
-    expect(build(spec(), { ...base, corrMethod: 'spearman' }).signature).not.toBe(p.signature)
+    expect(build(spec(), { ...base, corrMethod: 'spearman' }).fingerprint).not.toBe(p.fingerprint)
   })
   it('writes the heatmap scaling and row order', () => {
     const p = build(spec(), { ...base, type: 'heatmap' })

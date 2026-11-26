@@ -1,4 +1,4 @@
-// Entry point: `node out/mcp/server.js --project <folder.bariproj> [--min-cell-size 5] [--no-access-log]`
+// Entry point: `node out/mcp/server.js --project <folder.bariproj> [--min-cell-size 5] [--show-extremes] [--withhold-free-text] [--no-access-log]`
 // Speaks MCP over stdio. stdout carries protocol messages only; diagnostics go to stderr.
 import { join, resolve } from 'node:path'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -24,14 +24,14 @@ async function main() {
 
   let ws: Workspace
   try {
-    ws = Workspace.open(resolve(dir), { mode: 'aggregate', minCellSize })
+    ws = Workspace.open(resolve(dir), { mode: 'aggregate', minCellSize, showExtremes: process.argv.includes('--show-extremes'), withholdFreeText: process.argv.includes('--withhold-free-text') })
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e))
   }
   const accessLog = process.argv.includes('--no-access-log') ? null : join(ws.project.dir, 'mcp-access.jsonl')
   const server = createServer(ws, { accessLog })
   await server.connect(new StdioServerTransport())
-  process.stderr.write(`[bari-cns-mcp] serving "${ws.project.info.name}" read-only (aggregate results, min cell size ${minCellSize})\n`)
+  process.stderr.write(`[bari-cns-mcp] serving "${ws.project.info.name}" read-only (aggregate results, min cell size ${minCellSize}, extremes ${ws.policy.showExtremes ? 'returned' : 'withheld'})\n`)
   const shutdown = () => {
     try {
       ws.close()

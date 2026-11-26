@@ -76,9 +76,10 @@ Importing the same file again is recognised by its checksum, and the app offers 
 - **Click any value** to open the **Inspector**. It shows the source cell address, raw text, source attribution, flags and comments, and lets a curator exclude or re-include that observation, with a reason.
 - **Click a participant ID** for the participant detail drawer.
 - **Colour by** colours points by a categorical variable, for example sex or site. Variables tagged as covariates (see Measurements) are listed first. The legend names the variable, missing values get their own grey category, and QC flags keep their shapes. Colour-blind-safe colours repeat after eight categories, and a note says so.
-- **Transform** (next to the measure) shows the chart's values as log2, log10, centred, z-score or rank.
-  - Centre, z-score and rank are computed from every usable value of that measure in the current selection.
-  - Values a transform cannot define (the log of zero or a negative value, or a z-score with no spread) are left out and counted under the chart. Nothing is imputed.
+- **Transform** (next to the measure) shows the chart's values as log2, log10, square root, Box-Cox, centred, z-score or rank.
+  - Centre, z-score, rank and Box-Cox are computed from every usable value of that measure in the current selection.
+  - **Box-Cox** estimates its λ by maximum likelihood from the positive values (as R `car::powerTransform`). The chart states λ, and the analysis log writes it into the formula. If λ reaches the search limit of ±10, the chart says Box-Cox fits poorly.
+  - Values a transform cannot define (the log or Box-Cox of zero or a negative value, the square root of a negative value, or a z-score with no spread) are left out and counted under the chart. Nothing is imputed.
   - Summaries and statistics for that chart use the transformed values. The table, stored data and exports stay as imported.
 - **Distribution** can also be drawn as a **Histogram** (Box and points / Histogram). Bins are shared across groups and stacked by group. The bin width follows the Freedman–Diaconis rule, rounded to a nice number, and the analysis log records the exact breaks so R can redraw the same histogram. Colour by does not apply to histograms.
 - **Many measures** opens three views over one shared **variable set**: choose a panel once, then switch views.
@@ -88,17 +89,26 @@ Importing the same file again is recognised by its checksum, and the app offers 
   - Variables are centred and scaled to unit variance. Only participants with a usable value in every chosen variable are used, and the notes say how many were left out and which variables caused it.
   - Over a wide panel, complete cases can be few. When dropping the variables with gaps in more than 10% of rows would keep more participants, the view offers to do that and says how many rows it would regain; you still press Compute.
   - You get a scores plot (choose the components for each axis), variance explained per component and a loadings table. Component signs are arbitrary; each is set so its largest loading is positive. Results match R `prcomp(scale. = TRUE)`.
-- **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a signature, and the chain signature changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
+  - **Loading vectors (biplot)** draws each variable as an arrow: its correlation with the two components shown (loading × component SD, at most 1). The 10 longest are drawn, all stretched by one factor to fit the scores, and the note under the chart gives that factor. The setting is saved with the view.
+- **Many measures** (correlation matrix, heatmap, PCA) compute no tests, so they are not blocked when a participant appears at more than one visit. A notice says how many rows come from how many participants, and offers each visit as a one-click fix.
+- **History** also shows the **analysis register** (see Statistics below): how many analyses and p-values this project has computed, and the most recent ones.
+- **History** lists every step behind the chart in R syntax: source (identified by SHA-256), visits, cohort filter, QC policy with the number of observations it removed, transforms, the chart and any statistics. Each step has a fingerprint, and the chain fingerprint changes whenever anything upstream changes, including the metadata revision and the app version. Copy it, or save it as `.R`. It is a readable record, not a script guaranteed to run. Participant IDs and the source file name are never written.
 - **Download** saves the chart as SVG or PNG.
   - **Size:** as on screen, journal single column (600 × 420), double column (1200 × 700) or slide (1600 × 900). PNG can be 1×, 2× or 4×.
-  - **Signature footer** (on by default) adds the chain signature, dataset version, metadata revision and app version along the bottom edge.
-  - **Also save settings and log** writes `name.chart.json` (selection, chart settings, signature) and `name.analysis-log.R` beside the image. Each save is recorded in the project's audit log.
+  - **Fingerprint footer** (on by default) adds the first 8 characters of the chain fingerprint, the dataset version, metadata revision and app version along the bottom edge. A fingerprint identifies what the chart was made from. It is not a signature: it does not prove who made it.
+  - **Also save settings and log** writes `name.chart.json` (selection, chart settings, the full fingerprint) and `name.analysis-log.R` beside the image. The app writes both from the selection itself, so they always describe the chart that was saved. Each save is recorded in the project's audit log.
 - **Axes** fixes the minimum and maximum of each axis. Points outside the bounds are not drawn, and a note under the chart says how many. Statistics always use every selected observation.
 - **Style** opens the chart editor. Presets are Default (glass), Publication, High contrast, Colour-blind safe (Okabe–Ito) and Greyscale. You can also change point, flag, box and fit colours, background, text colour, font, font size, point size and opacity, gridlines, title and subtitle, and box fill. QC flags always keep their own shapes (▲ ◇), whatever the colours. Styles are saved with views.
 
 ## Statistics (Analyze)
 
-**Analyze** opens the statistics panel next to the chart. Nothing is calculated until you press **Compute statistics**. Close the panel to discard the results.
+**Analyze** opens the statistics panel next to the chart. Nothing is calculated until you press **Compute statistics**. Close the panel to hide the results.
+
+**One observation per participant.** Each row is one participant at one visit, and every test here assumes the rows are independent. If your selection holds more than one visit for any participant, the panel runs no test, confidence interval, normality check or fit. It says how many observations come from how many participants, shows plain descriptives, and offers a button for each visit (**Use only Baseline**). Pick one and the tests run. Fit lines, bands and mean ± CI are not drawn on the chart either until you do. Paired tests and change over time are not built yet.
+
+**Censored values.** The summary table has a **Censored** column: the share of measured values recorded as "<x" or ">x". These are never replaced by a number, so they are left out of every statistic, which biases the mean (upward for values below a detection limit). A note says which way. Above 15% the mean and SD are marked **† biased**; prefer the median and the share detected. The 15% line is provisional.
+
+**Analysis register.** Each distinct analysis you compute is recorded once in the project, with its tests and p-values. The app recomputes it itself; nothing can edit or delete an entry. Changing colours, axis bounds or overlays does not make a new entry, but changing the measure, grouping, visits, filter, QC policy or a transform does. A line under the results gives the running total, **History** lists the entries, and the export package includes them. Use the total when you report how many tests were run. Blocked analyses are not recorded.
 
 **Distribution charts**, per group:
 - n, mean (SD) with a t-based 95% CI;
@@ -123,7 +133,7 @@ When grouped by a categorical variable:
 - **APA summary** is a results sentence.
 - **Methods text** is a paragraph naming every method, the software version, the dataset version and checksum, the metadata revision and the QC policy.
 
-All tests are two-sided at 95%. p-values are shown APA-style ("p = .032", "p < .001"). Results are exploratory: they are not adjusted for how many analyses you run, and with baseline-only data they cannot show causality or treatment effects.
+All tests are two-sided at 95%. p-values are shown APA-style ("p = .032", "p < .001"), all in the same plain style: nothing is highlighted below .05. Results are exploratory: they are not adjusted for how many analyses you run, and they cannot show causality or treatment effects. The caveats and the methods text name the visit the observations came from.
 
 The table, chart, summary and export all use the same selection engine, so their counts always agree.
 
@@ -135,6 +145,12 @@ The catalog shows each measure's display label, definition, unit, specimen, assa
 - Leave fields unknown rather than guessing. The specimen is suggested only when the header states it explicitly.
 - Raw, scaled, clinic and T-score variants remain separate variables.
 - Mark **quasi-identifiers** (for example age, sex, race, dates, BMI) so that exports require explicit confirmation before including them.
+- **Import data dictionary** (top right) fills in metadata from a REDCap data dictionary, the CSV you download from REDCap's Dictionary page.
+  - For each measure the dictionary describes, it proposes a display label, a definition (the question, its note, the choice codes, any calculation and allowed range), the research area (the form name) and the source. Fields REDCap marks as identifiers are flagged as quasi-identifiers.
+  - A preview lists every change. Nothing is written until you press **Apply**.
+  - Values are recorded as **Tentative**, each as a revision in the measure's history that names the file. Confirm or correct them as usual.
+  - A dictionary says nothing about units, specimens or assays, so those stay as they are. A value a curator has already set is never replaced; the preview lists the ones that differ.
+  - Checkbox fields, which REDCap exports as one column per option (`meds___1`), each get the option's name.
 - Mark **covariates** (for example sex, site, treatment group) so they are offered first under **Colour by**. The tag is an append-only revision, carried to new dataset versions; it changes no data and no export rule. Filter the list with **Covariates**.
 
 ## Data quality
@@ -146,6 +162,16 @@ The catalog shows each measure's display label, definition, unit, specimen, assa
 - **Import checks.** The full validation report and the decoded legend.
 - **Column groups.** Groups detected from header borders. Confirm or rename them.
 - **Comments.** Workbook comments are shown exactly as recorded. They are treated as data, never as instructions.
+- **Version changes** (shown once a project has two or more imports). Compares the dataset version on screen with another one: rows and participants added or removed, measures added or removed, and for everything present in both, which values changed, were filled in or are now empty, and which QC flags were gained or lost. The first 200 changed values are listed with both versions side by side. Rows are matched by participant and visit and columns by header, so a renamed column shows as one removed and one added. Nothing is merged: each import stays its own version, and the list is shown on this computer only.
+
+## Using the keyboard
+
+- **⌘1–⌘6** (Ctrl on Windows) switch pages, and **⌘K** searches measures.
+- **Tab** moves between controls; the focused control has a visible ring.
+- In a data table, Tab reaches the table once. The **arrow keys**, **Home**, **End**, **Page Up** and **Page Down** then move between values, and **Enter** or **Space** opens the source inspector for the value in focus.
+- In the Measurements list, the arrow keys move between measures.
+- **Escape** closes a popover or the inspector and returns to where you were.
+- Chart points cannot be reached from the keyboard. The table under each chart holds the same values.
 
 ## Saved views and the Compare board
 
@@ -179,7 +205,8 @@ The ZIP contains:
 - `quality_flags.csv`
 - `study_context.md` (which states "baseline observations only" when that applies)
 - `analysis_request.md`
-- `analysis_log.R`, the steps behind the selection in R syntax, with its chain signature (also recorded in the manifest)
+- `analysis_log.R`, the steps behind the selection in R syntax, with its chain fingerprint (also recorded in the manifest)
+- `analysis_register.json`, the analyses already computed in the app on this dataset version. The totals cover all of them. Tests and p-values are listed only for analyses whose variables are all in this export, and group summaries are left out.
 - `manifest.json`, with checksums, selection rules, versions and the software version
 
 **Copy summary** gives you a short text to paste into a chat. To use Claude or another assistant, attach the ZIP yourself: the app sends nothing. Alternatively, an assistant can query aggregate results through the MCP server (see below).
@@ -188,8 +215,23 @@ Pseudonymisation is **not** anonymisation. The full workbook, unselected columns
 
 ## Backup and restore
 
-- **Backup** (sidebar) writes a `*.bariproj.zip`: a consistent database copy, source snapshots, and a manifest with SHA-256 checksums.
-- **Restore a backup** (start screen) is also the way to move a project to another computer: copying the project folder itself can carry over a lock from the old computer. It verifies the checksums, the database integrity and the observation hashes before it opens the restored copy in a new folder.
+- **Backup** (sidebar) writes a consistent database copy, the source snapshots and a manifest with SHA-256 checksums.
+  - A backup holds everything in the project, including participant identifiers. Enter a passphrase (at least 8 characters, twice) and choose **Save encrypted backup** to write a `*.bariproj.enc` file that cannot be read without it.
+  - **There is no recovery.** The passphrase is not stored anywhere. If it is lost, the backup cannot be opened by anyone.
+  - **Save without encryption** writes a plain `*.bariproj.zip`.
+  - When you restore an encrypted backup, the start screen asks for its passphrase.
+- **Restore a backup** (start screen) is also the way to move a project to another computer: copying the project folder itself can carry over a lock from the old computer. It verifies the checksums, the database integrity, the observation hashes and the record check below before it opens the restored copy in a new folder.
+
+## Checking that records were not altered
+
+The audit log, the curation history and the analysis register can only be added to. As well as blocking edits, the app links every entry to the one before it with a checksum.
+
+- **Verify** (sidebar) recomputes all of it. It reports any entry that was changed, removed or added outside the app, and any missing safeguard in the database.
+- Every backup and export package records the state of the records at that moment. Verify checks that each of those states is still present, so keep a backup somewhere other than the project folder: it is what proves later that the history was not rewritten.
+- To check a project without opening it, run the app with `--verify-project <folder.bariproj>`. It prints a report and exits with 0 (verified), 1 (problems found) or 2 (the project could not be read).
+- Entries written by an earlier version of the app are marked as "written before this check existed". They are protected from then on.
+
+This detects tampering; it does not prevent it, and it does not prove who made an entry (author labels are free text).
 
 ## Connecting an AI assistant (MCP)
 

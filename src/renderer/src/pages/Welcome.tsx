@@ -16,6 +16,21 @@ export function Welcome() {
   const [name, setName] = useState('BARI-CNS study')
   const [busy, setBusy] = useState<string | null>(null)
   const toast = useStore((s) => s.toast)
+  // An encrypted backup was chosen: the main process holds the file and waits for its passphrase.
+  const [locked, setLocked] = useState<{ token: string; fileName: string; wrong: boolean } | null>(null)
+  const [pass, setPass] = useState('')
+
+  type RestoreReply = null | { needsPassphrase: true; token: string; fileName: string; wrong: boolean } | { project: ProjectState; verified?: any }
+  const restore = async (token?: string, passphrase?: string): Promise<ProjectState | null | { project: ProjectState; verified?: any }> => {
+    const r = await call<RestoreReply>('backup:restore', token ? { token, passphrase } : {})
+    if (r && 'needsPassphrase' in r) {
+      setLocked({ token: r.token, fileName: r.fileName, wrong: r.wrong })
+      setPass('')
+      return null
+    }
+    setLocked(null)
+    return r
+  }
 
   useEffect(() => {
     call<Recent[]>('project:recent').then(setRecent).catch(() => setRecent([]))
@@ -26,7 +41,10 @@ export function Welcome() {
     try {
       const r = await fn()
       const p = r && 'project' in r ? r.project : (r as ProjectState | null)
-      if (r && 'verified' in r && r.verified) toast('success', `Backup restored and verified: ${r.verified.files} files, ${r.verified.datasets} dataset version(s), integrity ${r.verified.integrity}.`)
+      if (r && 'verified' in r && r.verified) {
+        const rec = r.verified.records
+        toast(rec && !rec.ok ? 'error' : 'success', `Backup restored and verified: ${r.verified.files} files, ${r.verified.datasets} dataset version(s), integrity ${r.verified.integrity}.${rec ? (rec.ok ? ` Records verified (${rec.entries} entries).` : ` Record check found ${rec.problems} problem(s): open Verify in the sidebar.`) : ''}`)
+      }
       if (p) {
         await useStore.getState().setProject(p)
         useStore.getState().setPage(p.versions.length ? 'overview' : 'overview')
@@ -83,10 +101,24 @@ export function Welcome() {
             <span className="ic" style={{ background: 'var(--violet-soft)', color: 'var(--violet)' }}><FlaskConical size={19} /></span>
             <span><div className="t">Open synthetic demo</div><div className="s">24 invented participants (DEMO-xx) with legend, QC flags and comments</div></span>
           </button>
-          <button className="action-tile" onClick={() => run('restore', () => call('backup:restore'))} disabled={!!busy}>
+          <button className="action-tile" onClick={() => run('restore', () => restore())} disabled={!!busy}>
             <span className="ic" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}><ArchiveRestore size={19} /></span>
             <span><div className="t">Restore a backup</div><div className="s">Verifies checksums and observations before opening</div></span>
           </button>
+          {locked && (
+            <form className="paper card stack" style={{ gap: 8 }} data-testid="restore-passphrase" onSubmit={(e) => { e.preventDefault(); if (pass) run('restore', () => restore(locked.token, pass)) }}>
+              <strong>{locked.fileName} is encrypted</strong>
+              {locked.wrong && <p className="small" style={{ margin: 0, color: 'var(--danger)' }} role="alert">That passphrase does not open this backup (or the file is damaged). Try again.</p>}
+              <label className="field">
+                Passphrase
+                <input className="input" type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoFocus autoComplete="off" aria-label="Backup passphrase" />
+              </label>
+              <div className="row" style={{ gap: 6 }}>
+                <button className="btn primary sm" type="submit" disabled={!pass || !!busy}>Restore</button>
+                <button className="btn ghost sm" type="button" onClick={() => setLocked(null)}>Cancel</button>
+              </div>
+            </form>
+          )}
           <div className="group-label" style={{ marginTop: 6 }}>Recent projects</div>
           {recent.length === 0 && <div className="muted small" style={{ padding: '0 10px' }}>No recent projects on this computer.</div>}
           <div className="list">

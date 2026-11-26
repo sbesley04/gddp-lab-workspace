@@ -14,6 +14,7 @@ import { call } from '../api'
 import { useStore, errorText } from '../store'
 import { useSelection, useVar, useSpec } from '../lib/selection'
 import { useProvenance } from '../lib/provenance'
+import { shortFingerprint } from '@core/provenance'
 import { APP_VERSION } from '../lib/version'
 import { label, plural, qcPolicyText, STATUS_TEXT, INTERP_TEXT } from '../lib/format'
 import { EChart, type EChartHandle } from '../components/EChart'
@@ -22,7 +23,7 @@ import { correlationFromSelection, heatmapData } from '@core/matrix'
 import { gapSuggestion, pcaPlot } from '@core/pca'
 import type { SelectionResult } from '@core/selection'
 import { AxisBoundsEditor, StyleEditor } from '../components/ChartControls'
-import { DistributionStats, ScatterStats } from '../components/StatsPanel'
+import { DistributionStats, PooledVisitsNotice, ScatterStats } from '../components/StatsPanel'
 import { FilterBar, MeasurePicker, QcPolicyPicker, TransformSelect, VisitPicker, VariableList } from '../components/Pickers'
 import { DataTable } from '../components/DataTable'
 import * as Popover from '@radix-ui/react-popover'
@@ -106,6 +107,7 @@ export function Explore() {
             <button aria-pressed={chart.type === 'pca'} onClick={() => setChart({ type: 'pca' })} data-testid="type-pca"><Orbit size={14} /> PCA</button>
           </div>
         )}
+        {multi && <PooledVisitsNotice snapshot={snapshot} rows={sel.rows} />}
         {chart.type === 'pca' && <PcaView />}
         {chart.type === 'correlation' && <CorrelationView />}
         {chart.type === 'heatmap' && <HeatmapView />}
@@ -129,12 +131,19 @@ function NoMeasure({ two }: { two?: boolean }) {
 function contextLine(sel: ReturnType<typeof useSelection>, qc: string[]) {
   const s = sel!
   const f = describeFilter(s.ctx, (useStore.getState().filter))
-  return `n = ${s.participantIds.length} participants · ${f === 'All rows' ? 'no cohort filter' : f} · QC: ${qcPolicyText(qc as any)}`
+  // Rows and participants differ as soon as a participant has more than one visit in the selection: say both.
+  const n = s.rows.length === s.participantIds.length ? `n = ${s.participantIds.length} participants` : `n = ${s.rows.length} observations from ${s.participantIds.length} participants`
+  return `${n} · ${f === 'All rows' ? 'no cohort filter' : f} · QC: ${qcPolicyText(qc as any)}`
 }
 
 export function useFullChart(): FullChart {
   const chart = useStore((s) => s.chart)
   return useMemo(() => normalizeChart(chart), [chart])
+}
+
+interface RegisterList {
+  totals: { analyses: number; tests: number }
+  entries: { id: number; fingerprint: string; kind: string; title: string; rows: number; tests: number; metadataVersion: number; author: string | null; at: string }[]
 }
 
 interface ScaleState {
@@ -155,7 +164,10 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
   const [pxScale, setPxScale] = useState(2)
   const [stamp, setStamp] = useState(true)
   const [sidecars, setSidecars] = useState(true)
-  const stampText = prov ? `analysis ${prov.signature} · dataset v${snapshot.versionNumber} rev ${snapshot.metadataVersion} · app ${APP_VERSION}` : ''
+  const short = prov ? shortFingerprint(prov.fingerprint) : ''
+  const stampText = prov ? `analysis ${short} · dataset v${snapshot.versionNumber} rev ${snapshot.metadataVersion} · app ${APP_VERSION}` : ''
+  // The main process rebuilds the analysis log, the settings file and the fingerprint from this; only the image is sent.
+  const context = () => ({ spec: spec!, chart: useStore.getState().chart, metadataVersion: snapshot.metadataVersion })
   const save = async (format: 'svg' | 'png') => {
     if (!prov || !spec) return
     try {
@@ -171,27 +183,24 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
         h = r.height
       }
       const data = format === 'svg' ? svg : await chartRef.current!.pngFromSvg(svg, w, h, pxScale)
-      const settings = JSON.stringify({ schema: 'bari-chart/1', createdAt: new Date().toISOString(), app: APP_VERSION, signature: prov.signature, selection: spec, chart, steps: prov.steps.map((s) => ({ n: s.n, signature: s.signature, title: s.title })) }, null, 2)
-      const r = await call<{ fileName: string; files: string[] } | null>('export:chart', {
-        format,
-        data,
-        suggestedName: name,
-        sidecars: sidecars ? { settings, log: prov.text } : undefined,
-        context: { datasetVersionId: snapshot.datasetVersionId, metadataVersion: snapshot.metadataVersion, signature: prov.signature }
-      })
+      const r = await call<{ fileName: string; files: string[] } | null>('export:chart', { format, data, suggestedName: name, sidecars, stamped: stamp ? short : null, context: context() })
       if (r) toast('success', r.files.length > 1 ? `Saved ${r.files.join(', ')}` : `Chart saved as ${r.fileName}`)
     } catch (e) {
       toast('error', errorText(e))
     }
   }
   const saveLog = async () => {
-    if (!prov) return
+    if (!prov || !spec) return
     try {
-      const r = await call<{ fileName: string } | null>('export:chart', { format: 'r', data: prov.text, suggestedName: `${name} analysis log` })
+      const r = await call<{ fileName: string } | null>('export:chart', { format: 'r', data: '', suggestedName: `${name} analysis log`, context: context() })
       if (r) toast('success', `Analysis log saved as ${r.fileName}`)
     } catch (e) {
       toast('error', errorText(e))
     }
+  }
+  const [register, setRegister] = useState<RegisterList | null>(null)
+  const loadRegister = () => {
+    call<RegisterList>('analysis:list', { datasetVersionId: null, limit: 50 }).then(setRegister).catch(() => setRegister(null))
   }
   const copyLog = async () => {
     if (!prov) return
@@ -227,9 +236,9 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
       >
         <Calculator size={14} /> Analyze
       </button>}
-      <Popover.Root>
+      <Popover.Root onOpenChange={(open) => { if (open) loadRegister() }}>
         <Popover.Trigger asChild>
-          <button className="btn sm" aria-label="Analysis history" data-testid="history" title="Every step behind this chart, in R syntax, with signatures"><ScrollText size={14} /> History</button>
+          <button className="btn sm" aria-label="Analysis history" data-testid="history" title="Every step behind this chart, in R syntax, with fingerprints"><ScrollText size={14} /> History</button>
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="popover" align="end" sideOffset={8} style={{ width: 460, maxHeight: 520, overflow: 'auto' }}>
@@ -237,13 +246,13 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
               <div className="stack" style={{ gap: 10 }}>
                 <div className="row">
                   <strong style={{ flex: 1 }}>Analysis log</strong>
-                  <span className="kbd" title="Changes whenever any step, the data version, metadata or app version changes" data-testid="chain-signature">{prov.signature}</span>
+                  <span className="kbd" title={`Fingerprint ${prov.fingerprint}. It changes whenever any step, the data version, metadata or app version changes. It identifies the inputs; it is not a signature.`} data-testid="chain-fingerprint">{short}</span>
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>A readable record of what the app did, in R syntax. It is not guaranteed to run as a script. Participant identifiers are never written.</div>
                 <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 8 }}>
                   {prov.steps.map((st) => (
                     <li key={st.n}>
-                      <div className="row"><span style={{ flex: 1 }}>{st.title}</span><span className="kbd">{st.signature}</span></div>
+                      <div className="row"><span style={{ flex: 1 }}>{st.title}</span><span className="kbd" title={st.fingerprint}>{shortFingerprint(st.fingerprint)}</span></div>
                       <pre style={{ margin: '4px 0 0', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{st.code.join('\n')}</pre>
                     </li>
                   ))}
@@ -254,6 +263,24 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
                 </div>
               </div>
             )}
+            <div className="stack" style={{ gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--hairline-strong)" }} data-testid="analysis-register">
+              <div className="row">
+                <strong style={{ flex: 1 }}>Analysis register</strong>
+                {register && <span className="badge outline" data-testid="register-totals">{register.totals.analyses} analys{register.totals.analyses === 1 ? 'is' : 'es'} · {register.totals.tests} p-value{register.totals.tests === 1 ? '' : 's'}</span>}
+              </div>
+              <div className="muted" style={{ fontSize: 12 }}>Every distinct analysis computed in the statistics panel of this project, recorded by the app and never edited. p-values are not adjusted for this count. Analyses blocked by the independence guard are not recorded.</div>
+              {register && register.entries.length === 0 && <div className="muted small">No analysis has been computed yet.</div>}
+              {register && register.entries.length > 0 && (
+                <ol style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
+                  {register.entries.map((e) => (
+                    <li key={e.id} className="small">
+                      <div className="row"><span style={{ flex: 1 }}>{e.title}</span><span className="kbd" title={`Fingerprint ${e.fingerprint}`}>{e.fingerprint.slice(0, 12)}</span></div>
+                      <div className="muted" style={{ fontSize: 11 }}>{e.at.slice(0, 16).replace('T', ' ')} · {e.kind === 'scatter' ? 'two measures' : 'distribution'} · {e.rows} observation{e.rows === 1 ? '' : 's'} · {e.tests} p-value{e.tests === 1 ? '' : 's'} · metadata rev {e.metadataVersion}{e.author ? ` · ${e.author}` : ''}</div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
@@ -276,7 +303,7 @@ function ChartToolbar({ chartRef, name, brush, setBrush, showX, scales, minimal 
                   <option value={1}>1×</option><option value={2}>2×</option><option value={4}>4× (print)</option>
                 </select>
               </label>
-              <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={stamp} onChange={(e) => setStamp(e.target.checked)} /> Add analysis signature footer</label>
+              <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={stamp} onChange={(e) => setStamp(e.target.checked)} /> Add analysis fingerprint footer</label>
               <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={sidecars} onChange={(e) => setSidecars(e.target.checked)} /> Also save settings (.chart.json) and log (.analysis-log.R)</label>
               <div className="list">
                 <Popover.Close asChild>
@@ -415,7 +442,7 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
             scales={{ x: { value: chart.xScale, disabled: data.logValidX ? null : 'No positive values' }, y: { value: chart.yScale, disabled: data.logValidY ? null : 'No positive values' } }}
           />
           {data.points.length === 0 && data.hidden.length === 0 ? (
-            <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No complete pairs</h3><p>No selected participant has numeric values for both measures.</p></div>
+            <div className="empty" style={{ height: CHART_HEIGHT }}><h3>No complete pairs</h3><p>No selected row has numeric values for both measures.</p></div>
           ) : (
             <EChart
               ref={ref}
@@ -582,7 +609,7 @@ function HeatmapView() {
         icon={<Rows3 size={16} />}
         title="Heatmap"
         prefix="heat"
-        description="One row per selected participant, one column per variable. Each variable is shown as a z-score over its usable values in the selection, so variables in different units share one colour scale; grey means no usable value. Rows follow the Colour by variable, then participant ID."
+        description="One row per selected observation (a participant at a visit), one column per variable. Each variable is shown as a z-score over its usable values in the selection, so variables in different units share one colour scale; grey means no usable value. Rows follow the Colour by variable, then participant ID."
       />
       {built && h && (
         <div data-testid="heat-result">
@@ -664,6 +691,9 @@ function PcaView() {
                 <select className="btn sm" value={ay} onChange={(e) => setYi(Number(e.target.value))} aria-label="Y component">
                   {Array.from({ length: r.k }, (_, i) => <option key={i} value={i}>PC{i + 1}</option>)}
                 </select>
+              </label>
+              <label className="row small" style={{ gap: 6 }} title="Draw each variable's correlation with the two components as an arrow (the 10 longest).">
+                <input type="checkbox" checked={chart.pcaVectors} onChange={(e) => setChart({ pcaVectors: e.target.checked })} data-testid="pca-vectors" /> Loading vectors (biplot)
               </label>
               <span className="muted small">Signs of components are arbitrary; each is set so its largest loading is positive.</span>
             </div>

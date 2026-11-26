@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, History, Save, ShieldAlert, BarChart3, Lock } from 'lucide-react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { Search, History, Save, ShieldAlert, BarChart3, Lock, BookOpen, X } from 'lucide-react'
+import type { DictionaryPlan } from '@core/redcapDictionary'
 import type { MetaFieldName, MetaStatus, VariableInfo } from '@core/types'
 import { call } from '../api'
 import { useStore, errorText } from '../store'
@@ -53,6 +55,16 @@ export function Measurements() {
     setSelected(key)
   }
   const hidden = snapshot.variables.filter((v) => v.role !== 'measure')
+  const editable = useStore((s) => s.asOf) === null
+  const [dictionary, setDictionary] = useState<LoadedDictionary | null>(null)
+  const pickDictionary = async () => {
+    try {
+      const r = await call<LoadedDictionary | null>('dictionary:pick', { datasetVersionId: snapshot.datasetVersionId })
+      if (r) setDictionary(r)
+    } catch (e) {
+      useStore.getState().toast('error', errorText(e))
+    }
+  }
 
   return (
     <>
@@ -61,7 +73,14 @@ export function Measurements() {
           <h2>Measurements</h2>
           <div className="subtitle">{measures.length} measures · {hidden.length} identifier/blank columns kept out of pickers</div>
         </div>
+        <span className="spacer" />
+        <div className="row no-drag">
+          <button className="btn" onClick={pickDictionary} disabled={!editable} title={editable ? 'Fill in labels, definitions, forms and identifier flags from a REDCap data dictionary (CSV). Nothing a curator set is replaced.' : 'Open the current metadata to import a data dictionary.'} data-testid="import-dictionary">
+            <BookOpen size={15} /> Import data dictionary
+          </button>
+        </div>
       </header>
+      {dictionary && <DictionaryDialog loaded={dictionary} datasetVersionId={snapshot.datasetVersionId} onClose={() => setDictionary(null)} />}
       <div className="content page-fade">
         <div className="grid" style={{ gridTemplateColumns: '360px minmax(0, 1fr)', alignItems: 'start' }}>
           <div className="paper card" style={{ position: 'sticky', top: 0 }}>
@@ -116,6 +135,87 @@ export function Measurements() {
         </div>
       </div>
     </>
+  )
+}
+
+interface LoadedDictionary {
+  token: string
+  fileName: string
+  sha256: string
+  plan: DictionaryPlan
+}
+
+const FIELD_NAMES: Record<string, string> = { displayLabel: 'Display label', definition: 'Definition', area: 'Research area', source: 'Source' }
+
+/** Shows exactly what a REDCap data dictionary would set before anything is written. */
+function DictionaryDialog({ loaded, datasetVersionId, onClose }: { loaded: LoadedDictionary; datasetVersionId: string; onClose: () => void }) {
+  const toast = useStore((s) => s.toast)
+  const [busy, setBusy] = useState(false)
+  const { plan } = loaded
+  const nothing = plan.changes.length === 0 && plan.quasiIdentifiers.length === 0
+  const close = () => {
+    void call('dictionary:discard', { token: loaded.token }).catch(() => undefined)
+    onClose()
+  }
+  const apply = async () => {
+    setBusy(true)
+    try {
+      const r = await call<{ metadataValues: number; quasiIdentifiers: number; measures: number }>('dictionary:apply', { token: loaded.token, datasetVersionId })
+      await useStore.getState().reloadSnapshot()
+      toast('success', `Data dictionary applied: ${r.metadataValues} value(s) on ${r.measures} measure(s), ${r.quasiIdentifiers} identifier flag(s). All are tentative until a curator confirms them.`)
+      onClose()
+    } catch (e) {
+      toast('error', errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog.Root open onOpenChange={(o) => { if (!o) close() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="dialog" aria-describedby={undefined} data-testid="dictionary-dialog">
+          <div className="dialog-head">
+            <Dialog.Title asChild><h2 style={{ flex: 1 }}>Import data dictionary</h2></Dialog.Title>
+            <Dialog.Close className="btn ghost icon" aria-label="Close"><X size={16} /></Dialog.Close>
+          </div>
+          <div className="dialog-body stack">
+            <p className="small muted" style={{ margin: 0 }}>
+              {loaded.fileName} · SHA-256 {loaded.sha256.slice(0, 12)}… · {plan.fields} fields. It describes {plan.matched} of the measures in this dataset; {plan.undescribedMeasures} {plan.undescribedMeasures === 1 ? 'is' : 'are'} not mentioned in it.
+              {plan.unmatchedFieldCount > 0 && ` ${plan.unmatchedFieldCount} of its fields ${plan.unmatchedFieldCount === 1 ? 'has' : 'have'} no column here.`}
+            </p>
+            <div className="callout info">
+              <BookOpen size={16} />
+              <p className="small" style={{ margin: 0 }}>
+                <strong data-testid="dictionary-summary">{plan.changes.length} value(s) will be recorded as tentative{plan.quasiIdentifiers.length ? `, and ${plan.quasiIdentifiers.length} measure(s) flagged as identifiers` : ''}.</strong>{' '}
+                Each is an ordinary revision in the measure's history, naming this file as its origin. Units, specimens and assays are not in a data dictionary and stay as they are.
+                {plan.kept.length > 0 && ` ${plan.kept.length} value(s) a curator already set differ from the dictionary and are kept.`}
+              </p>
+            </div>
+            {plan.changes.length > 0 && (
+              <div className="table-wrap" style={{ maxHeight: 300 }}>
+                <table className="data">
+                  <thead><tr><th>Measure</th><th>Field</th><th>Now</th><th>From the dictionary</th></tr></thead>
+                  <tbody>
+                    {plan.changes.slice(0, 200).map((c, i) => (
+                      <tr key={i}><td>{c.header}</td><td>{FIELD_NAMES[c.field] ?? c.field}</td><td className="muted">{c.from ?? 'unknown'}</td><td style={{ whiteSpace: 'pre-wrap', minWidth: 260 }}>{c.to}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {plan.changes.length > 200 && <p className="small muted" style={{ margin: 0 }}>Showing the first 200 of {plan.changes.length}.</p>}
+            {plan.quasiIdentifiers.length > 0 && <p className="small" style={{ margin: 0 }}><strong>Marked as identifiers in REDCap:</strong> {plan.quasiIdentifiers.map((q) => q.header).join(', ')}. They will need confirmation before any export.</p>}
+            {plan.kept.length > 0 && <p className="small muted" style={{ margin: 0 }}><strong>Kept as the curator set them:</strong> {plan.kept.slice(0, 12).map((k) => `${k.header} (${FIELD_NAMES[k.field] ?? k.field})`).join(', ')}{plan.kept.length > 12 ? ` and ${plan.kept.length - 12} more` : ''}.</p>}
+            {nothing && <p className="small" style={{ margin: 0 }}>Nothing to change: this dictionary adds nothing the project does not already have.</p>}
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn" onClick={close}>Cancel</button>
+              <button className="btn primary" onClick={apply} disabled={busy || nothing} data-testid="apply-dictionary">Apply {plan.changes.length + plan.quasiIdentifiers.length} change(s)</button>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 

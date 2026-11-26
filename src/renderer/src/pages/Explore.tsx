@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Grid3x3, Rows3, Orbit, Palette, BarChart3, BookmarkPlus, Download, ScrollText, Copy, FlaskConical, GitCompareArrows, Layers, ScatterChart as ScatterIcon, Table2, Upload, MousePointerSquareDashed, AlertTriangle, Info, X, Columns3, Calculator, Sparkles, ChevronDown } from 'lucide-react'
-import type { QcCategory, VariableInfo } from '@core/types'
+import type { VariableInfo } from '@core/types'
 import { normalizeChart } from '@core/chartStyle'
 import { SIZE_PRESETS, stampSvg, type SizePresetId } from '@core/chartStamp'
 import { suggestViewName } from '@core/naming'
-import type { ScatterData } from '@core/chartData'
+import { distributionData, scatterData } from '@core/chartData'
+import { transformedVariable } from '@core/transforms'
 import { QUARTILE_CONVENTION, type Summary } from '@core/stats'
 import { describeFilter, countsFor, observationsFor } from '@core/selection'
 import { formatNumber } from '@core/values'
@@ -15,10 +16,9 @@ import { useSelection, useVar, useSpec } from '../lib/selection'
 import { useProvenance } from '../lib/provenance'
 import { shortFingerprint } from '@core/provenance'
 import { APP_VERSION } from '../lib/version'
-import { label, plural, STATUS_TEXT, INTERP_TEXT } from '../lib/format'
+import { label, plural, qcPolicyText, STATUS_TEXT, INTERP_TEXT } from '../lib/format'
 import { EChart, type EChartHandle } from '../components/EChart'
-import { correlationOption, heatmapOption, pcaOption, screeOption, type FullChart } from '../components/chartOptions'
-import { ChartNotices, distributionChart, distributionModel, distributionNotices, scatterChart, scatterModel, scatterNotices, selectionSubtitle, useScheme } from '../components/chartViews'
+import { correlationOption, distributionOption, heatmapOption, histogramOption, pcaOption, scatterOption, screeOption, type FullChart } from '../components/chartOptions'
 import { correlationFromSelection, heatmapData } from '@core/matrix'
 import { gapSuggestion, pcaPlot } from '@core/pca'
 import type { SelectionResult } from '@core/selection'
@@ -27,6 +27,17 @@ import { DistributionStats, PooledVisitsNotice, ScatterStats } from '../componen
 import { FilterBar, MeasurePicker, QcPolicyPicker, TransformSelect, VisitPicker, VariableList } from '../components/Pickers'
 import { DataTable } from '../components/DataTable'
 import * as Popover from '@radix-ui/react-popover'
+
+export function useScheme() {
+  const [dark, setDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
+  useEffect(() => {
+    const m = matchMedia('(prefers-color-scheme: dark)')
+    const on = () => setDark(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return dark
+}
 
 export function Explore() {
   const snapshot = useStore((s) => s.snapshot)!
@@ -118,7 +129,11 @@ function NoMeasure({ two }: { two?: boolean }) {
 }
 
 function contextLine(sel: ReturnType<typeof useSelection>, qc: string[]) {
-  return selectionSubtitle(sel!, useStore.getState().filter, qc as QcCategory[])
+  const s = sel!
+  const f = describeFilter(s.ctx, (useStore.getState().filter))
+  // Rows and participants differ as soon as a participant has more than one visit in the selection: say both.
+  const n = s.rows.length === s.participantIds.length ? `n = ${s.participantIds.length} participants` : `n = ${s.rows.length} observations from ${s.participantIds.length} participants`
+  return `${n} · ${f === 'All rows' ? 'no cohort filter' : f} · QC: ${qcPolicyText(qc as any)}`
 }
 
 export function useFullChart(): FullChart {
@@ -332,12 +347,15 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
   const statsOpen = useStore((s) => s.statsOpen)
   const dark = useScheme()
   const ref = useRef<EChartHandle>(null)
+  const hist = chart.distStyle === 'histogram'
+  // A histogram has no log axis; it bins the (optionally transformed) values directly.
+  const scale = hist ? 'linear' : chart.yScale
   const colorVar = useVar(chart.colorKey)
-  // Only the inputs of the data step are dependencies, so restyling or highlighting does not recompute the data.
-  const model = useMemo(() => distributionModel(sel, measure, group, colorVar, chart), [sel, measure, group, colorVar, chart.distStyle, chart.yScale, chart.transformMeasure]) // eslint-disable-line react-hooks/exhaustive-deps
-  const { data, shown, scale, hist } = model
+  const tf = chart.transformMeasure
+  const shown = useMemo(() => transformedVariable(measure, tf), [measure, tf])
+  const data = useMemo(() => distributionData(sel, measure.index, group?.index ?? null, scale, { transform: tf, colorVar: hist ? null : colorVar?.index ?? null }), [sel, measure, group, scale, tf, colorVar, hist])
   const hl = useMemo(() => new Set(highlight), [highlight])
-  const built = useMemo(() => distributionChart(model, group, colorVar, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc) }), [model, group, chart, dark, hl, sel, qc, colorVar])
+  const built = useMemo(() => (hist ? histogramOption : distributionOption)(data, shown, group, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc), colorTitle: colorVar ? label(colorVar) : null }), [data, shown, group, chart, dark, hl, sel, qc, colorVar, hist])
 
   return (
     <div className="stack">
@@ -357,7 +375,16 @@ function DistributionView({ measure, group }: { measure: VariableInfo; group: Va
               <EChart ref={ref} option={built.option} height={CHART_HEIGHT} minWidth={hist ? 0 : built.minWidth} ariaLabel={`${hist ? 'Histogram' : 'Distribution'} of ${label(measure)}`} onPointClick={(d) => d?.row !== undefined && inspect({ row: d.row, variable: measure.index })} />
             </div>
           )}
-          <ChartNotices items={[...distributionNotices(data), ...built.notices]} />
+          <ChartNotices
+            items={[
+              data.totals.missing ? `${data.totals.missing} row(s) have no value (missing — not zero).` : null,
+              data.totals.censored ? `${data.totals.censored} censored value(s) (e.g. “<x”) are not plotted and not substituted.` : null,
+              data.totals.nonNumeric ? `${data.totals.nonNumeric} non-numeric entr${data.totals.nonNumeric === 1 ? 'y is' : 'ies are'} not plotted.` : null,
+              data.totals.qcExcluded ? `${data.totals.qcExcluded} observation(s) excluded by the QC policy.` : null,
+              ...data.groups.filter((g) => g.nonPositiveHidden.length).map((g) => `Log axis: ${g.nonPositiveHidden.length} non-positive value(s) in “${g.label}” hidden from the plot (${g.nonPositiveHidden.map((p) => `${p.participantId}=${formatNumber(p.value)}`).join(', ')}); its box is hidden but its summary uses all values.`),
+              ...built.notices
+            ]}
+          />
           {!hist && <Legend />}
         </div>
         <SidePanel
@@ -392,10 +419,13 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
   const ref = useRef<EChartHandle>(null)
   const [brush, setBrushState] = useState(false)
   const colorVar = useVar(chart.colorKey)
-  const model = useMemo(() => scatterModel(sel, x, y, colorVar, chart), [sel, x, y, colorVar, chart.xScale, chart.yScale, chart.transformCompare, chart.transformMeasure]) // eslint-disable-line react-hooks/exhaustive-deps
-  const { data, xs, ys } = model
+  const tx = chart.transformCompare
+  const ty = chart.transformMeasure
+  const xs = useMemo(() => transformedVariable(x, tx), [x, tx])
+  const ys = useMemo(() => transformedVariable(y, ty), [y, ty])
+  const data = useMemo(() => scatterData(sel, x.index, y.index, chart.xScale, chart.yScale, { transformX: tx, transformY: ty, colorVar: colorVar?.index ?? null }), [sel, x, y, chart.xScale, chart.yScale, tx, ty, colorVar])
   const hl = useMemo(() => new Set(highlight), [highlight])
-  const built = useMemo(() => scatterChart(model, colorVar, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc) }), [model, chart, dark, hl, sel, qc, colorVar])
+  const built = useMemo(() => scatterOption(data, xs, ys, chart, { dark, highlight: hl, subtitle: contextLine(sel, qc), colorTitle: colorVar ? label(colorVar) : null }), [data, xs, ys, chart, dark, hl, sel, qc, colorVar])
   const drawn = useMemo(() => (built.option as any).series[0].data as { row: number }[], [built])
 
   const pairedRows = data.points.map((p) => p.row)
@@ -423,7 +453,15 @@ function ScatterView({ x, y }: { x: VariableInfo; y: VariableInfo }) {
               onBrush={(idx) => setHighlight(idx.map((i) => drawn[i % 1e6]?.row).filter((r) => r !== undefined))}
             />
           )}
-          <ChartNotices items={[...scatterNotices(data), ...built.notices]} />
+          <ChartNotices
+            items={[
+              data.missingX + data.missingY + data.missingBoth ? `${data.missingX + data.missingY + data.missingBoth} participant row(s) lack a value for one or both measures (x only: ${data.missingX}, y only: ${data.missingY}, both: ${data.missingBoth}).` : null,
+              data.unevaluable ? `${data.unevaluable} pair(s) include a censored or non-numeric value and are not plotted.` : null,
+              data.qcExcluded ? `${data.qcExcluded} pair(s) include an observation excluded by the QC policy.` : null,
+              data.hidden.length ? `Log axis: ${data.hidden.length} pair(s) with non-positive values hidden (${data.hidden.map((h) => h.participantId).join(', ')}).` : null,
+              ...built.notices
+            ]}
+          />
           <Legend />
         </div>
         <SidePanel
@@ -751,6 +789,15 @@ function TableView() {
   )
 }
 
+function ChartNotices({ items }: { items: (string | null)[] }) {
+  const list = items.filter(Boolean) as string[]
+  if (!list.length) return null
+  return (
+    <ul className="small muted" style={{ margin: '8px 0 0', paddingLeft: 18 }} aria-label="Chart notes">
+      {list.map((t) => <li key={t}>{t}</li>)}
+    </ul>
+  )
+}
 
 function Legend() {
   return (
@@ -837,7 +884,7 @@ function Collapsible({ id, title, meta, actions, children }: { id: string; title
   )
 }
 
-function PairsSummary({ data }: { data: ScatterData }) {
+function PairsSummary({ data }: { data: ReturnType<typeof scatterData> }) {
   const missing = data.missingX + data.missingY + data.missingBoth
   const rows: [string, number, string?][] = [
     ['Complete pairs', data.points.length + data.hidden.length, 'Used for the chart and statistics'],

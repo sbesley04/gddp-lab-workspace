@@ -4,7 +4,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, Search, Check, Plus, X, Filter, ShieldCheck, CalendarDays, AlertTriangle } from 'lucide-react'
 import type { FilterCondition, FilterGroup, FilterNode, QcCategory, VariableInfo } from '@core/types'
 import { QC_CATEGORIES } from '@core/types'
-import { describeCondition, qcImpact, type SelectionResult } from '@core/selection'
+import { describeCondition, qcImpact } from '@core/selection'
 import { useStore } from '../store'
 import { useSelection, useFlagIndex } from '../lib/selection'
 import { label, areaOf, qcLabel, plural, qcPolicyText } from '../lib/format'
@@ -130,13 +130,10 @@ export function MeasurePicker({ icon, k, value, vars, onChange, none, testId }: 
 
 // ---------------- Visit picker ----------------
 
-/** Store-bound by default; pass value and onChange to edit another selection (a board's shared cohort). */
-export function VisitPicker({ value: controlled, onChange }: { value?: string[] | 'all'; onChange?: (v: string[] | 'all') => void } = {}) {
+export function VisitPicker() {
   const snapshot = useStore((s) => s.snapshot)!
-  const storeVisits = useStore((s) => s.visitIds)
-  const storeSet = useStore((s) => s.setVisits)
-  const visitIds = controlled ?? storeVisits
-  const setVisits = onChange ?? storeSet
+  const visitIds = useStore((s) => s.visitIds)
+  const setVisits = useStore((s) => s.setVisits)
   const value = visitIds === 'all' ? (snapshot.visits.length === 1 ? snapshot.visits[0].name : 'All visits') : snapshot.visits.filter((v) => visitIds.includes(v.id)).map((v) => v.name).join(', ') || 'None'
   return (
     <PickerChip icon={<CalendarDays size={16} />} k="Visit" value={value} testId="visit-picker">
@@ -162,14 +159,11 @@ export function VisitPicker({ value: controlled, onChange }: { value?: string[] 
 
 // ---------------- QC policy ----------------
 
-export function QcPolicyPicker({ value: controlled, onChange, sel: selOverride }: { value?: QcCategory[]; onChange?: (q: QcCategory[]) => void; sel?: SelectionResult | null } = {}) {
+export function QcPolicyPicker() {
   const snapshot = useStore((s) => s.snapshot)!
-  const storeQc = useStore((s) => s.qcExclude)
-  const storeSet = useStore((s) => s.setQcExclude)
-  const storeSel = useSelection()
-  const qc = controlled ?? storeQc
-  const setQc = onChange ?? storeSet
-  const sel = selOverride === undefined ? storeSel : selOverride
+  const qc = useStore((s) => s.qcExclude)
+  const setQc = useStore((s) => s.setQcExclude)
+  const sel = useSelection()
   const flagIndex = useFlagIndex(snapshot)!
   const measures = useMemo(() => snapshot.variables.filter((v) => v.role === 'measure').map((v) => v.index), [snapshot])
   const present = useMemo(() => new Set(snapshot.flags.map((f) => f.category).filter(Boolean)), [snapshot])
@@ -313,12 +307,9 @@ function addToGroup(g: FilterGroup, groupId: string, node: FilterNode): FilterGr
   return { ...g, children: g.children.map((c) => (c.type === 'group' ? addToGroup(c, groupId, node) : c)) }
 }
 
-interface FilterState {
-  filter: FilterGroup
-  setFilter: (f: FilterGroup) => void
-}
-
-function ConditionChip({ c, vars, filter, setFilter }: { c: FilterCondition; vars: VariableInfo[] } & FilterState) {
+function ConditionChip({ c, vars }: { c: FilterCondition; vars: VariableInfo[] }) {
+  const filter = useStore((s) => s.filter)
+  const setFilter = useStore((s) => s.setFilter)
   const [open, setOpen] = useState(false)
   const varByKey = useMemo(() => new Map(vars.map((v) => [v.key, v])), [vars])
   return (
@@ -340,7 +331,9 @@ function ConditionChip({ c, vars, filter, setFilter }: { c: FilterCondition; var
   )
 }
 
-function AddCondition({ groupId, vars, labelText = 'Add filter', filter, setFilter }: { groupId: string; vars: VariableInfo[]; labelText?: string } & FilterState) {
+function AddCondition({ groupId, vars, labelText = 'Add filter' }: { groupId: string; vars: VariableInfo[]; labelText?: string }) {
+  const filter = useStore((s) => s.filter)
+  const setFilter = useStore((s) => s.setFilter)
   const [open, setOpen] = useState(false)
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -356,7 +349,9 @@ function AddCondition({ groupId, vars, labelText = 'Add filter', filter, setFilt
   )
 }
 
-function OpToggle({ g, filter, setFilter }: { g: FilterGroup } & FilterState) {
+function OpToggle({ g }: { g: FilterGroup }) {
+  const filter = useStore((s) => s.filter)
+  const setFilter = useStore((s) => s.setFilter)
   const flip = (root: FilterGroup): FilterGroup => (root.id === g.id ? { ...root, op: root.op === 'and' ? 'or' : 'and' } : { ...root, children: root.children.map((c) => (c.type === 'group' ? flip(c) : c)) })
   return (
     <button className="btn ghost sm" onClick={() => setFilter(flip(filter))} title="Switch between ALL (AND) and ANY (OR)" aria-label={`Combine with ${g.op === 'and' ? 'AND' : 'OR'}; click to switch`}>
@@ -365,33 +360,28 @@ function OpToggle({ g, filter, setFilter }: { g: FilterGroup } & FilterState) {
   )
 }
 
-/** Store-bound by default (Explore). Pass value, onChange and sel to edit another cohort, such as a board's. */
-export function FilterBar({ value, onChange, sel: selOverride, label: barLabel = 'Cohort' }: { value?: FilterGroup; onChange?: (f: FilterGroup) => void; sel?: SelectionResult | null; label?: string } = {}) {
+export function FilterBar() {
   const snapshot = useStore((s) => s.snapshot)!
-  const storeFilter = useStore((s) => s.filter)
-  const storeSet = useStore((s) => s.setFilter)
-  const storeSel = useSelection()
-  const filter = value ?? storeFilter
-  const setFilter = onChange ?? storeSet
-  const sel = selOverride === undefined ? storeSel : selOverride
-  const fs = { filter, setFilter }
+  const filter = useStore((s) => s.filter)
+  const setFilter = useStore((s) => s.setFilter)
+  const sel = useSelection()
   const vars = useMemo(() => snapshot.variables.filter((v) => v.role === 'measure'), [snapshot])
   const total = snapshot.rows.length
   const renderGroup = (g: FilterGroup, nested: boolean): ReactNode => (
     <span key={g.id} className="row wrap" style={nested ? { padding: '3px 6px', border: '1px dashed var(--hairline-strong)', borderRadius: 12 } : undefined}>
-      {g.children.length > 1 && <OpToggle g={g} {...fs} />}
-      {g.children.map((c) => (c.type === 'cond' ? <ConditionChip key={c.id} c={c} vars={vars} {...fs} /> : renderGroup(c, true)))}
-      {nested && <AddCondition groupId={g.id} vars={vars} labelText="" {...fs} />}
+      {g.children.length > 1 && <OpToggle g={g} />}
+      {g.children.map((c) => (c.type === 'cond' ? <ConditionChip key={c.id} c={c} vars={vars} /> : renderGroup(c, true)))}
+      {nested && <AddCondition groupId={g.id} vars={vars} labelText="" />}
     </span>
   )
   return (
-    <div className="row wrap" style={{ marginBottom: 12, gap: 8 }} aria-label={value ? `${barLabel} filters` : 'Cohort filters'} data-tour={value ? undefined : 'filters'}>
+    <div className="row wrap" style={{ marginBottom: 12, gap: 8 }} aria-label="Cohort filters" data-tour="filters">
       <span className="row muted small" style={{ gap: 6 }}>
-        <Filter size={14} /> {barLabel}
+        <Filter size={14} /> Cohort
       </span>
       {filter.children.length === 0 && <span className="muted small">All rows</span>}
       {renderGroup(filter, false)}
-      <AddCondition groupId={filter.id} vars={vars} {...fs} />
+      <AddCondition groupId={filter.id} vars={vars} />
       {filter.children.length > 0 && (
         <button className="btn ghost sm" onClick={() => setFilter({ ...filter, children: [...filter.children, { type: 'group', id: newId(), op: filter.op === 'and' ? 'or' : 'and', children: [] }] })} title="Add a nested group with the opposite combinator">
           <Plus size={13} /> Group

@@ -1,10 +1,11 @@
+// Dashboard app work, kept apart from the workspace app on purpose: nothing in src/renderer imports this folder yet.
 // Dashboard helpers for boards: the shared cohort that live cards follow, and the counts shown on stat cards.
 // Counts only; nothing is imputed or substituted. Every row decision goes through computeSelection.
 
-import type { CellFlag, DatasetSnapshot, FilterGroup, QcCategory, SelectionSpec, VariableInfo } from './types'
-import { DEFAULT_QC_POLICY, emptyFilter } from './types'
-import { computeSelection, countsFor, type SelectionResult } from './selection'
-import { CENSORING_BIAS_THRESHOLD } from './censoring'
+import type { CellFlag, DatasetSnapshot, FilterGroup, QcCategory, SelectionSpec, VariableInfo } from '@core/types'
+import { DEFAULT_QC_POLICY, emptyFilter } from '@core/types'
+import { computeSelection, countsFor, type SelectionResult } from '@core/selection'
+import { CENSORING_BIAS_THRESHOLD } from '@core/censoring'
 
 /**
  * A board's shared cohort. Visits are stored by name, not id, so the cohort still applies after a new import

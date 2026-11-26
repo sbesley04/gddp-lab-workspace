@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { classifyValue } from '@core/values'
 import type { CellFlag, DatasetSnapshot } from '@core/types'
-import { cohortSelection, cohortStats, defaultCohort, percentText, resolveCohort } from '@core/dashboard'
+import { cohortSelection, cohortStats, defaultCohort, percentText, resolveCohort } from '../src/dashboard/cohortStats'
 import { computeSelection } from '@core/selection'
 import { variable } from './synthetic'
 

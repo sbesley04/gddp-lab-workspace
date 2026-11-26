@@ -1,3 +1,4 @@
+// Dashboard app work, kept apart from the workspace app on purpose: nothing in src/renderer imports this folder yet.
 // Reusable chart views. Explore and board cards draw through the same builders, so a chart on a board and the
 // same chart in Explore show the same rows, notices and options. ECharts options themselves live in chartOptions.ts.
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
@@ -10,9 +11,9 @@ import { transformedVariable } from '@core/transforms'
 import { pcaPlot } from '@core/pca'
 import { correlationFromSelection, heatmapData } from '@core/matrix'
 import { displayValue, formatNumber } from '@core/values'
-import { label, qcPolicyText } from '../lib/format'
-import { EChart, type EChartHandle } from './EChart'
-import { correlationOption, distributionOption, heatmapOption, histogramOption, pcaOption, scatterOption, type Built, type FullChart } from './chartOptions'
+import { label, qcPolicyText } from '../renderer/src/lib/format'
+import { EChart, type EChartHandle } from '../renderer/src/components/EChart'
+import { correlationOption, distributionOption, heatmapOption, histogramOption, pcaOption, scatterOption, type Built, type FullChart } from '../renderer/src/components/chartOptions'
 
 export function useScheme() {
   const [dark, setDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)

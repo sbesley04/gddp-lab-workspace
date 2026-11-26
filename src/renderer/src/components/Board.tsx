@@ -15,7 +15,7 @@ import { EChart, type EChartHandle } from './EChart'
 import { correlationOption, distributionOption, heatmapOption, histogramOption, pcaOption, scatterOption } from './chartOptions'
 import { correlationFromSelection, heatmapData } from '@core/matrix'
 import { StyleEditor } from './ChartControls'
-import { useScheme } from './chartViews'
+import { useScheme } from '../pages/Explore'
 
 export interface BoardCard {
   id: string
